@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from ninja import File, Form, Header, Query, Router
+from ninja import File, Form, Header, Query, Router, Status
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
 
@@ -110,14 +110,14 @@ def create_manual_commission(request, payload: ManualCommissionIn):
     except ValueError as exc:
         raise ValidationError(str(exc), code="COMMISSION_INVALID") from exc
 
-    return 201, {
+    return Status(201, {
         "external_id": str(c.external_id),
         "payee_external_id": str(user.external_id),
         "amount": str(c.amount),
         "source_type": c.source_type,
         "status": c.status,
         "created_at": c.created_at.isoformat(),
-    }
+    })
 
 
 @router.post("/finance/commissions/advance/{user_external_id}", response=AdvancePayoutOut, summary="Antecipar comissões e gerar payout imediato")
@@ -198,7 +198,7 @@ def create_manual_payment(
             )
     except finance_manual.ManualPaymentError as exc:
         _raise_manual_payment_error(exc)
-    return 201, {
+    return Status(201, {
         "external_id": str(pr.external_id),
         "kind": pr.kind,
         "method": pr.method,
@@ -206,7 +206,7 @@ def create_manual_payment(
         "status": pr.status,
         "external_reference": pr.external_reference,
         "receipt": pr.receipt,
-    }
+    })
 
 
 @router.post("/finance/closing/run", response=WeeklyClosingResultOut, summary="Executar fechamento semanal")
@@ -355,7 +355,7 @@ def create_manual_adjustment(
     except ValueError as exc:
         raise ValidationError(str(exc), code="ADJUSTMENT_ERROR") from exc
 
-    return 201, {
+    return Status(201, {
         "external_id": str(tx.external_id),
         "kind": tx.kind,
         "amount": str(tx.amount),
@@ -366,7 +366,7 @@ def create_manual_adjustment(
         "idempotency_key": tx.idempotency_key,
         "created_at": tx.created_at.isoformat(),
         "settled_at": tx.settled_at.isoformat() if tx.settled_at else None,
-    }
+    })
 
 
 @router.post("/finance/expenses/unexpected", response={201: UnexpectedExpenseOut}, summary="Pagar / Registrar custo imprevisto")
@@ -412,7 +412,7 @@ def create_unexpected_expense_endpoint(
     except ValueError as exc:
         raise ValidationError(str(exc), code="UNEXPECTED_EXPENSE_ERROR") from exc
 
-    return 201, {
+    return Status(201, {
         "external_id": str(ue.external_id),
         "transaction_external_id": str(ue.transaction.external_id) if ue.transaction else None,
         "payment_request_external_id": str(pr.external_id) if pr else None,
@@ -423,7 +423,7 @@ def create_unexpected_expense_endpoint(
         "supplier_name": ue.supplier_name,
         "receipt": ue.receipt,
         "created_at": ue.created_at.isoformat(),
-    }
+    })
 
 
 @router.get("/finance/disputes", response=list[DisputeRecordOut], summary="Listar disputas e chargebacks")

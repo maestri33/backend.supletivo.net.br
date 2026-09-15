@@ -31,6 +31,10 @@ class Command(BaseCommand):
         name = system_config.get_setting("DEFAULT_STAFF_NAME", getattr(settings, "DEFAULT_STAFF_NAME", ""))
         email = system_config.get_setting("DEFAULT_STAFF_EMAIL", getattr(settings, "DEFAULT_STAFF_EMAIL", ""))
         password = system_config.get_setting("DEFAULT_STAFF_PASSWORD") or getattr(settings, "DEFAULT_STAFF_PASSWORD", "") or "1993"
+        if getattr(settings, "APP_ENV", "") == "prod" and (not password or password in ("1993", "admin", "admin123", "password")):
+            raise CommandError(
+                "Em ambiente de produção (APP_ENV=prod), DEFAULT_STAFF_PASSWORD deve ser configurada no .env com uma senha forte."
+            )
         if not (cpf and phone):
             raise CommandError(
                 "Configure DEFAULT_STAFF_CPF / DEFAULT_STAFF_PHONE."

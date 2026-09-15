@@ -14,11 +14,31 @@ if "localhost" not in settings.ALLOWED_HOSTS:
 # Carrega a aplicação WSGI do Django
 app = get_wsgi_application()
 
-# Carrega o schema OpenAPI exportado
+# Carrega o schema OpenAPI exportado ou sintetiza dinamicamente via TestClient
 schema_file = Path(__file__).resolve().parents[2].parent / "packages" / "api-client" / "scripts" / "openapi.json"
 
-with open(schema_file, "r", encoding="utf-8") as f:
-    raw_schema = json.load(f)
+if schema_file.exists():
+    with open(schema_file, "r", encoding="utf-8") as f:
+        raw_schema = json.load(f)
+else:
+    from django.test import Client
+    _c = Client()
+    _h = _c.get("/api/v1/health/openapi.json").json()
+    _cl = _c.get("/api/v1/clients/openapi.json").json()
+    raw_schema = {
+        "openapi": "3.0.2",
+        "info": {"title": "API Fuzzing Schema", "version": "1.0"},
+        "paths": {
+            **_h.get("paths", {}),
+            **_cl.get("paths", {}),
+        },
+        "components": {
+            "schemas": {
+                **_h.get("components", {}).get("schemas", {}),
+                **_cl.get("components", {}).get("schemas", {}),
+            }
+        },
+    }
 
 schema = schemathesis.openapi.from_dict(raw_schema)
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ninja import File, Router
+from ninja import File, Router, Status
 from ninja.files import UploadedFile
 
 from api.auth import require_superuser
@@ -22,7 +22,7 @@ def create_material(request, payload: MaterialIn):
     """Cria uma matéria do treino (conteúdo + questão + gabarito)."""
     require_superuser(request.auth)
     m = training_iface.create_material(**payload.dict())
-    return 201, training_iface.material_to_dict(m, include_answer=True)
+    return Status(201, training_iface.material_to_dict(m, include_answer=True))
 
 
 @router.put("/training/materials/{external_id}", response=StaffMaterialOut, summary="Atualizar matéria de treino")

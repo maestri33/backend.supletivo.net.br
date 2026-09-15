@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ninja import Router
+from ninja import Router, Status
 
 from api.auth import require_superuser
 from api.staff.schemas import (
@@ -95,7 +95,7 @@ def create_hub(request, payload: HubCreateIn):
         )
     except hub_iface.HubError as exc:
         _raise_hub_error(exc)
-    return 201, _hub_out(hub)
+    return Status(201, _hub_out(hub))
 
 
 @router.get("/hubs", response=list[HubOut], summary="Listagem de polos")
