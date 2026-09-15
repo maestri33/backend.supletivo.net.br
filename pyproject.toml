@@ -1,0 +1,37 @@
+[project]
+name = "backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.2,<5.3",
+    "django-cors-headers>=4.9.0",
+    "django-environ>=0.13.0",
+    "django-ninja>=1.6.2",
+    "django-ninja-jwt>=5.4.4",
+    # 1.11 força multiprocessing=fork e não inicia no Windows; o ambiente local
+    # suportado precisa da última versão multiplataforma.
+    "django-q2>=1.10.0,<1.11",
+    # >=50: o pip-audit --strict do CI barra a 49.0.0 (PYSEC-2026-3552 — oráculo Bleichenbacher
+    # no `pkcs7_decrypt_*`). Este projeto NÃO usa PKCS#7/EnvelopedData — só RSA keypair pro JWT
+    # RS256 (users/auth/jwt/keys.py) — então não havia exposição real; o piso subiu pra destravar
+    # o gate e não ficar num release com CVE conhecido.
+    "cryptography>=50",
+    "httpx>=0.28.1",
+    "insightface>=1.0.1",
+    "pillow>=12.2.0",
+    "pypdfium2>=5.9.0",
+    "sentry-sdk[django]>=2.66.1",
+    "structlog>=25.5.0",
+    "whitenoise>=6.12.0",
+    "phonenumbers>=9.0.37",
+    "validate-docbr>=2.0.0",
+    "psycopg[binary]>=3.1.18",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-django>=4",
+    "pytest-asyncio>=1.4",
+    "schemathesis>=4.25.0",
+]

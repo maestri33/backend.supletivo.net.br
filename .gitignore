@@ -1,0 +1,32 @@
+.env
+db.sqlite3
+*.bak
+.venv/
+__pycache__/
+media/
+keys/
+staticfiles/
+
+# ruflo/claude-flow workspace (nunca versionar)
+.claude-flow/
+.hive-mind/
+.swarm/
+.mcp.json
+ruvector.db
+dev.sqlite3
+data/
+
+# claude/ponytail: nunca versionar backups de env
+.env.bak.*
+*.bak
+
+# credenciais de produção — nunca commitar
+.env.prod
+.env.prod.*
+
+# env do docker local (recebe chave sandbox do asaas) — nunca commitar
+.env.docker
+
+# limpeza 2026-08-14
+.coverage
+.claude/worktrees/

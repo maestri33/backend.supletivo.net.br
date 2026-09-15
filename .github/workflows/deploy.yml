@@ -1,0 +1,98 @@
+name: Deploy
+# CD: dispara DEPOIS do CI passar na main (padrão das outras LXCs do projeto). O runner
+# self-hosted (CT 30101) atualiza /opt/backend-supletivo pro SHA que o CI validou, checa,
+# migra, reinicia e prova o health no loopback. Em FALHA: rollback de código + abre issue.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+concurrency:
+  group: deploy-backend-v7m
+  cancel-in-progress: false
+permissions:
+  contents: read
+  issues: write
+jobs:
+  deploy:
+    # só roda se o CI concluiu com sucesso
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: [self-hosted, backend-v7m]
+    steps:
+      - name: SHA atual (rede de rollback)
+        run: echo "PREV_SHA=$(git -C /opt/backend-supletivo rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Atualiza, checa, migra e reinicia
+        run: |
+          exec > >(tee /tmp/backend-deploy.log) 2>&1   # captura o log p/ a issue de falha
+          set -e
+          cd /opt/backend-supletivo
+          git fetch origin
+          # o SHA EXATO que passou no CI (não 'origin/main' — evita deployar um push posterior não-gated)
+          git reset --hard ${{ github.event.workflow_run.head_sha }}
+          export DJANGO_SETTINGS_MODULE=core.prod_settings
+          /usr/local/bin/uv sync --inexact
+          # extras de prod que não estão no pyproject (servidor ASGI + driver PG)
+          /usr/local/bin/uv pip install -q gunicorn "uvicorn[standard]" "psycopg[binary]"
+          .venv/bin/python manage.py check
+          # mostra quais migrations vão rodar (capturado no log pra auditoria)
+          .venv/bin/python manage.py showmigrations --plan | tail -20
+          .venv/bin/python manage.py migrate --noinput
+          # seed templates de notificação (idempotente: default cria só o que falta no DB)
+          .venv/bin/python manage.py notify_seed_templates || true
+          # pré-baixa/carrega o modelo InsightFace (~326MB) AQUI — nunca dentro de um request/task
+          # (fix Marilu 2026-07-05: 1º upload de documento pendurava o worker baixando o modelo).
+          # best-effort: egress bloqueado não derruba o deploy (biometria degrada pra `review`).
+          .venv/bin/python manage.py biometric_health || true
+          .venv/bin/python manage.py collectstatic --noinput
+          systemctl restart backend-web backend-qcluster
+          # health no LOOPBACK (a URL pública de dentro do server pode ser bloqueada — egress)
+          # checa TODOS os grupos da API (clients, collaborators, leadership, staff)
+          for group in clients collaborators leadership staff; do
+            curl -fsS -o /dev/null --retry 3 --retry-delay 2 "http://127.0.0.1:8000/api/v1/${group}/health"
+            echo "  ✓ ${group}/health OK"
+          done
+          # smoke test: pricing endpoint público (prova que o DB + interface estão respondendo)
+          curl -fsS --retry 3 --retry-delay 2 "http://127.0.0.1:8000/api/v1/clients/pricing" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'pix' in d and 'card' in d, f'pricing inesperado: {d}'"
+          echo "deploy OK @ ${{ github.event.workflow_run.head_sha }}"
+
+      - name: Rollback de código em falha
+        if: failure()
+        run: |
+          set -e
+          cd /opt/backend-supletivo
+          echo "ROLLBACK de código -> $PREV_SHA"
+          git reset --hard "$PREV_SHA"
+          /usr/local/bin/uv sync --inexact
+          systemctl restart backend-web backend-qcluster
+          echo "rollback de CÓDIGO feito. ATENÇÃO: migração de schema NÃO volta sozinha (backup de banco = rotina do LXC db)."
+
+      - name: Abrir issue em falha (log sanitizado, sem gh — via API)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.request
+          try:
+              log = open("/tmp/backend-deploy.log").read()[-4000:]
+          except OSError:
+              log = "sem log capturado"
+          # NUNCA vazar secret (chave Asaas aact_*, KEY/TOKEN/SECRET/PASSWORD) no corpo da issue
+          log = re.sub(r"aact_[A-Za-z0-9:._-]+", "[REDACTED]", log)
+          log = re.sub(r"(?i)(KEY|TOKEN|SECRET|PASSWORD|PASSWD)([=:]\S+)", r"\1=[REDACTED]", log)
+          sha = os.environ["GITHUB_SHA"]
+          run_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          body = f"Workflow: {os.environ['GITHUB_WORKFLOW']}\nSHA: {sha}\nRun: {run_url}\n\n```\n{log}\n```"
+          payload = json.dumps({"title": f"deploy falhou @ {sha[:7]}", "body": body, "labels": ["deploy-failure"]}).encode()
+          req = urllib.request.Request(
+              f"{os.environ['GITHUB_API_URL']}/repos/{os.environ['GITHUB_REPOSITORY']}/issues",
+              data=payload, method="POST",
+              headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"},
+          )
+          try:
+              r = urllib.request.urlopen(req)
+              print("issue criada:", json.loads(r.read()).get("html_url"))
+          except Exception as e:  # noqa: BLE001
+              print("WARN: criar issue falhou:", e)
+          PY
