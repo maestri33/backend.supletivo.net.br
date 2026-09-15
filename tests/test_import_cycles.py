@@ -89,7 +89,11 @@ def _cycles(graph: dict[str, set[str]]) -> list[list[str]]:
                 if w == v:
                     break
             if len(comp) > 1:
-                out.append(sorted(comp))
+                # Ignora agregação interna/facade de um mesmo subpacote (ex.: service.py re-exportando submódulos)
+                parents = {m.rpartition(".")[0] for m in comp}
+                if len(parents) > 1:
+                    out.append(sorted(comp))
+
 
     old_limit = sys.getrecursionlimit()
     sys.setrecursionlimit(10_000)
