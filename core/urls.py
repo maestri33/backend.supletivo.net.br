@@ -36,9 +36,31 @@ from api.staff import api as staff_api
 from api.tools import api as tools_api
 from api.health import health_api
 from users.roles.lead.views import checkout_redirect
+from core.auth_md import (
+    agent_auth_view,
+    auth_md_view,
+    oauth_authorization_server_view,
+    oauth_protected_resource_view,
+)
+from core.acp import acp_discovery_view
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # Agentic Commerce Protocol (ACP) Discovery Document (agenticcommerce.dev)
+    path(".well-known/acp.json", acp_discovery_view, name="acp_discovery"),
+    # Auth.md Agent Registration Discovery (RFC 9728, RFC 8414, agent_auth extension)
+    path("auth.md", auth_md_view, name="auth_md"),
+    path(
+        ".well-known/oauth-protected-resource",
+        oauth_protected_resource_view,
+        name="oauth_protected_resource",
+    ),
+    path(
+        ".well-known/oauth-authorization-server",
+        oauth_authorization_server_view,
+        name="oauth_authorization_server",
+    ),
+    path("api/v1/agent/auth", agent_auth_view, name="agent_auth"),
     # link curto do checkout: /lead/checkout/<token> → 302 pro checkout do gateway (manda por WhatsApp).
     path("lead/checkout/<str:token>", checkout_redirect),
     # Webhooks PÚBLICOS dos gateways (chamados de fora por asaas.prod/infinitepay.prod). É a ÚNICA

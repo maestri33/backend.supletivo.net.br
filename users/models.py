@@ -20,7 +20,7 @@ from users.documents.models import (
 from users.profiles.models import Profile
 from users.roles.candidate.models import Candidate
 from users.roles.enrollment.models import EducationalData, Enrollment
-from users.roles.lead.models import Checkout, Lead
+from users.roles.lead.models import Checkout, Lead, LeadAttribution
 from users.roles.models import UserRole
 from users.roles.promoter.models import Promoter
 from users.roles.student.models import (
@@ -47,6 +47,7 @@ __all__ = [
     "Military",
     "AddressProof",
     "Lead",
+    "LeadAttribution",
     "Checkout",
     "Enrollment",
     "EducationalData",

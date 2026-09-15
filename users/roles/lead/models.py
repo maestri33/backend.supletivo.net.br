@@ -84,7 +84,8 @@ class Checkout(models.Model):
         max_length=128, null=True, blank=True, db_index=True
     )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    # cartão (InfinitePay) = link de checkout; PIX (Asaas) = página hospedada (invoiceUrl). + comprovante.
+    # cartão (InfinitePay) = link de checkout do gateway; PIX = a NOSSA página `/pix/<token>` (o QR
+    # estático do Asaas não tem fatura hospedada — issue #158). + comprovante pós-pagamento.
     checkout_url = models.URLField(max_length=500, null=True, blank=True)
     receipt_url = models.URLField(max_length=500, null=True, blank=True)
     # token do link CURTO no nosso domínio (/lead/checkout/<token> → 302 pro checkout). Ver checkout_links.
@@ -105,3 +106,39 @@ class Checkout(models.Model):
 
     def __str__(self) -> str:
         return f"checkout<{self.lead_id}:{self.payment_method}:{'pago' if self.is_paid else 'pendente'}>"
+
+
+class LeadAttribution(models.Model):
+    """Rastreamento de aquisição e atribuição de tráfego do lead (UTMs, click IDs, cookies Meta e rede)."""
+
+    lead = models.OneToOneField(
+        Lead,
+        on_delete=models.CASCADE,
+        related_name="attribution",
+    )
+    ref_raw = models.CharField(max_length=64, blank=True)
+    utm_source = models.CharField(max_length=128, blank=True)
+    utm_medium = models.CharField(max_length=128, blank=True)
+    utm_campaign = models.CharField(max_length=128, blank=True)
+    utm_term = models.CharField(max_length=128, blank=True)
+    utm_content = models.CharField(max_length=128, blank=True)
+    gclid = models.CharField(max_length=255, blank=True, db_index=True)
+    fbclid = models.CharField(max_length=255, blank=True)
+    fbp = models.CharField(max_length=64, blank=True)
+    fbc = models.CharField(max_length=255, blank=True)
+    client_ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=400, blank=True)
+    landing_url = models.URLField(max_length=500, blank=True)
+    sent_google = models.DateTimeField(null=True, blank=True)
+    sent_meta = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField("criado em", auto_now_add=True)
+
+    class Meta:
+        app_label = "users"
+        db_table = "users_lead_attribution"
+        verbose_name = "atribuição do lead"
+        verbose_name_plural = "atribuições dos leads"
+
+    def __str__(self) -> str:
+        return f"lead_attribution<{self.lead_id}:{self.ref_raw or 'direct'}>"
+

@@ -30,6 +30,7 @@ import uuid
 from decimal import Decimal, InvalidOperation
 
 import structlog
+from django.db import IntegrityError
 
 from .client import AsaasError, get_client
 from .models import Payment
@@ -54,11 +55,33 @@ def _parse_amount(amount) -> Decimal:
     return amt
 
 
-def _new_or_check_payment_id(payment_id: str | None) -> str:
+def _reusable_or_new_payment_id(payment_id: str | None, amount: Decimal):
+    """Resolve o `payment_id` do QR: `(pid, linha_reaproveitável|None)`.
+
+    IDEMPOTÊNCIA (issue #158): o mesmo `payment_id` pedido DE NOVO devolve o QR que já existe em
+    vez de estourar. O `pid` do lead é determinístico (`lead_<hex>_<checkout.pk>`), então o
+    segundo clique no link curto — ou um retry da task — caía em `payment_id_already_exists`, a
+    view engolia e o lead via 503 pra sempre. QR estático é recurso ESTÁVEL: mesmo valor, mesma
+    chave, mesmo payload — reemitir não faz sentido, reaproveitar faz.
+
+    Só reaproveita o que é seguro:
+      - `kind` tem que ser `static_pix_qr` (colisão com fatura/transferência é erro de verdade);
+      - `status` tem que ser `PENDING` (pago/cancelado/expirado NÃO se reabre);
+      - o valor tem que ser o MESMO (senão devolveríamos um QR que cobra outro preço).
+    """
     pid = payment_id or f"sqr_{uuid.uuid4().hex[:16]}"
-    if Payment.objects.filter(payment_id=pid).exists():
-        raise StaticQrError("payment_id_already_exists")
-    return pid
+    row = Payment.objects.filter(payment_id=pid).first()
+    if row is None:
+        return pid, None
+    if row.kind != Payment.Kind.STATIC_PIX_QR:
+        raise StaticQrError(f"payment_id_already_exists: kind={row.kind}")
+    if row.status != "PENDING":
+        raise StaticQrError(f"payment_id_already_exists: status={row.status}")
+    if row.amount != amount:
+        raise StaticQrError(
+            f"payment_id_amount_mismatch: existente={row.amount} pedido={amount}"
+        )
+    return pid, row
 
 
 async def _fetch_pix_address_key() -> str:
@@ -103,9 +126,18 @@ def create_pix_qr(
     - Não cria fatura/customer no Asaas (custo menor).
     - Retorna Payment(kind=STATIC_PIX_QR) com qrcode_payload e pix_qr_image já populados.
     - Compatível com o receiver de webhook existente via externalReference == payment_id.
+    - IDEMPOTENTE por `payment_id`: pedido repetido devolve o QR já emitido, SEM tocar no Asaas.
     """
     amt = _parse_amount(amount)
-    pid = _new_or_check_payment_id(payment_id)
+    pid, existing = _reusable_or_new_payment_id(payment_id, amt)
+    if existing is not None:
+        logger.info(
+            "static_pix_qr_reused",
+            payment_id=pid,
+            asaas_qr_id=existing.asaas_id,
+            amount=str(existing.amount),
+        )
+        return existing
 
     try:
         pix_key = pix_address_key or asyncio.run(_fetch_pix_address_key())
@@ -126,17 +158,26 @@ def create_pix_qr(
         except Exception as exc:
             logger.error("static_qr_save_failed", payment_id=pid, error=str(exc))
 
-    row = Payment.objects.create(
-        payment_id=pid,
-        kind=Payment.Kind.STATIC_PIX_QR,
-        billing_type="PIX",
-        qrcode_payload=created.get("payload"),
-        pix_qr_image=encoded,
-        amount=amt,
-        description=description,
-        status="PENDING",
-        asaas_id=created.get("id"),  # ID do QR Code no Asaas (ex: V7MEMPRE000###ASA)
-    )
+    try:
+        row = Payment.objects.create(
+            payment_id=pid,
+            kind=Payment.Kind.STATIC_PIX_QR,
+            billing_type="PIX",
+            qrcode_payload=created.get("payload"),
+            pix_qr_image=encoded,
+            amount=amt,
+            description=description,
+            status="PENDING",
+            asaas_id=created.get("id"),  # ID do QR Code no Asaas (ex: V7MEMPRE000###ASA)
+        )
+    except IntegrityError:
+        # corrida: outro worker gravou o MESMO pid entre a checagem e o insert (`payment_id` é
+        # unique). Não perde o clique do lead — devolve a linha que ganhou a corrida.
+        row = Payment.objects.filter(payment_id=pid).first()
+        if row is None:
+            raise
+        logger.warning("static_pix_qr_race_reused", payment_id=pid, asaas_id=row.asaas_id)
+        return row
 
     logger.info(
         "static_pix_qr_created",

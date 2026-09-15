@@ -5,7 +5,8 @@ Mantém o "seam" histórico (`issue`/`refresh`/`decode`) pra NÃO mexer nos cham
 chaves de `keys/`, expirações, issuer/audience) vive em `settings.NINJA_JWT` (CONVENTION §10). Sem
 consumidor externo → o JWKS foi removido (não há mais `get_jwks` nem `/.well-known/jwks.json`).
 
-Claims no token: `external_id` (str), `roles` (list[str]) e `token_version` (int). O gate lê
+Claims no token: `external_id` (str), `roles` (list[str] — com a sintética `staff` acrescentada
+para superusers) e `token_version` (int). O gate lê
 `external_id`/`roles` dos claims, mas **confere o `token_version` no banco**: trocar de role incrementa
 a versão (`roles.promote`/`assign`) e invalida todo token antigo (Victor 2026-06-05). O ninja-jwt copia
 os claims custom do refresh pro access automaticamente.
@@ -46,11 +47,23 @@ def version_matches(external_id: str, claims_version) -> bool:
     return int(claims_version or 0) == current_version(external_id)
 
 
+def _claim_roles(external_id: str, roles: list[str]) -> list[str]:
+    """Roles de claims + a sintética `staff` p/ superuser: o front (apps/group) roteia pós-login
+    por ela; os gates de staff seguem no banco (`require_superuser`), nunca nos claims."""
+    from users.auth.models import User
+
+    if "staff" in roles or not User.objects.filter(
+        external_id=external_id, is_active=True, is_superuser=True
+    ).exists():
+        return roles
+    return sorted([*roles, "staff"])
+
+
 def issue(external_id: str, roles: list[str]) -> dict:
     """Emite o par access + refresh para `external_id` com as `roles` ativas (passwordless)."""
     rt = RefreshToken()
     rt["external_id"] = str(external_id)
-    rt["roles"] = roles
+    rt["roles"] = _claim_roles(external_id, roles)
     rt["token_version"] = current_version(external_id)  # carimba a versão atual
     logger.info("jwt.issued", external_id=str(external_id), roles=roles)
     return {

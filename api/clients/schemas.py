@@ -24,6 +24,22 @@ class LeadCreateIn(Schema):
     ref: str | None = None
 
 
+class PixPageOut(Schema):
+    """Dados da página PIX PRÓPRIA (`/pix/<token>` no front), endereçada pelo token do link curto.
+
+    PÚBLICO por necessidade: o lead chega pelo link do WhatsApp, sem sessão. Por isso é MAGRO de
+    propósito — valor + copia-e-cola + PNG + pago/não pago, zero dado pessoal."""
+
+    amount: str
+    is_paid: bool
+    qrcode_payload: str | None = None
+    qrcode_image: str | None = Field(
+        default=None,
+        description="Caminho RELATIVO do PNG (/media/...) — same-origin no front (CSP img-src 'self').",
+    )
+    receipt_url: str | None = None
+
+
 class CheckoutOut(Schema):
     payment_method: str
     provider: str
@@ -61,6 +77,7 @@ class PricingOut(Schema):
     promo_card: CardPriceOut | None = None
     has_discount: bool = False
     promoter_name: str | None = None
+    anchor_full: str | None = None
 
 
 class UrlOut(Schema):

@@ -155,12 +155,24 @@ def _apply_charge(payload, event):
     asaas_id = data.get("id")
     ext_ref = data.get("externalReference")
 
-    row = _find_payment(ext_ref, asaas_id, kinds=_CHARGE_KINDS)
-    if row is None:
-        return None, f"no_matching_charge: ext_ref={ext_ref} asaas_id={asaas_id}"
+    # QR Code estático: a cobrança é criada AUTOMATICAMENTE pelo Asaas quando alguém paga o QR
+    # (doc "Criando um QR Code estático"). Essa cobrança é um objeto NOVO — `id` = pay_xxx e
+    # `externalReference` vazio (o nosso ficou no QR, não na cobrança). O único elo de volta é
+    # `pixQrCodeId`, que é o `id` do QR — exatamente o que guardamos em `Payment.asaas_id`.
+    pix_qr_code_id = data.get("pixQrCodeId")
 
-    # Atualiza metadados se vierem no webhook
-    if asaas_id and row.asaas_id != asaas_id:
+    row = _find_payment(
+        ext_ref, asaas_id, kinds=_CHARGE_KINDS, pix_qr_code_id=pix_qr_code_id
+    )
+    if row is None:
+        return None, (
+            f"no_matching_charge: ext_ref={ext_ref} asaas_id={asaas_id} "
+            f"pix_qr_code_id={pix_qr_code_id}"
+        )
+
+    # Atualiza metadados se vierem no webhook. No QR estático o `asaas_id` da linha é o id do
+    # QR (a âncora do match): sobrescrever com o id da cobrança quebraria os eventos seguintes.
+    if asaas_id and row.asaas_id != asaas_id and row.kind != Payment.Kind.STATIC_PIX_QR:
         row.asaas_id = asaas_id
     if data.get("billingType") and not row.billing_type:
         row.billing_type = data.get("billingType")
@@ -259,11 +271,18 @@ def _apply_payout(payload, event):
     return row, "ok"
 
 
-def _find_payment(ext_ref, asaas_id, kinds):
-    """Match por externalReference (= nosso payment_id) e, em seguida, por asaas_id."""
+def _find_payment(ext_ref, asaas_id, kinds, pix_qr_code_id=None):
+    """Match por externalReference (= nosso payment_id), por asaas_id e, no PIX estático, pelo
+    `pixQrCodeId` (id do QR que originou a cobrança automática)."""
     qs = Payment.objects.filter(kind__in=kinds)
     if ext_ref:
         row = qs.filter(payment_id=ext_ref).first()
+        if row is not None:
+            return row
+    if pix_qr_code_id:
+        row = qs.filter(
+            kind=Payment.Kind.STATIC_PIX_QR, asaas_id=pix_qr_code_id
+        ).first()
         if row is not None:
             return row
     if asaas_id:

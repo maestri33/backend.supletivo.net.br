@@ -60,6 +60,22 @@ def test_staff_schemas_pydantic_v2_and_from_attributes():
 
 
 @pytest.mark.django_db
+def test_jwt_claims_carry_synthetic_staff_for_superuser():
+    """Superuser recebe a claim sintética `staff` (emissão E rotação); usuário comum não."""
+    superuser = User.objects.create_superuser(password="superpass")
+    plain = User.objects.create_user()
+
+    su_claims = jwt_service.decode(jwt_service.issue(str(superuser.external_id), [])["access_token"])
+    assert "staff" in su_claims["roles"]
+
+    rotated = jwt_service.refresh(jwt_service.issue(str(superuser.external_id), [])["refresh_token"])
+    assert "staff" in jwt_service.decode(rotated["access_token"])["roles"]
+
+    plain_claims = jwt_service.decode(jwt_service.issue(str(plain.external_id), ["promoter"])["access_token"])
+    assert "staff" not in plain_claims["roles"]
+
+
+@pytest.mark.django_db
 def test_filter_schema_query_handling_via_ninja_client():
     """Testa que os FilterSchemas filtram corretamente as requisições HTTP."""
     superuser = User.objects.create_superuser(password="superpass")

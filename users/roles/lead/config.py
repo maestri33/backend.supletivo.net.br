@@ -1,6 +1,13 @@
 """Config do lead — preço da matrícula por gateway + descrição (lido do `.env`, CONVENTION §10).
 
-DEV (Victor 2026-06-04): **Cartão R$1** / **PIX R$5** (mínimo do Asaas). PROD = pedir ao Victor (§8).
+DEV (Victor 2026-06-04): **Cartão R$1** / **PIX R$5**. PROD = pedir ao Victor (§8).
+
+O R$5 do PIX era o piso da FATURA gerenciada (`/v3/payments`). O funil migrou pro **QR Code
+estático** (`/v3/pix/qrCodes/static`), cujo contrato de API NÃO documenta valor mínimo — `value`
+é um `number` livre (issue #158). Ou seja: o valor emitido é o valor EXATO desta config, sem
+piso do nosso lado. Se o Victor quiser cobrar abaixo de R$5, basta baixar `ENROLLMENT_PRICE_PIX`
+— «PENDÊNCIA»: confirmar com o suporte do Asaas se a CONTA impõe piso comercial (a doc pública
+da API não impõe).
 Valores em REAIS (Decimal); o InfinitePay converte pra centavos internamente (×100).
 """
 
@@ -30,7 +37,10 @@ def price_card() -> Decimal:
 
 
 def price_pix() -> Decimal:
-    """Preço da matrícula no PIX (Asaas), valor CHEIO em reais, do `.env` ou DB. DEV=5 (mínimo do gateway)."""
+    """Preço da matrícula no PIX (Asaas), valor CHEIO em reais, do `.env` ou DB. DEV=5.
+
+    É EXATAMENTE o que vai no `value` do QR estático — sem piso, sem arredondar (ver docstring
+    do módulo)."""
     return _money("ENROLLMENT_PRICE_PIX", "5")
 
 
@@ -64,7 +74,16 @@ def promoter_price_pix() -> Decimal:
 
 
 # parcelas do cartão exibidas na vitrine (o front mostra "12x de ..."). É só EXIBIÇÃO
+def card_installments() -> int:
+    return int(get_setting("CARD_INSTALLMENTS", getattr(settings, "CARD_INSTALLMENTS", 12)))
+
+
 CARD_INSTALLMENTS = 12
+
+
+def anchor_full() -> Decimal:
+    """Preço cheio de vitrine marketing ("de R$ 1.615"), do DB ou .env."""
+    return _money("ENROLLMENT_ANCHOR_FULL", "1615")
 
 
 def description() -> str:
@@ -81,8 +100,12 @@ def frontend_url() -> str:
     conta à toa (erro real visto 2026-06-05). Sem front → sem redirect: o Asaas não recebe `callback`
     (a cobrança PIX passa) e o InfinitePay usa o próprio fallback (`INFINITEPAY_REDIRECT_URL`/EXTERNAL_URL).
     Quando o front existir, basta setar `FRONTEND_URL` (e cadastrar o domínio no Asaas p/ o callback).
+
+    Lê pelo `get_setting` (DB > `.env`) como o `EXTERNAL_URL`: a chave está no catálogo do
+    `core/system_config.py`, então o staff pode corrigir o domínio sem redeploy — e o PIX depende
+    dela pra montar o link da página própria (issue #158).
     """
-    return getattr(settings, "FRONTEND_URL", "") or ""
+    return str(get_setting("FRONTEND_URL", getattr(settings, "FRONTEND_URL", "")) or "")
 
 
 def enrollment_docs_url() -> str:

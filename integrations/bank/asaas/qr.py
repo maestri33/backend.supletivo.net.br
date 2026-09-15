@@ -30,10 +30,21 @@ def save_pix_qr_png(payment_id: str, encoded_image_b64: str) -> str:
     return qr_url_for(payment_id)
 
 
-def qr_url_for(payment_id: str) -> str | None:
-    """URL pública do PNG (absoluta via EXTERNAL_URL). None se o arquivo não existe."""
+def qr_path_for(payment_id: str) -> str | None:
+    """Caminho RELATIVO do PNG (`/media/qrcodes/<pid>.png`). None se o arquivo não existe.
+
+    É o que a página PIX do front consome: o Next reescreve `/media/*` pro backend, então a
+    imagem carrega **same-origin** — a URL absoluta (EXTERNAL_URL, outro domínio) bateria no CSP
+    `img-src 'self'` do app e a `<img>` nem apareceria."""
     if not _qr_path(payment_id).exists():
         return None
-    rel = f"{settings.MEDIA_URL}{_QR_SUBDIR}/{payment_id}.png"
+    return f"{settings.MEDIA_URL}{_QR_SUBDIR}/{payment_id}.png"
+
+
+def qr_url_for(payment_id: str) -> str | None:
+    """URL pública do PNG (absoluta via EXTERNAL_URL). None se o arquivo não existe."""
+    rel = qr_path_for(payment_id)
+    if rel is None:
+        return None
     base = (settings.EXTERNAL_URL or "").rstrip("/")
     return f"{base}{rel}" if base else rel

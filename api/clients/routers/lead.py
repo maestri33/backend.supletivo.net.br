@@ -13,6 +13,7 @@ from api.clients.schemas import (
     IdentityIn,
     IdentityOut,
     LeadMeOut,
+    PixPageOut,
     UrlOut,
 )
 from users.auth import service as auth_iface
@@ -46,6 +47,24 @@ def lead_checkout_url(request):
     if url is None:
         raise NotFound("Checkout não encontrado.", code="CHECKOUT_NOT_FOUND")
     return {"url": url}
+
+
+@router.get(
+    "/pix/{token}",
+    response=PixPageOut,
+    auth=None,
+    summary="QR PIX do checkout pelo token do link curto (público)",
+)
+def lead_pix_page(request, token: str):
+    """Dados da página PIX PRÓPRIA — copia-e-cola + PNG do QR estático já emitido.
+
+    PÚBLICO (sem login) porque o lead chega pelo link que recebeu no WhatsApp; o `token` é o
+    MESMO segredo do link curto `/lead/checkout/<token>`, então não abre superfície nova. Só
+    responde checkout PIX: cartão tem página do gateway (issue #158)."""
+    data = lead_iface.pix_page_dict(token)
+    if data is None:
+        raise NotFound("Checkout PIX não encontrado.", code="CHECKOUT_NOT_FOUND")
+    return data
 
 
 @router.post("/identity", response=IdentityOut, summary="Confirmação de CPF (Passo 3)")

@@ -58,11 +58,12 @@ def mark_lead_paid(request, external_id: str):
     lead = lead_iface.get_by_external_id(external_id)
     if lead is None:
         raise NotFound("Lead não encontrado.", code="LEAD_NOT_FOUND")
-    if not lead.payment_id:
+    checkout = getattr(lead, "checkout", None)
+    if not checkout or not checkout.provider_payment_id:
         raise Conflict("Lead não tem checkout de pagamento.", code="NO_CHECKOUT")
     lead_iface.mark_paid(
-        provider=lead.payment.provider,
-        provider_payment_id=lead.payment_id,
+        provider=checkout.provider,
+        provider_payment_id=checkout.provider_payment_id,
     )
     return {"detail": "Pagamento confirmado. Lead promovido a enrollment."}
 

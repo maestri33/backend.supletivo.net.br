@@ -23,6 +23,7 @@ PRICING_KEYS = {
     "ENROLLMENT_PRICE_CARD_CENTS": "100",
     "ENROLLMENT_PROMO_PRICE_PIX": "5",
     "ENROLLMENT_PROMO_PRICE_CARD_CENTS": "100",
+    "ENROLLMENT_ANCHOR_FULL": "1615",
     "PROMOTER_STUDY_UNLOCK_THRESHOLD": "3",
     "PROMOTER_STUDY_COMPLETE_THRESHOLD": "10",
     "ENROLLMENT_PRICE_PROMOTER_PIX": "5",
@@ -63,6 +64,7 @@ INTEGRATION_KEYS = {
     "INFISICAL_TOKEN": True,
     "EXTERNAL_URL": False,
     "FRONTEND_URL": False,
+    "ASTRO_REBUILD_WEBHOOK_URL": False,
 }
 
 BOSS_KEYS = {
@@ -164,6 +166,7 @@ def get_all_platform_config() -> dict:
     promoter_price_pix = str(get_setting("ENROLLMENT_PRICE_PROMOTER_PIX", getattr(settings, "ENROLLMENT_PRICE_PROMOTER_PIX", price_pix)))
     promoter_price_card_cents = int(get_setting("ENROLLMENT_PRICE_PROMOTER_CARD_CENTS", getattr(settings, "ENROLLMENT_PRICE_PROMOTER_CARD_CENTS", price_card_cents)))
     card_installments = int(get_setting("CARD_INSTALLMENTS", 12))
+    anchor_full = str(get_setting("ENROLLMENT_ANCHOR_FULL", getattr(settings, "ENROLLMENT_ANCHOR_FULL", "1615")))
     description = str(get_setting("ENROLLMENT_DESCRIPTION", getattr(settings, "ENROLLMENT_DESCRIPTION", "Matrícula Supletivo")))
 
     # 3. Comissões
@@ -209,6 +212,7 @@ def get_all_platform_config() -> dict:
             "promoter_price_card_cents": promoter_price_card_cents,
             "promoter_price_card_reais": f"{(Decimal(promoter_price_card_cents) / 100):.2f}",
             "card_installments": card_installments,
+            "anchor_full": anchor_full,
             "description": description,
         },
         "commissions": {
@@ -247,6 +251,8 @@ def save_platform_config(payload: dict) -> dict:
                 set_setting("ENROLLMENT_PRICE_PROMOTER_CARD_CENTS", int(p["promoter_price_card_cents"]), "Preço Cartão Promotor (centavos)")
             if "card_installments" in p and p["card_installments"] is not None:
                 set_setting("CARD_INSTALLMENTS", int(p["card_installments"]), "Parcelas Cartão")
+            if "anchor_full" in p and p["anchor_full"] is not None:
+                set_setting("ENROLLMENT_ANCHOR_FULL", str(p["anchor_full"]), "Preço Âncora Riscado (marketing)")
             if "description" in p and p["description"] is not None:
                 set_setting("ENROLLMENT_DESCRIPTION", str(p["description"]), "Descrição da cobrança")
 
@@ -319,4 +325,46 @@ def save_platform_config(payload: dict) -> dict:
                     existing_boss.user.set_password(str(b["password"]).strip())
                     existing_boss.user.save(update_fields=["password"])
 
+    if "pricing" in payload:
+        trigger_astro_rebuild(payload.get("pricing"))
+
     return get_all_platform_config()
+
+
+def trigger_astro_rebuild(pricing_data: dict | None = None) -> bool:
+    """Dispara o rebuild e atualização das páginas e ilhas do Astro quando os preços forem alterados."""
+    from core import hooks
+
+    logger.info("astro.rebuild_requested", pricing=pricing_data)
+    hooks.dispatch("platform.pricing_updated", pricing=pricing_data)
+
+    webhook_url = get_setting("ASTRO_REBUILD_WEBHOOK_URL", getattr(settings, "ASTRO_REBUILD_WEBHOOK_URL", ""))
+
+    import threading
+
+    def _dispatch_webhook() -> None:
+        if not webhook_url:
+            return
+        import json
+        import urllib.request
+
+        try:
+            body = json.dumps({
+                "event": "pricing_updated",
+                "pricing": pricing_data or {},
+                "timestamp": __import__("time").time(),
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                webhook_url,
+                data=body,
+                headers={"Content-Type": "application/json", "User-Agent": "V7M-Backend-SystemConfig"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                logger.info("astro.rebuild_webhook_dispatched", url=webhook_url, status=resp.status)
+        except Exception as exc:
+            logger.warning("astro.rebuild_webhook_failed", url=webhook_url, error=str(exc))
+
+    t = threading.Thread(target=_dispatch_webhook, daemon=True)
+    t.start()
+    return True

@@ -42,7 +42,7 @@ class OmniRouteOCRClient:
         model: str | None = None,
         timeout: float = 30.0,
     ):
-        raw_base = base_url if base_url is not None else getattr(settings, "OMNIROUTE_BASE_URL", "http://10.0.1.35/v1")
+        raw_base = base_url if base_url is not None else getattr(settings, "OMNIROUTE_BASE_URL", "https://ai.v7m.live/v1")
         self._base_url = raw_base.rstrip("/")
         if not self._base_url.endswith("/v1") and not self._base_url.endswith("/chat/completions"):
             self._base_url = f"{self._base_url}/v1"

@@ -99,23 +99,72 @@ def test_create_pix_qr_invalid_amount():
 @pytest.mark.django_db
 @override_settings(ASAAS_API_KEY="test_key_pix_qr")
 def test_create_pix_qr_idempotent(monkeypatch):
-    """Segundo create com mesmo payment_id falha em idempotência (não duplica)."""
+    """Segundo create com o MESMO payment_id REAPROVEITA o QR — não duplica e não estoura.
+
+    Antes da issue #158 isso levantava `payment_id_already_exists`: como o `pid` do lead é
+    determinístico, o 2º clique no link curto (ou um retry da task) matava o checkout com 503.
+    QR estático é recurso estável — mesmo valor, mesma chave, mesmo payload."""
     pid = f"sqr_idem_{uuid.uuid4().hex[:8]}"
+    calls = []
 
     async def mock_list_keys(self, params=None):
         return _mock_pix_keys_resp()
 
     async def mock_create_qr(self, payload):
+        calls.append(payload)
         return _mock_static_qr_resp(pid)
 
     monkeypatch.setattr(AsaasClient, "list_pix_address_keys", mock_list_keys)
     monkeypatch.setattr(AsaasClient, "create_static_qr_code", mock_create_qr)
 
     with patch("integrations.bank.asaas.static_qr.save_pix_qr_png", return_value=None):
-        asaas_static_qr.create_pix_qr(amount=Decimal("5.00"), payment_id=pid)
+        first = asaas_static_qr.create_pix_qr(amount=Decimal("5.00"), payment_id=pid)
+        again = asaas_static_qr.create_pix_qr(amount=Decimal("5.00"), payment_id=pid)
 
+    assert again.pk == first.pk
+    assert len(calls) == 1, "reaproveitar NÃO pode tocar no gateway"
+    assert Payment.objects.filter(payment_id=pid).count() == 1
+
+
+@pytest.mark.django_db
+@override_settings(ASAAS_API_KEY="test_key_pix_qr")
+def test_create_pix_qr_nao_reaproveita_o_que_nao_e_seguro():
+    """Reaproveitar é só pro QR PENDENTE, do mesmo valor e do mesmo kind. O resto estoura.
+
+    Devolver um QR pago (ou uma linha de fatura/transferência, ou um valor diferente) seria pior
+    que o erro: cobraria o preço errado ou reabriria pagamento concluído."""
+    paid = f"sqr_paid_{uuid.uuid4().hex[:8]}"
+    Payment.objects.create(
+        payment_id=paid,
+        kind=Payment.Kind.STATIC_PIX_QR,
+        billing_type="PIX",
+        amount=Decimal("5.00"),
+        status="PAID",
+    )
     with pytest.raises(asaas_static_qr.StaticQrError, match="payment_id_already_exists"):
-        asaas_static_qr.create_pix_qr(amount=Decimal("5.00"), payment_id=pid)
+        asaas_static_qr.create_pix_qr(amount=Decimal("5.00"), payment_id=paid)
+
+    other_kind = f"sqr_kind_{uuid.uuid4().hex[:8]}"
+    Payment.objects.create(
+        payment_id=other_kind,
+        kind=Payment.Kind.PIXKEY,
+        billing_type="PIX",
+        amount=Decimal("5.00"),
+        status="PENDING",
+    )
+    with pytest.raises(asaas_static_qr.StaticQrError, match="payment_id_already_exists"):
+        asaas_static_qr.create_pix_qr(amount=Decimal("5.00"), payment_id=other_kind)
+
+    other_amount = f"sqr_amt_{uuid.uuid4().hex[:8]}"
+    Payment.objects.create(
+        payment_id=other_amount,
+        kind=Payment.Kind.STATIC_PIX_QR,
+        billing_type="PIX",
+        amount=Decimal("5.00"),
+        status="PENDING",
+    )
+    with pytest.raises(asaas_static_qr.StaticQrError, match="payment_id_amount_mismatch"):
+        asaas_static_qr.create_pix_qr(amount=Decimal("99.00"), payment_id=other_amount)
 
 
 @pytest.mark.django_db
@@ -252,14 +301,17 @@ def test_fill_pix_uses_static_qr_not_charge(monkeypatch):
     checkout_mock.lead.external_id.hex = "a" * 32
     checkout_mock.pk = 1
     checkout_mock.amount = Decimal("5.00")
+    checkout_mock.short_token = "tok_fill_pix"
     profile_mock = MagicMock()
 
     with patch("integrations.bank.asaas.qr.qr_url_for", return_value="http://example.com/qr.png"):
-        with patch("users.roles.lead.service.checkout_links"):
+        with override_settings(FRONTEND_URL="https://app.supletivo.test"):
             lead_service._fill_pix(checkout_mock, profile_mock)
 
     assert len(fill_pix_called_with) == 1, "create_pix_qr deve ter sido chamado"
     assert fill_pix_called_with[0]["amount"] == Decimal("5.00")
-    assert checkout_mock.checkout_url is None
+    # issue #158: o QR estático não tem fatura hospedada, mas o checkout NÃO fica sem destino —
+    # aponta pra NOSSA página PIX (`/pix/<token>`), senão o link curto morre em 503 eterno.
+    assert checkout_mock.checkout_url == "https://app.supletivo.test/pix/tok_fill_pix"
     assert checkout_mock.due_date is None
     assert checkout_mock.qrcode_payload == "00020126_payload_test"

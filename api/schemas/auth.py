@@ -3,6 +3,22 @@ from __future__ import annotations
 from ninja import Field, Schema
 
 
+class AttributionIn(Schema):
+    """Payload de atribuição de tráfego (UTMs, click IDs, cookies Meta)."""
+
+    ref: str | None = None
+    utm_source: str | None = None
+    utm_medium: str | None = None
+    utm_campaign: str | None = None
+    utm_term: str | None = None
+    utm_content: str | None = None
+    gclid: str | None = None
+    fbclid: str | None = None
+    fbp: str | None = None
+    fbc: str | None = None
+    landing_url: str | None = None
+
+
 class CheckIn(Schema):
     """Body do `POST /auth/check` — compartilhado pelos grupos do funil (dedup)."""
 
@@ -11,6 +27,8 @@ class CheckIn(Schema):
     external_id: str | None = None  # re-dispara OTP de usuário já conhecido (do USER)
     ref: str | None = None  # external_id do promotor (landing ?ref=)
     send_otp: bool = True  # send_otp=False permite checar/gerar token em teste/bot autenticado
+    attribution: AttributionIn | None = None
+
 
 
 class CheckOut(Schema):

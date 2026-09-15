@@ -587,7 +587,7 @@ def test_funil_v2_fim_a_fim(client, default_hub):
 
 
 def test_pricing_sem_ref_retorna_precos_padrao(client):
-    """GET /pricing sem parâmetro retorna os preços de tabela e has_discount=False."""
+    """GET /pricing sem parâmetro retorna os preços de tabela, anchor_full e has_discount=False."""
     r = client.get(f"{BASE}/pricing")
     assert r.status_code == 200
     data = r.json()
@@ -595,8 +595,37 @@ def test_pricing_sem_ref_retorna_precos_padrao(client):
     assert "card" in data
     assert "promo_pix" in data
     assert "promo_card" in data
+    assert "anchor_full" in data
     assert data["has_discount"] is False
     assert data["promoter_name"] is None
+
+
+def test_pricing_config_alterada_dispara_rebuild_astro(db):
+    """Atualização de pricing via save_platform_config atualiza valores e dispara hook de rebuild."""
+    from core import system_config, hooks
+
+    dispatched = []
+
+    def _mock_rebuild_hook(**kwargs):
+        dispatched.append(kwargs)
+        return True
+
+    hooks.register("platform.pricing_updated", _mock_rebuild_hook)
+
+    system_config.save_platform_config({
+        "pricing": {
+            "price_pix": "149",
+            "price_card_cents": 14900,
+            "anchor_full": "1800",
+            "card_installments": 12,
+        }
+    })
+
+    cfg = system_config.get_all_platform_config()
+    assert cfg["pricing"]["price_pix"] == "149"
+    assert cfg["pricing"]["anchor_full"] == "1800"
+    assert len(dispatched) >= 1
+    assert dispatched[-1]["pricing"]["price_pix"] == "149"
 
 
 def test_pricing_com_ref_valido_retorna_desconto_e_nome(client, promoter):
@@ -608,3 +637,278 @@ def test_pricing_com_ref_valido_retorna_desconto_e_nome(client, promoter):
     assert data["promoter_name"] == "Joana"
     assert data["promo_pix"] is not None
     assert data["promo_card"] is not None
+
+
+# ── [6b] PIX: o link curto leva à página PIX PRÓPRIA (issue #158) ───────────
+# O QR estático do Asaas (`/v3/pix/qrCodes/static`) NÃO tem fatura hospedada. Antes da #158 o
+# `_fill_pix` gravava `checkout_url=None`, o `bind()` nunca rodava e cada clique no link curto
+# tentava RECRIAR o QR com o mesmo `pid` → `payment_id_already_exists` → 503 eterno.
+
+# PNG 1x1 válido (base64) — o `save_pix_qr_png` decodifica com validate=True.
+_QR_PNG_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAF"
+    "AAH/q842iQAAAABJRU5ErkJggg=="
+)
+FRONT = "https://app.supletivo.test"
+QR_ASAAS_ID = "QR1ASA"
+
+
+@pytest.fixture
+def asaas_qr_calls(monkeypatch, settings, tmp_path):
+    """Stub só do TRANSPORTE do QR estático — o `create_pix_qr` de verdade roda.
+
+    Assim a idempotência que o teste mede é a real (linha `Payment` reaproveitada), não a de um
+    dublê. A lista devolvida acumula uma entrada por chamada ao gateway."""
+    from core import system_config
+    from integrations.bank.asaas import static_qr
+
+    settings.MEDIA_ROOT = str(tmp_path)
+    settings.FRONTEND_URL = FRONT
+    system_config._SETTINGS_CACHE.pop("FRONTEND_URL", None)
+    calls: list[dict] = []
+
+    async def _key():
+        return "chave-pix-de-teste"
+
+    async def _create(pix_key, value, pid, description):
+        calls.append(
+            {"pix_key": pix_key, "value": value, "pid": pid, "description": description}
+        )
+        return {
+            "id": QR_ASAAS_ID if len(calls) == 1 else f"QR{len(calls)}ASA",
+            "payload": f"00020126580014br.gov.bcb.pix::{pid}",
+            "encodedImage": _QR_PNG_B64,
+        }
+
+    monkeypatch.setattr(static_qr, "_fetch_pix_address_key", _key)
+    monkeypatch.setattr(static_qr, "_create_qr_with_gateway", _create)
+    return calls
+
+
+def _pix_checkout(client, phone: str, cpf_seed: str, email: str):
+    """Funil até o passo 6 com PIX escolhido. Devolve o `Checkout` (ainda SEM cobrança)."""
+    from users.roles.lead.models import Checkout
+
+    token = _enter(client, phone)
+    _complete_profile(client, token, cpf_seed, email)
+    r = _json(client, "post", "/lead/checkout", {"payment_method": "pix"}, token)
+    assert r.status_code == 200, r.content
+    return Checkout.objects.get(lead__user__profile__phone=f"55{phone}")
+
+
+def test_pix_link_curto_redireciona_pra_pagina_pix_propria(
+    client, default_hub, asaas_qr_calls
+):
+    """Build do PIX → `checkout_url` = NOSSA página (`FRONTEND_URL/pix/<token>`) + link curto 302."""
+    from users.roles.lead import service as lead_service
+
+    c = _pix_checkout(client, "11987650050", "111222333", "pix50@example.com")
+    assert c.checkout_url is None  # nasce sem cobrança (build é async/lazy)
+
+    lead_service.fill_checkout_from_provider(c)
+    c.refresh_from_db()
+
+    assert c.qrcode_payload  # copia-e-cola persistido
+    assert c.provider_payment_id == f"lead_{c.lead.external_id.hex[:12]}_{c.pk}"
+    assert c.checkout_url == f"{FRONT}/pix/{c.short_token}"
+
+    r = client.get(f"/lead/checkout/{c.short_token}")
+    assert r.status_code == 302, r.content
+    assert r["Location"] == f"{FRONT}/pix/{c.short_token}"
+
+
+def test_pix_clique_no_link_curto_constroi_e_repete_sem_recriar_cobranca(
+    client, default_hub, asaas_qr_calls
+):
+    """O clique faz o build lazy e o SEGUNDO clique é idempotente: 302 de novo, gateway 1x só.
+
+    Era o coração da #158: o 2o clique tentava reemitir o mesmo `pid` e o lead levava 503."""
+    from integrations.bank.asaas.models import Payment
+
+    c = _pix_checkout(client, "11987650051", "222333444", "pix51@example.com")
+
+    first = client.get(f"/lead/checkout/{c.short_token}")
+    assert first.status_code == 302, first.content
+    assert first["Location"] == f"{FRONT}/pix/{c.short_token}"
+
+    second = client.get(f"/lead/checkout/{c.short_token}")
+    assert second.status_code == 302, second.content
+    assert second["Location"] == first["Location"]
+
+    assert len(asaas_qr_calls) == 1  # NÃO recriou a cobrança
+    assert Payment.objects.filter(kind=Payment.Kind.STATIC_PIX_QR).count() == 1
+
+
+def test_pix_build_repetido_reaproveita_o_qr_em_vez_de_estourar(
+    client, default_hub, asaas_qr_calls
+):
+    """`create_pix_qr` com `payment_id` já emitido devolve a MESMA linha (sem tocar no gateway)."""
+    from integrations.bank.asaas import static_qr
+
+    c = _pix_checkout(client, "11987650052", "333444555", "pix52@example.com")
+    pid = f"lead_{c.lead.external_id.hex[:12]}_{c.pk}"
+
+    row = static_qr.create_pix_qr(amount=c.amount, payment_id=pid)
+    again = static_qr.create_pix_qr(amount=c.amount, payment_id=pid)
+
+    assert again.pk == row.pk
+    assert len(asaas_qr_calls) == 1
+
+
+def test_pix_cobra_o_valor_exato_do_plano(client, default_hub, asaas_qr_calls):
+    """O QR estático leva o valor CHEIO do plano — sem piso, sem arredondar (não é fatura)."""
+    from users.roles.lead import config
+    from users.roles.lead import service as lead_service
+
+    c = _pix_checkout(client, "11987650053", "444555777", "pix53@example.com")
+    assert c.amount == config.price_pix()
+
+    lead_service.fill_checkout_from_provider(c)
+    c.refresh_from_db()
+
+    assert asaas_qr_calls[0]["value"] == float(config.price_pix())
+    assert c.amount == config.price_pix()
+
+
+def test_pix_sem_frontend_url_serve_a_pagina_no_proprio_backend(
+    client, default_hub, asaas_qr_calls, settings
+):
+    """Sem `FRONTEND_URL` o link curto NÃO pode virar 503: o Django serve a página PIX mínima."""
+    from core import system_config
+
+    settings.FRONTEND_URL = ""
+    system_config._SETTINGS_CACHE.pop("FRONTEND_URL", None)
+
+    c = _pix_checkout(client, "11987650054", "555666888", "pix54@example.com")
+    r = client.get(f"/lead/checkout/{c.short_token}")
+
+    assert r.status_code == 200, r.content
+    c.refresh_from_db()
+    body = r.content.decode()
+    assert c.qrcode_payload in body
+    assert "PIX" in body
+
+
+def test_pix_endpoint_publico_devolve_o_qr_pelo_token(
+    client, default_hub, asaas_qr_calls
+):
+    """`GET /lead/pix/<token>` (sem login) devolve valor + copia-e-cola + PNG relativo."""
+    from users.roles.lead import service as lead_service
+
+    c = _pix_checkout(client, "11987650055", "666777999", "pix55@example.com")
+    lead_service.fill_checkout_from_provider(c)
+    c.refresh_from_db()
+
+    r = client.get(f"{BASE}/lead/pix/{c.short_token}")
+    assert r.status_code == 200, r.content
+    data = r.json()
+    assert data["amount"] == str(c.amount)
+    assert data["is_paid"] is False
+    assert data["qrcode_payload"] == c.qrcode_payload
+    # RELATIVO (same-origin no front — o CSP do app só aceita img-src 'self').
+    assert data["qrcode_image"].startswith("/")
+    assert c.provider_payment_id in data["qrcode_image"]
+
+    assert client.get(f"{BASE}/lead/pix/naoexiste").status_code == 404
+
+
+def test_pix_webhook_casa_pelo_pix_qr_code_id_e_paga_o_lead(
+    client, default_hub, asaas_qr_calls
+):
+    """No QR estático o Asaas CRIA a cobrança sozinho: sem o nosso `externalReference`, só com
+    `pixQrCodeId` (= id do QR). A conciliação tem que casar por ele, senão o lead nunca paga."""
+    from integrations.bank.asaas import webhooks
+    from users.roles.lead import service as lead_service
+    from users.roles.lead.models import Lead
+
+    c = _pix_checkout(client, "11987650056", "777888111", "pix56@example.com")
+    lead_service.fill_checkout_from_provider(c)
+    c.refresh_from_db()
+    assert asaas_qr_calls, "o build tinha que ter chamado o gateway"
+
+    webhooks.handle_event(
+        {
+            "event": "PAYMENT_RECEIVED",
+            "payment": {
+                "id": "pay_gerado_pelo_asaas",
+                "externalReference": None,  # a cobrança automática NÃO carrega o nosso pid
+                "pixQrCodeId": QR_ASAAS_ID,
+                "value": float(c.amount),
+                "billingType": "PIX",
+                "transactionReceiptUrl": "https://asaas.test/recibo/1",
+            },
+        }
+    )
+
+    c.refresh_from_db()
+    assert c.is_paid is True
+    assert c.receipt_url == "https://asaas.test/recibo/1"
+    assert Lead.objects.get(pk=c.lead_id).status == Lead.Status.PAID
+
+
+def test_pix_checkout_legado_com_url_nula_se_recupera_sozinho(
+    client, default_hub, asaas_qr_calls
+):
+    """O caso de PRODUÇÃO da #158: linha antiga com QR já emitido e `checkout_url` NULO.
+
+    É o estado exato do token que estava em 503 eterno — o QR existia, mas o `bind()` nunca
+    rodou e cada clique tentava reemitir o mesmo `pid`. O link tem que voltar a funcionar SOZINHO,
+    sem checkout novo e SEM tocar no gateway (nenhuma cobrança nova)."""
+    from users.roles.lead import service as lead_service
+
+    c = _pix_checkout(client, "11987650057", "888999222", "pix57@example.com")
+    lead_service.fill_checkout_from_provider(c)
+    c.refresh_from_db()
+    assert len(asaas_qr_calls) == 1
+
+    # Rebobina pro estado do bug: QR/pid persistidos, URL nula, cache do link curto vazio.
+    from django.core.cache import cache
+    from users.roles.lead.checkout_links import _PREFIX
+    from users.roles.lead.models import Checkout
+
+    Checkout.objects.filter(pk=c.pk).update(checkout_url=None)
+    cache.delete(_PREFIX + c.short_token)
+    c.refresh_from_db()
+    assert c.checkout_url is None
+    assert c.qrcode_payload  # o QR continua lá — é o que salva o link
+
+    r = client.get(f"/lead/checkout/{c.short_token}")
+
+    assert r.status_code == 302, r.content  # não é mais 503
+    assert r["Location"] == f"{FRONT}/pix/{c.short_token}"
+    assert len(asaas_qr_calls) == 1, "não pode emitir cobrança nova pra curar o link"
+    c.refresh_from_db()
+    assert c.checkout_url == f"{FRONT}/pix/{c.short_token}"  # curou a linha de vez
+
+
+def test_pix_checkout_orfao_reaproveita_a_cobranca_ja_emitida_no_asaas(
+    client, default_hub, asaas_qr_calls
+):
+    """Variante do legado: o `Payment` foi emitido no Asaas mas o `Checkout` ficou sem o QR.
+
+    O build lazy roda de novo e `create_pix_qr` REAPROVEITA a linha do `pid` colidido em vez de
+    estourar `payment_id_already_exists` — o lead sai do 503 e o Asaas não ganha cobrança nova."""
+    from integrations.bank.asaas.models import Payment
+    from users.roles.lead.models import Checkout
+
+    c = _pix_checkout(client, "11987650058", "999222333", "pix58@example.com")
+    pid = f"lead_{c.lead.external_id.hex[:12]}_{c.pk}"
+
+    # Cobrança já existe no Asaas/no nosso Payment; o Checkout não sabe (build morreu no meio).
+    from integrations.bank.asaas import static_qr
+
+    emitted = static_qr.create_pix_qr(amount=c.amount, payment_id=pid)
+    assert len(asaas_qr_calls) == 1
+    Checkout.objects.filter(pk=c.pk).update(
+        checkout_url=None, provider_payment_id=None, qrcode_payload=None
+    )
+
+    r = client.get(f"/lead/checkout/{c.short_token}")
+
+    assert r.status_code == 302, r.content
+    assert r["Location"] == f"{FRONT}/pix/{c.short_token}"
+    assert len(asaas_qr_calls) == 1, "reaproveitou — nada de cobrança nova"
+    assert Payment.objects.filter(payment_id=pid).count() == 1
+    c.refresh_from_db()
+    assert c.provider_payment_id == pid
+    assert c.qrcode_payload == emitted.qrcode_payload

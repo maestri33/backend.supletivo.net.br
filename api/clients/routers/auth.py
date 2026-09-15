@@ -32,13 +32,26 @@ def register(request, payload: LeadCreateIn):
 @router.post("/check", response=CheckOut, auth=None, summary="Verificação e disparo de OTP ou captura")
 def check(request, payload: CheckIn):
     """Check de telefone/CPF: dispara OTP ou captura lead no funil v2."""
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
+    client_ip = forwarded.split(",")[0].strip() if forwarded else request.META.get("REMOTE_ADDR")
+    user_agent = request.META.get("HTTP_USER_AGENT", "")[:400]
+
+    attr_data = payload.attribution.dict(exclude_unset=True) if payload.attribution else {}
+    if client_ip and "client_ip" not in attr_data:
+        attr_data["client_ip"] = client_ip
+    if user_agent and "user_agent" not in attr_data:
+        attr_data["user_agent"] = user_agent
+
+    effective_ref = payload.ref or attr_data.get("ref")
+
     return lead_iface.check_or_capture(
         cpf=payload.cpf,
         phone=payload.phone,
         external_id=payload.external_id,
         send_otp=payload.send_otp,
         service_authed=service_secret_ok(request),
-        ref=payload.ref,
+        ref=effective_ref,
+        attribution=attr_data or None,
     )
 
 

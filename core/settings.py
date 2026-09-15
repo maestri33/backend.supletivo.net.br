@@ -444,9 +444,9 @@ MINIMAX_DIRECT_BASE_URL = env(
 )
 
 # Gemini também serve a cadeia LLM (fallback) via endpoint OpenAI-compatible do Google — REUSA a
-# OmniRoute AI Gateway — Roteador unificado (LLM, OCR, TTS)
+# OmniRoute AI Gateway — Roteador unificado em Alta Disponibilidade (LLM, OCR, TTS)
 OMNIROUTE_BASE_URL = env(
-    "OMNIROUTE_BASE_URL", default=env("OMNIROUTER_URL", default="http://10.0.1.35/v1")
+    "OMNIROUTE_BASE_URL", default=env("OMNIROUTER_URL", default="https://ai.v7m.live/v1")
 )
 OMNIROUTE_API_KEY = env(
     "OMNIROUTE_API_KEY", default=env("OMNIROUTER_API_KEY", default="")

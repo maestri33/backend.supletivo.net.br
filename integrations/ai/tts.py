@@ -92,12 +92,12 @@ def clean_text_for_speech(text: str) -> str:
 
 
 def _get_omniroute_base_url() -> str:
-    """Retorna a URL base exclusiva do OmniRoute (default: http://10.0.1.35)."""
+    """Retorna a URL base exclusiva do OmniRoute em HA (default: https://ai.v7m.live/v1)."""
     url = (
         getattr(settings, "OMNIROUTER_URL", "")
         or getattr(settings, "OMNIROUTE_BASE_URL", "")
         or getattr(settings, "AI_BASE_URL", "")
-        or "http://10.0.1.35"
+        or "https://ai.v7m.live/v1"
     )
     return url.rstrip("/")
 

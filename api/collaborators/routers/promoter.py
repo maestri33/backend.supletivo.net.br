@@ -114,21 +114,6 @@ def promoter_summary(request):
     return promoter_iface.summary(_promoter(request).user)
 
 
-@router.put("/promoter/pix", response=dict, summary="Atualizar chave Pix do promotor")
-def promoter_update_pix(request, payload: PromoterPixIn):
-    """Atualiza a chave Pix do promotor logado."""
-    promoter = _promoter(request)
-    from users.profiles import interface as profiles
-
-    key = payload.pix_key or payload.key or ""
-    profiles.set_pix(
-        external_id=str(promoter.user.external_id),
-        pix_key=key,
-        pix_key_type=payload.key_type,
-    )
-    return {"ok": True, "pix_key": key}
-
-
 @router.get("/promoter/study/pricing", response=StudyPricingOut, summary="Preço de auto-matrícula de promotor")
 def promoter_study_pricing(request):
     """Preço da auto-matrícula do promotor."""

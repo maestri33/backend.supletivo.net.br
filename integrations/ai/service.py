@@ -426,7 +426,7 @@ def describe_image(
     omni = settings.IA_PROVIDERS.get("omniroute")
     vision_model = getattr(settings, "IA_OMNIROUTE_VISION_MODEL", "") or get_setting("IA_OMNIROUTE_VISION_MODEL", "default")
     if not omni:
-        omni_base = get_setting("OMNIROUTE_BASE_URL", "http://10.0.1.35/v1")
+        omni_base = get_setting("OMNIROUTE_BASE_URL", "https://ai.v7m.live/v1")
         omni_key = get_setting("OMNIROUTE_API_KEY", "sk-omniroute")
         omni = {"base_url": omni_base, "api_key": omni_key}
 
@@ -667,7 +667,7 @@ def ocr(image_bytes: bytes, *, caller: str, document: bool = False) -> str:
 
     attempts: list[tuple[str, str, object]] = []
 
-    omni_base = getattr(settings, "OMNIROUTE_BASE_URL", "") or get_setting("OMNIROUTE_BASE_URL", "http://10.0.1.35/v1")
+    omni_base = getattr(settings, "OMNIROUTE_BASE_URL", "") or get_setting("OMNIROUTE_BASE_URL", "https://ai.v7m.live/v1")
     omni_model = getattr(settings, "OMNIROUTE_OCR_MODEL", "") or get_setting("OMNIROUTE_OCR_MODEL", "default")
     if omni_base:
         omni_client = OmniRouteOCRClient(base_url=omni_base, model=omni_model)
