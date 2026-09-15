@@ -185,7 +185,7 @@ def synthesize_voice_note(
     return None
 
 
-def probe_tts(text: str = "Teste de voz do sistema V7M.", gender: str | None = None) -> dict[str, Any]:
+def probe_tts(text: str = "Teste de voz do sistema Supletivo Brasil.", gender: str | None = None) -> dict[str, Any]:
     """Diagnóstico e teste de áudio para o painel Admin."""
     chain = get_tts_chain()
     base_url = _get_omniroute_base_url()

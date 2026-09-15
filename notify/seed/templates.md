@@ -8,7 +8,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.candidate
 delay_minutes: 0
@@ -23,7 +23,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.candidate
 delay_minutes: 0
@@ -38,7 +38,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.candidate
 delay_minutes: 0
@@ -53,7 +53,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.candidate
 delay_minutes: 0
@@ -68,7 +68,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.candidate
 delay_minutes: 0
@@ -83,7 +83,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.candidate
 delay_minutes: 0
@@ -98,7 +98,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.candidate
 delay_minutes: 0
@@ -113,7 +113,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.candidate
 delay_minutes: 0
@@ -128,7 +128,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.candidate
 delay_minutes: 0
@@ -143,7 +143,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.enrollment
 delay_minutes: 0
@@ -179,7 +179,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.enrollment
 delay_minutes: 0
@@ -194,7 +194,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.enrollment
 delay_minutes: 0
@@ -209,7 +209,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.enrollment
 delay_minutes: 0
@@ -224,7 +224,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.enrollment
 delay_minutes: 0
@@ -269,7 +269,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.enrollment
 delay_minutes: 0
@@ -314,7 +314,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.enrollment
 delay_minutes: 0
@@ -344,7 +344,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: hub.interface
 delay_minutes: 0
@@ -374,7 +374,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.lead
 delay_minutes: 0
@@ -441,7 +441,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.lead
 delay_minutes: 0
@@ -456,7 +456,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.lead
 delay_minutes: 0
@@ -488,7 +488,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.promoter
 delay_minutes: 0
@@ -503,7 +503,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.promoter
 delay_minutes: 0
@@ -548,7 +548,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.student
 delay_minutes: 0
@@ -623,7 +623,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.student
 delay_minutes: 0
@@ -668,7 +668,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.student
 delay_minutes: 0
@@ -683,7 +683,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.training
 delay_minutes: 0
@@ -698,7 +698,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.training
 delay_minutes: 0
@@ -713,7 +713,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.training
 delay_minutes: 0
@@ -728,7 +728,7 @@ title:
 subject: 
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.training
 delay_minutes: 0
@@ -740,10 +740,10 @@ active: true
 [event:candidate.address_proof_rejected]
 channels: whatsapp,email
 title: Comprovante de endereço precisa ser reenviado
-subject: V7M — precisamos de outro comprovante de endereço
+subject: Supletivo Brasil — precisamos de outro comprovante de endereço
 media_url:
 media_type:
-mail_template: v7m
+mail_template: supletivo
 fires_on:
 source: users.roles.candidate
 delay_minutes: 0
@@ -759,10 +759,10 @@ Envie pelo aplicativo uma conta ou documento recente que mostre o endereço comp
 [event:lead.paid.promoter.scholarship]
 channels: whatsapp,email
 title: Sua indicação avançou sua bolsa
-subject: V7M — sua indicação pagou e sua bolsa avançou
+subject: Supletivo Brasil — sua indicação pagou e sua bolsa avançou
 media_url:
 media_type:
-mail_template: v7m
+mail_template: supletivo
 fires_on:
 source: users.roles.lead
 delay_minutes: 0
@@ -774,10 +774,10 @@ Boa notícia, {name}: sua indicação virou uma matrícula paga! ✅ A comissão
 [event:promoter.scholarship_enrolled]
 channels: whatsapp,email
 title: Sua bolsa foi efetivada
-subject: V7M — suas três matrículas efetivaram sua bolsa
+subject: Supletivo Brasil — suas três matrículas efetivaram sua bolsa
 media_url:
 media_type:
-mail_template: v7m
+mail_template: supletivo
 fires_on:
 source: users.roles.promote
 delay_minutes: 0
@@ -789,10 +789,10 @@ Você conseguiu, {name}! 🎓 Suas {enroll_goal} matrículas pagas efetivaram su
 [event:training.approved.scholarship]
 channels: whatsapp,email
 title: Promotor ativo e trilha da bolsa iniciada
-subject: V7M — seu acesso está ativo e sua trilha da bolsa começou
+subject: Supletivo Brasil — seu acesso está ativo e sua trilha da bolsa começou
 media_url:
 media_type:
-mail_template: v7m
+mail_template: supletivo
 fires_on:
 source: users.roles.training
 delay_minutes: 0
@@ -804,10 +804,10 @@ Deu certo, {name}! 🎉 Seu acesso de promotor está ativo e você também entro
 [event:training.must_train.scholarship]
 channels: whatsapp,email
 title: Treinamento e trilha da bolsa
-subject: V7M — conclua o treinamento para iniciar sua trilha
+subject: Supletivo Brasil — conclua o treinamento para iniciar sua trilha
 media_url:
 media_type:
-mail_template: v7m
+mail_template: supletivo
 fires_on:
 source: users.roles.training
 delay_minutes: 0
@@ -856,7 +856,7 @@ title: Comissão paga
 subject: Sua comissão foi paga! 💸
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: finance.payout
 delay_minutes: 0
@@ -898,7 +898,7 @@ source: users.roles.promoter
 delay_minutes: 0
 active: true
 ~~~
-Você recebeu um convite para conhecer o Supletivo V7M.
+Você recebeu um convite para conhecer o Supletivo Brasil.
 
 Acesse com segurança pelo link: {link}
 
@@ -911,7 +911,7 @@ title: Nova matrícula concluída por indicação!
 subject: Sua indicação concluiu a matrícula! 🎓
 media_url: 
 media_type: 
-mail_template: v7m
+mail_template: supletivo
 fires_on: 
 source: users.roles.student
 delay_minutes: 0

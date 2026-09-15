@@ -28,6 +28,7 @@ class CheckIn(Schema):
     ref: str | None = None  # external_id do promotor (landing ?ref=)
     send_otp: bool = True  # send_otp=False permite checar/gerar token em teste/bot autenticado
     attribution: AttributionIn | None = None
+    turnstile_token: str | None = None  # Token emitido pelo Cloudflare Turnstile
 
 
 

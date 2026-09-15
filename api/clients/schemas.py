@@ -22,6 +22,7 @@ class LeadCreateIn(Schema):
     email: str
     payment_method: str | None = None
     ref: str | None = None
+    turnstile_token: str | None = None  # Token emitido pelo Cloudflare Turnstile
 
 
 class PixPageOut(Schema):

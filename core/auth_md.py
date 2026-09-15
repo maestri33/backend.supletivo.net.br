@@ -26,19 +26,19 @@ def auth_md_view(request: HttpRequest) -> HttpResponse:
     Serve /auth.md from the service root as Markdown with an H1 heading containing 'auth.md'.
 
     Provides human and machine-readable instructions for autonomous AI agents to
-    discover, register, claim, and authenticate with the V7M Platform API.
+    discover, register, claim, and authenticate with the Supletivo Brasil Platform API.
     """
     base_url = _get_base_url(request)
 
-    markdown_content = f"""# V7M Platform auth.md
+    markdown_content = f"""# Supletivo Brasil Platform auth.md
 
-You are an AI agent. The **V7M Platform API** supports **agentic registration**:
+You are an AI agent. The **Supletivo Brasil Platform API** supports **agentic registration**:
 discover → register → (claim if needed) → exchange for an access token → call API → handle revocation.
 
 Follow the steps in order; do not skip ahead.
 
 ## Agent Audience & Scope
-- **Audience**: Autonomous AI agents acting on behalf of students, promoters, collaborators, or administrative systems within the V7M educational ecosystem.
+- **Audience**: Autonomous AI agents acting on behalf of students, promoters, collaborators, or administrative systems within the Supletivo Brasil educational ecosystem.
 - **Resource Server**: `{base_url}`
 - **Authorization Server**: `{base_url}`
 - **Documentation & Open Standards**: Complements RFC 9728 (Protected Resource Metadata) and RFC 8414 (Authorization Server Metadata).
@@ -130,7 +130,7 @@ def oauth_protected_resource_view(request: HttpRequest) -> JsonResponse:
 
     data = {
         "resource": f"{base_url}/",
-        "resource_name": "V7M Platform API",
+        "resource_name": "Supletivo Brasil Platform API",
         "authorization_servers": [
             f"{base_url}/",
         ],
@@ -240,7 +240,7 @@ def agent_auth_view(request: HttpRequest) -> JsonResponse:
         return JsonResponse(
             {
                 "status": "active",
-                "message": "V7M Agent Authentication Discovery Endpoint. Refer to /auth.md for complete protocol steps.",
+                "message": "Supletivo Brasil Agent Authentication Discovery Endpoint. Refer to /auth.md for complete protocol steps.",
                 "discovery": {
                     "skill": f"{base_url}/auth.md",
                     "protected_resource": f"{base_url}/.well-known/oauth-protected-resource",

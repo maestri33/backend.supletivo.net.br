@@ -175,7 +175,7 @@ def to_dict(promoter: Promoter) -> dict:
         "external_id": str(promoter.external_id),
         "status": promoter.status,
         "hub_external_id": str(promoter.hub.external_id),
-        "hub_brand": promoter.hub.brand if promoter.hub else "V7M Matriz",
+        "hub_brand": promoter.hub.brand if promoter.hub else "Supletivo Brasil Matriz",
         "ref_url": ref_url(promoter.user),
         "pre_matriculado": promoter.pre_matriculado,
         "locked": training_iface.is_locked(promoter.user),
@@ -274,7 +274,7 @@ def test_promoter_pix(*, promoter: Promoter) -> dict:
             amount=Decimal("0.01"),
             pix_key=profile.pix_key,
             payment_id=payment_id,
-            description=f"Teste de Chave PIX V7M - Promotor {profile.name or promoter.external_id}",
+            description=f"Teste de Chave PIX - Promotor {profile.name or promoter.external_id}",
         )
         return {
             "success": True,
@@ -376,7 +376,7 @@ def _send_lead_invite(promoter_user, phone: str) -> str | None:
     day = timezone.localdate().isoformat()
     return send(
         text=(
-            "Você recebeu um convite para conhecer o Supletivo V7M.\n\n"
+            "Você recebeu um convite para conhecer o Supletivo Brasil.\n\n"
             f"Acesse com segurança pelo link: {link}\n\n"
             "Você confirma seus próprios dados antes de qualquer matrícula."
         ),

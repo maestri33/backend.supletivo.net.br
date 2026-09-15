@@ -125,9 +125,10 @@ def tools_notifications_send(request, payload: ToolsNotifyIn):
 )
 def tools_turnstile_verify(request, payload: TurnstileVerifyIn):
     """Valida um token emitido pelo widget Cloudflare Turnstile contra a API siteverify."""
+    from core.request import get_client_ip
     from integrations.turnstile import verify_turnstile
 
-    client_ip = payload.remote_ip or request.META.get("REMOTE_ADDR")
+    client_ip = payload.remote_ip or get_client_ip(request)
     result = verify_turnstile(payload.token, remote_ip=client_ip)
     return {
         "success": result.success,

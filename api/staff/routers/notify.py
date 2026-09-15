@@ -30,7 +30,7 @@ from users.exceptions import NotFound, ValidationError
 logger = structlog.get_logger()
 router = Router(tags=["staff"])
 
-# Catálogo completo e categorizado de eventos de notificação do V7M
+# Catálogo completo e categorizado de eventos de notificação do Supletivo Brasil
 DEFAULT_EVENTS_CATALOG = [
     # ── Autenticação & Segurança ──
     {"event": "auth.otp", "label": "Autenticação: Código OTP WhatsApp", "category": "auth"},
@@ -144,13 +144,13 @@ DEFAULT_TEMPLATES = {
         "is_tts": False,
         "media_url": None,
         "media_type": None,
-        "mail_template": "v7m",
+        "mail_template": "supletivo",
         "notes": "Notifica o promotor quando o PIX semanal de comissão é confirmado",
     },
     "lead.captured": {
         "title": "Inscrição Iniciada",
         "subject": "Sua matrícula no Supletivo",
-        "body_md": "Olá, {nome}! Recebemos sua inscrição no Supletivo V7M. Para concluir, acesse seu link de pagamento: {link}",
+        "body_md": "Olá, {nome}! Recebemos sua inscrição no Supletivo Brasil. Para concluir, acesse seu link de pagamento: {link}",
         "channels": "whatsapp,email",
         "is_tts": False,
         "media_url": None,
@@ -205,7 +205,7 @@ DEFAULT_TEMPLATES = {
     "promoter.lead_invite": {
         "title": "Convite Supletivo Brasil",
         "subject": "Você recebeu um convite para conhecer o Supletivo",
-        "body_md": "Você recebeu um convite para conhecer o Supletivo V7M.\n\nAcesse com segurança pelo link: {link}\n\nVocê confirma seus próprios dados antes de qualquer matrícula.",
+        "body_md": "Você recebeu um convite para conhecer o Supletivo Brasil.\n\nAcesse com segurança pelo link: {link}\n\nVocê confirma seus próprios dados antes de qualquer matrícula.",
         "channels": "whatsapp",
         "is_tts": False,
         "media_url": None,

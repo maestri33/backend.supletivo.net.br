@@ -62,7 +62,7 @@ oficial antes da produção.
 # daqui — cláusula e texto assinado não podem divergir.
 _PROMOTER_CLAUSES: tuple[tuple[str, str], ...] = (
     (
-        "Sua parceria com a V7M",
+        "Sua parceria com o Supletivo Brasil",
         "Pelo presente instrumento, o(a) PROMOTOR(A) atua como afiliado(a) comercial "
         "independente na captação de alunos, recebendo comissão por matrícula paga.",
     ),

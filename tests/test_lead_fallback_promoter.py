@@ -41,7 +41,7 @@ def default_hub(db, coordinator_user):
 
     address = address_iface.create_empty()
     return Hub.objects.create(
-        brand="V7M",
+        brand="Supletivo Brasil",
         coordinator=coordinator_user,
         is_default=True,
         address=address,
@@ -54,7 +54,7 @@ def non_default_hub(db, coordinator_user):
 
     address = address_iface.create_empty()
     return Hub.objects.create(
-        brand="V7M",
+        brand="Supletivo Brasil",
         coordinator=coordinator_user,
         is_default=False,
         address=address,
@@ -126,7 +126,7 @@ def test_resolve_promoter_inactive_coordinator_fallback(db, staff_user):
     )
     address = address_iface.create_empty()
     Hub.objects.create(
-        brand="V7M",
+        brand="Supletivo Brasil",
         coordinator=inactive_coord,
         is_default=True,
         address=address,

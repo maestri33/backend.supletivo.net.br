@@ -56,7 +56,7 @@ def acp_discovery_view(request: HttpRequest) -> JsonResponse:
             "services": ACP_DEFAULT_SERVICES,
         },
         "merchant": {
-            "name": "V7M Supletivo",
+            "name": "Supletivo Brasil",
             "country": "BR",
             "currency": "BRL",
         },

@@ -84,7 +84,7 @@ async def test_turnstile_async_verification():
             200,
             json={
                 "success": True,
-                "hostname": "maestri.group",
+                "hostname": "supletivo.net.br",
             },
         )
 
@@ -94,7 +94,7 @@ async def test_turnstile_async_verification():
         result = await client.verify_async("valid_token_async")
 
     assert result.success is True
-    assert result.hostname == "maestri.group"
+    assert result.hostname == "supletivo.net.br"
 
 
 @pytest.mark.django_db

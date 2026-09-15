@@ -104,6 +104,21 @@ def owner_external_id_for_path(path: str) -> str | None:
     return None  # receipt/ e qualquer outro prefixo: sem dono de USER resolvível.
 
 
+def _content_type_for_ext(ext: str) -> str:
+    cleaned = ext.lstrip(".").lower()
+    mapping = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+        "pdf": "application/pdf",
+        "ogg": "audio/ogg",
+        "mp3": "audio/mpeg",
+        "wav": "audio/wav",
+    }
+    return mapping.get(cleaned, "application/octet-stream")
+
+
 def save_media(*, prefix: str, data: bytes, ext: str, token: str | None = None) -> str:
     """Salva `data` em `"<prefix>/<token>.<ext>"` e devolve o caminho RELATIVO (pro campo do DB)."""
     tok = token or media_token()
@@ -111,6 +126,12 @@ def save_media(*, prefix: str, data: bytes, ext: str, token: str | None = None) 
     if default_storage.exists(path):
         default_storage.delete(path)
     default_storage.save(path, ContentFile(data))
+
+    from integrations.cloudflare.r2 import is_r2_configured, upload_to_r2
+
+    if is_r2_configured():
+        upload_to_r2(data, path, content_type=_content_type_for_ext(ext))
+
     return path
 
 
@@ -118,8 +139,13 @@ def replace_media(*, old: str | None, prefix: str, data: bytes, ext: str) -> str
     """G13: salva a nova mídia e DELETA a anterior — re-upload não pode deixar PII órfã no storage.
     `old` é o path relativo antigo (ou None/'', no 1º upload). Devolve o path novo."""
     path = save_media(prefix=prefix, data=data, ext=ext)
-    if old and old != path and default_storage.exists(old):
-        default_storage.delete(old)
+    if old and old != path:
+        if default_storage.exists(old):
+            default_storage.delete(old)
+        from integrations.cloudflare.r2 import delete_from_r2, is_r2_configured
+
+        if is_r2_configured():
+            delete_from_r2(old)
     return path
 
 
@@ -128,4 +154,11 @@ def save_media_at(*, path: str, data: bytes) -> str:
     if default_storage.exists(path):
         default_storage.delete(path)
     default_storage.save(path, ContentFile(data))
+
+    from integrations.cloudflare.r2 import is_r2_configured, upload_to_r2
+
+    if is_r2_configured():
+        ext = path.rsplit(".", 1)[-1] if "." in path else ""
+        upload_to_r2(data, path, content_type=_content_type_for_ext(ext))
+
     return path

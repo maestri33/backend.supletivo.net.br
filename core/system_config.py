@@ -365,7 +365,7 @@ def trigger_astro_rebuild(pricing_data: dict | None = None) -> bool:
             req = urllib.request.Request(
                 webhook_url,
                 data=body,
-                headers={"Content-Type": "application/json", "User-Agent": "V7M-Backend-SystemConfig"},
+                headers={"Content-Type": "application/json", "User-Agent": "SupletivoBrasil-Backend-SystemConfig"},
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=10) as resp:

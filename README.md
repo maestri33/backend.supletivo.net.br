@@ -1,6 +1,6 @@
-# ⚙️ V7M Backend — API Principal & Regras de Negócio
+# ⚙️ Supletivo Brasil Backend — API Principal & Regras de Negócio
 
-API central do ecossistema educacional **V7M** e **Supletivo Brasil**, desenvolvida em **Django 5.2**, **Django Ninja** e **Django-Q2**, com persistência no **Neon Cloud Postgres** e cache em **Redis**.
+API central do ecossistema educacional **Supletivo.net.br** / **Supletivo Brasil**, desenvolvida em **Django 5.2**, **Django Ninja** e **Django-Q2**, com persistência no **Neon Cloud Postgres** e cache em **Redis**.
 
 ---
 

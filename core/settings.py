@@ -78,14 +78,12 @@ if TEST_KYC_OUTCOME not in {"approved", "rejected", "review"}:
 # CORS (django-cors-headers) — config no .env (CONVENTION §10: um .env, nada hardcoded).
 # Em dev liberamos geral p/ a rede interna acessar fácil; em prod = lista explícita + allow_all False.
 DEFAULT_CORS_ALLOWED_ORIGINS = [
-    "https://maestri.group",
-    "https://www.maestri.group",
-    "https://app.maestri.group",
-    "https://hub.maestri.group",
-    "https://admin.maestri.group",
     "https://supletivo.net.br",
     "https://www.supletivo.net.br",
     "https://app.supletivo.net.br",
+    "https://promotor.supletivo.net.br",
+    "https://hub.supletivo.net.br",
+    "https://admin.supletivo.net.br",
 ]
 
 CORS_ALLOW_ALL_ORIGINS = env.bool("CORS_ALLOW_ALL_ORIGINS", default=False)
@@ -94,12 +92,8 @@ CORS_ALLOWED_ORIGINS = env.list(
 )
 
 DEFAULT_CSRF_TRUSTED_ORIGINS = [
-    "https://maestri.group",
-    "https://*.maestri.group",
     "https://supletivo.net.br",
     "https://*.supletivo.net.br",
-    "https://v7m.org",
-    "https://*.v7m.org",
 ]
 
 CSRF_TRUSTED_ORIGINS = env.list(
@@ -257,14 +251,27 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 # Destino do collectstatic; o WhiteNoise serve daqui (admin funciona com DEBUG=False).
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = Path(env("STATIC_ROOT", default=str(BASE_DIR / "staticfiles")))
 
 # Media (arquivos servidos) — CONVENTION §6 (Django expõe /media/).
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
 
 # Limite de upload de imagem dos documentos (users/documents) — config, não hardcoded (§10).
 MAX_UPLOAD_MB = env.int("MAX_UPLOAD_MB", default=10)
+
+# Cloudflare R2 (Object Storage / Zero Egress Fees) — CONVENTION AGENTS.md § Cloudflare-First
+R2_ENABLED = env.bool("R2_ENABLED", default=False)
+R2_ACCOUNT_ID = env("R2_ACCOUNT_ID", default="")
+R2_ACCESS_KEY_ID = env("R2_ACCESS_KEY_ID", default="")
+R2_SECRET_ACCESS_KEY = env("R2_SECRET_ACCESS_KEY", default="")
+R2_BUCKET_NAME = env("R2_BUCKET_NAME", default="")
+R2_PUBLIC_URL = env("R2_PUBLIC_URL", default="https://media.supletivo.net.br")
+
+# PostHog Telemetry (Server-side Funnel & Business Analytics)
+POSTHOG_ENABLED = env.bool("POSTHOG_ENABLED", default=False)
+POSTHOG_API_KEY = env("POSTHOG_API_KEY", default="")
+POSTHOG_HOST = env("POSTHOG_HOST", default="https://us.i.posthog.com")
 
 # Análises assíncronas por IA (users.roles._analysis — RG, selfie): TTL e cadência de polling do
 # front (proposta API #2). TTL = quanto a gente espera o worker antes de jogar o `pending` em

@@ -125,7 +125,7 @@ class TtsConfigOut(Schema):
 
 
 class TtsProbeIn(Schema):
-    text: str = "Olá, esta é uma mensagem de teste da síntese de voz V7M."
+    text: str = "Olá, esta é uma mensagem de teste da síntese de voz Supletivo Brasil."
     gender: str | None = None  # "M", "F" ou None
     voice_override: str | None = None
 

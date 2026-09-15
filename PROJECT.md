@@ -1,8 +1,8 @@
-# Project: V7M Django Backend Audit, Cleanup & Django Ninja Standardization
+# Project: Supletivo Brasil Django Backend Audit, Cleanup & Django Ninja Standardization
 
 ## Architecture & App Justifications
 
-The V7M backend is a multi-role educational management, enrollment funnel, polo network, and commission distribution platform.
+The Supletivo Brasil backend is a multi-role educational management, enrollment funnel, polo network, and commission distribution platform.
 Layer separation strictly follows:
 - **Router / Presentation (`api/` and `*.routers`)**: Django Ninja APIs, request validation, authentication injection, OpenAPI schema declaration, HTTP status responses.
 - **Domain Services (`*/services.py`, `*/service.py`, `*/interface/`)**: Pure business logic, transaction boundaries, state transitions, business rule enforcement, external integration orchestration.
