@@ -1,0 +1,21 @@
+{
+  "targetFiles": [
+    "package.json",
+    "pyproject.toml",
+    "requirements.txt",
+    "requirements-dev.txt"
+  ],
+  "disallowedPackages": [
+    "@aws-sdk",
+    "boto3",
+    "botocore",
+    "google-cloud-storage",
+    "firebase-admin"
+  ],
+  "recommendedAlternatives": {
+    "@aws-sdk": "Cloudflare R2 / Workers S3 API",
+    "boto3": "Cloudflare R2 (S3-compatible API via httpx ou R2 Worker)",
+    "google-cloud-storage": "Cloudflare R2",
+    "firebase-admin": "Cloudflare D1 / KV / Workers"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "projectId": "backend.supletivo.net.br",
+  "hindsightBank": "coding-agent::backend.supletivo.net.br",
+  "rules": {
+    "brandCheck": {
+      "enabled": true,
+      "forbiddenTerms": ["v7m", "maestri.group"]
+    },
+    "language": {
+      "code": "en-US",
+      "backendEndpoints": {
+        "enforcePrefix": "/api/v1/"
+      }
+    },
+    "architecture": {
+      "cloudflareFirst": true,
+      "disallowedPackages": [
+        "boto3",
+        "botocore",
+        "google-cloud-storage"
+      ]
+    }
+  }
+}

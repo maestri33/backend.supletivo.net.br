@@ -1,0 +1,18 @@
+{
+  "forbiddenTerms": [
+    "v7m",
+    "maestri.group"
+  ],
+  "ignoredFileExtensions": [
+    ".lock",
+    ".svg",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".ico",
+    ".woff",
+    ".woff2",
+    ".ttf"
+  ]
+}
