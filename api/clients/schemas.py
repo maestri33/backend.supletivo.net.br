@@ -27,6 +27,26 @@ class LeadCreateIn(Schema):
     turnstile_token: str | None = None  # Token emitido pelo Cloudflare Turnstile
 
 
+class LeadCaptureIn(Schema):
+    phone: str = Field(..., description="Telefone com DDD apenas dígitos")
+    cpf: str | None = Field(None, description="CPF do aluno apenas dígitos")
+    name: str | None = Field(None, description="Nome informado opcionalmente")
+    ref: str | None = Field(None, description="UUID do promotor indicado via ?ref=")
+    attribution: AttributionIn | None = None
+    turnstile_token: str | None = Field(None, description="Token emitido pelo Cloudflare Turnstile")
+
+
+class LeadCaptureOut(Schema):
+    found: bool = Field(..., description="True se o usuário já existia previamente")
+    created: bool = Field(..., description="True se a conta do lead foi criada nesta requisição")
+    external_id: str = Field(..., description="UUID do User para ser submetido ao /auth/login")
+    masked_phone: str = Field(..., description="Telefone mascarado para onde o OTP foi enviado")
+    otp_sent: bool = Field(..., description="True se o código foi despachado para o WhatsApp")
+    otp_wait: int | None = Field(None, description="Segundos de cooldown caso esteja sob rate-limit")
+    roles: list[str] = Field(default_factory=lambda: ["lead"])
+    next_route: str = Field(default="/autenticacao/otp", description="Próxima rota no frontend")
+
+
 class PixPageOut(Schema):
     """Dados da página PIX PRÓPRIA (`/pix/<token>` no front), endereçada pelo token do link curto.
 
