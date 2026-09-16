@@ -216,18 +216,3 @@ def cancel_pix_qr(payment_id: str) -> Payment:
 async def _delete_qr(asaas_id: str) -> None:
     async with get_client() as c:
         await c.delete_static_qr_code(asaas_id)
-
-
-def to_dict(row: Payment) -> dict:
-    return {
-        "payment_id": row.payment_id,
-        "status": row.status,
-        "billing_type": "PIX",
-        "asaas_id": row.asaas_id,
-        "amount": str(row.amount),
-        "qr": {
-            "payload": row.qrcode_payload,
-            "image_url": qr_url_for(row.payment_id),
-        },
-        "created_at": row.created_at.isoformat() if row.created_at else None,
-    }

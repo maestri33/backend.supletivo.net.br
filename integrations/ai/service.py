@@ -636,24 +636,31 @@ def evaluate_kinship(relation: str, *, caller: str) -> dict:
 def transcribe(
     audio_bytes: bytes, *, caller: str, mime_type: str = "audio/mpeg"
 ) -> str:
-    """Gemini STT: transcreve um áudio pra texto (pt-br). Devolve a transcrição.
-
-    Single-provider, sem fallback.
+    """STT com cadeia de fallback resiliente:
+    1. Cloudflare Workers AI (@cf/openai/whisper) — custo irrisório, latência ultrabaixa.
+    2. Google Gemini STT (fallback).
     """
+    from .cloudflare import CloudflareWorkersAIClient, is_workers_ai_configured
     from .gemini import GeminiClient
 
-    client = GeminiClient()
+    attempts = []
 
-    async def coro():
-        return await client.transcribe(audio_bytes, mime_type=mime_type)
+    if is_workers_ai_configured():
+        cf_client = CloudflareWorkersAIClient()
 
-    return _media_call(
-        operation=AiCall.Operation.STT,
-        provider="gemini",
-        model=settings.GEMINI_STT_MODEL,
-        caller=caller,
-        coro=coro,
-    )
+        async def cf_call():
+            return await cf_client.transcribe(audio_bytes, mime_type=mime_type)
+
+        attempts.append(("cloudflare", "@cf/openai/whisper", cf_call))
+
+    gemini_client = GeminiClient()
+
+    async def gemini_call():
+        return await gemini_client.transcribe(audio_bytes, mime_type=mime_type)
+
+    attempts.append(("gemini", getattr(settings, "GEMINI_STT_MODEL", "gemini-2.5-flash"), gemini_call))
+
+    return _media_chain(AiCall.Operation.STT, caller, attempts)
 
 
 def ocr(image_bytes: bytes, *, caller: str, document: bool = False) -> str:

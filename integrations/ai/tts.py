@@ -151,9 +151,10 @@ def synthesize_voice_note(
             "voice": voice_to_use,
             "response_format": "opus",
         }
+        endpoint = f"{base_url}/audio/speech" if base_url.endswith("/v1") else f"{base_url}/v1/audio/speech"
         try:
             with httpx.Client(timeout=timeout) as client:
-                resp = client.post(f"{base_url}/v1/audio/speech", json=payload, headers=headers)
+                resp = client.post(endpoint, json=payload, headers=headers)
                 if resp.status_code == 200 and resp.content:
                     save_media_at(path=rel_path, data=resp.content)
                     logger.info(

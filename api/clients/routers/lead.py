@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from django.conf import settings
 from ninja import Router
+from ninja.errors import HttpError
 
 from api.auth import require_roles
 from api.clients.schemas import (
@@ -16,6 +18,9 @@ from api.clients.schemas import (
     PixPageOut,
     UrlOut,
 )
+from core.request import get_client_ip
+from core.webhook_auth import service_secret_ok
+from integrations.turnstile import verify_turnstile
 from users.auth import service as auth_iface
 from users.exceptions import NotFound
 from users.roles.lead import service as lead_iface
@@ -89,6 +94,14 @@ def lead_email(request, payload: EmailIn):
 def lead_set_checkout(request, payload: CheckoutSetIn):
     """Passo 6 — define (ou troca) a forma de pagamento e cria o checkout."""
     require_roles(request.auth, "lead")
+    client_ip = get_client_ip(request)
+    if getattr(settings, "TURNSTILE_ENABLED", False) and not service_secret_ok(request):
+        if not payload.turnstile_token:
+            raise HttpError(400, "Token Turnstile obrigatório.")
+        result = verify_turnstile(payload.turnstile_token, remote_ip=client_ip)
+        if not result.success:
+            raise HttpError(400, "Falha na verificação de segurança (Turnstile).")
+
     return lead_iface.set_checkout(
         user_external_id=request.auth.external_id,
         payment_method=payload.payment_method,

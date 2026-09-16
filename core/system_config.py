@@ -77,33 +77,43 @@ BOSS_KEYS = {
 }
 
 
+import time
+
 _SETTINGS_CACHE: dict[str, str] = {}
 _CACHE_INITIALIZED: bool = False
+_CACHE_EXPIRES_AT: float = 0.0
+_CACHE_TTL_SECONDS: float = 60.0
 
 
 def load_all_settings_into_cache() -> None:
-    """Carrega todas as configurações do PlatformSetting na memória do processo."""
-    global _CACHE_INITIALIZED
+    """Carrega todas as configurações do PlatformSetting na memória do processo com TTL."""
+    global _CACHE_INITIALIZED, _CACHE_EXPIRES_AT
     try:
+        fresh: dict[str, str] = {}
         for row in PlatformSetting.objects.all():
             if row.key and row.value is not None:
-                _SETTINGS_CACHE[row.key] = row.value
+                fresh[row.key] = row.value
+        _SETTINGS_CACHE.clear()
+        _SETTINGS_CACHE.update(fresh)
         _CACHE_INITIALIZED = True
+        _CACHE_EXPIRES_AT = time.monotonic() + _CACHE_TTL_SECONDS
     except Exception:
         pass
 
 
 def clear_settings_cache() -> None:
     """Limpa o cache em memória das configurações da plataforma."""
-    global _CACHE_INITIALIZED
+    global _CACHE_INITIALIZED, _CACHE_EXPIRES_AT
     _SETTINGS_CACHE.clear()
     _CACHE_INITIALIZED = False
+    _CACHE_EXPIRES_AT = 0.0
 
 
 def get_setting(key: str, default: Any = None) -> Any:
     """Busca o valor da configuração no banco (PlatformSetting) ou faz fallback para settings."""
-    global _CACHE_INITIALIZED
-    if not _CACHE_INITIALIZED:
+    global _CACHE_INITIALIZED, _CACHE_EXPIRES_AT
+    now = time.monotonic()
+    if not _CACHE_INITIALIZED or now >= _CACHE_EXPIRES_AT:
         load_all_settings_into_cache()
     # Fast path: check in-memory cache first
     if key in _SETTINGS_CACHE and _SETTINGS_CACHE[key] != "":

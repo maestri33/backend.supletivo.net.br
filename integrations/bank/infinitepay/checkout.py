@@ -113,20 +113,3 @@ def create_checkout(
         "checkout_created", external_id=order_nsu, slug=row.slug, amount_cents=cents
     )
     return row
-
-
-def to_dict(row: Checkout) -> dict:
-    return {
-        "external_id": str(row.external_id),
-        "status": row.status,
-        "checkout_url": row.checkout_url,
-        "slug": row.slug,
-        "amount_cents": row.amount_cents,
-        "paid_amount_cents": row.paid_amount_cents,
-        "description": row.description,
-        "capture_method": row.capture_method,
-        "installments": row.installments,
-        "transaction_nsu": row.transaction_nsu,
-        "receipt_url": row.receipt_url,
-        "created_at": row.created_at.isoformat() if row.created_at else None,
-    }

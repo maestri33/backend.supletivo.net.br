@@ -11,6 +11,12 @@ from pathlib import Path
 import structlog
 from django.conf import settings
 
+from integrations.cloudflare.r2 import (
+    get_r2_public_url,
+    is_r2_configured,
+    upload_to_r2,
+)
+
 logger = structlog.get_logger()
 
 _QR_SUBDIR = "qrcodes"
@@ -27,6 +33,13 @@ def save_pix_qr_png(payment_id: str, encoded_image_b64: str) -> str:
     fp.parent.mkdir(parents=True, exist_ok=True)
     fp.write_bytes(png_bytes)
     logger.info("qrcode_saved", payment_id=payment_id, bytes=len(png_bytes))
+
+    if is_r2_configured():
+        r2_key = f"{_QR_SUBDIR}/{payment_id}.png"
+        r2_url = upload_to_r2(png_bytes, r2_key, content_type="image/png")
+        if r2_url:
+            return r2_url
+
     return qr_url_for(payment_id)
 
 
@@ -42,7 +55,9 @@ def qr_path_for(payment_id: str) -> str | None:
 
 
 def qr_url_for(payment_id: str) -> str | None:
-    """URL pública do PNG (absoluta via EXTERNAL_URL). None se o arquivo não existe."""
+    """URL pública do PNG (absoluta via EXTERNAL_URL ou CDN R2). None se o arquivo não existe."""
+    if is_r2_configured():
+        return get_r2_public_url(f"{_QR_SUBDIR}/{payment_id}.png")
     rel = qr_path_for(payment_id)
     if rel is None:
         return None

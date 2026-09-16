@@ -243,6 +243,10 @@ class EmailOut(Schema):
 
 class CheckoutSetIn(Schema):
     payment_method: str = Field(description='"pix" | "card"')
+    turnstile_token: str | None = Field(
+        default=None,
+        description="Token Cloudflare Turnstile anti-bot/anti-carding."
+    )
 
 
 class KinshipIn(Schema):

@@ -275,6 +275,10 @@ R2_SECRET_ACCESS_KEY = env("R2_SECRET_ACCESS_KEY", default="")
 R2_BUCKET_NAME = env("R2_BUCKET_NAME", default="")
 R2_PUBLIC_URL = env("R2_PUBLIC_URL", default="https://media.supletivo.net.br")
 
+# Cloudflare Workers AI (Whisper STT, Serverless Inference) — CONVENTION AGENTS.md § Cloudflare-First
+CLOUDFLARE_API_TOKEN = env("CLOUDFLARE_API_TOKEN", default="")
+CLOUDFLARE_ACCOUNT_ID = env("CLOUDFLARE_ACCOUNT_ID", default=R2_ACCOUNT_ID)
+
 # PostHog Telemetry (Server-side Funnel & Business Analytics)
 POSTHOG_ENABLED = env.bool("POSTHOG_ENABLED", default=False)
 POSTHOG_API_KEY = env("POSTHOG_API_KEY", default="")

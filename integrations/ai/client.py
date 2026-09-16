@@ -18,6 +18,8 @@ from dataclasses import dataclass
 import httpx
 import structlog
 
+from .http import get_ai_http_client
+
 logger = structlog.get_logger()
 
 # Status HTTP que valem nova tentativa (intra-provider) e, esgotadas, fallback (inter-provider).
@@ -163,10 +165,8 @@ class LLMClient:
         raise LLMError(f"{self.provider}: falha de rede: {last_exc}", retryable=True)
 
     async def _request(self, payload: dict) -> ChatResult:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(self._timeout, connect=10.0)
-        ) as client:
-            resp = await self._send_with_retry(client, payload)
+        client = get_ai_http_client(timeout=self._timeout)
+        resp = await self._send_with_retry(client, payload)
         if resp.status_code >= 400:
             # 429/5xx = retryable (provider em apuros → fallback). Demais 4xx = bug do caller.
             retryable = resp.status_code in RETRYABLE_STATUS
@@ -276,10 +276,8 @@ class LLMClient:
     async def list_models(self) -> list[str]:
         """GET /models — lista os modelos reais do provider (valida a key de quebra). Usado no §8."""
         url = f"{self._base_url}/models"
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(self._timeout, connect=10.0)
-        ) as client:
-            resp = await client.get(url, headers=self._headers())
+        client = get_ai_http_client(timeout=self._timeout)
+        resp = await client.get(url, headers=self._headers())
         if resp.status_code >= 400:
             retryable = resp.status_code in RETRYABLE_STATUS
             raise LLMError(

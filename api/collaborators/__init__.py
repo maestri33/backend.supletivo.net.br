@@ -20,7 +20,7 @@ _ERROR_REGISTRY = (
 | `INVALID_DOC_TYPE` | tipo de documento ≠ rg/cnh (422) | — |
 | `PIX_INVALID` | chave Pix inválida ou não é do titular (422) | `reason` |
 | `PROFILE_CPF_MISSING` | perfil sem CPF (refazer cadastro) (422) | — |
-| `MATERIAL_NOT_FOUND` / `TRAINEE_NOT_FOUND` / `CANDIDATE_NOT_FOUND` / `PROMOTER_NOT_FOUND` | recurso não existe (404) | — |
+| `MATERIAL_NOT_FOUND` / `CANDIDATE_NOT_FOUND` / `PROMOTER_NOT_FOUND` | recurso não existe (404) | — |
 | `MATERIAL_INACTIVE` | submissão em matéria desativada (422) | — |
 | `ALREADY_GRADING` | já há uma resposta em correção (409) | — |
 | `INVALID_AUDIO_TYPE` | áudio fora de mp3/m4a/aac/ogg/webm/wav (422) | — |
