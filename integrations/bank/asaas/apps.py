@@ -70,7 +70,7 @@ class AsaasConfig(AppConfig):
                 break
             time.sleep(0.1)
         try:
-            from django_q.tasks import async_task
+            from core.tasks import async_task
 
             async_task("integrations.bank.asaas.onboarding.boot_selftest")
         except Exception as exc:  # enfileirar nunca derruba o boot

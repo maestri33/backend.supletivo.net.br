@@ -92,14 +92,14 @@ def system_status(request):
         # Verifica se há clusters vivos via Stat OU execução recente de tarefas (últimos 15 min)
         recent_cutoff = timezone.now() - datetime.timedelta(minutes=15)
         recent_activity = Success.objects.filter(stopped__gte=recent_cutoff).exists()
-        qcluster_alive = bool(clusters) or recent_activity or (queued == 0 and success_count > 0)
+        qcluster_alive = bool(clusters) or recent_activity
     except Exception:
         pass
     return {
         "db_ok": db_ok,
         "migrations_pending": [f"{m.app_label}.{m.name}" for m, _ in pending],
         "qcluster_alive": qcluster_alive,
-        "qcluster_count": len(clusters) if clusters else (1 if qcluster_alive else 0),
+        "qcluster_count": len(clusters),
         "queued_tasks": queued,
         "success_tasks": success_count,
         "failure_tasks": failure_count,

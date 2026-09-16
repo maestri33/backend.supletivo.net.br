@@ -7,10 +7,10 @@ ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     PATH="/venv/bin:$PATH"
 
-# libgl1/libglib2.0-0: OpenCV (dep do insightface). build-essential: fallback pra
-# dep sem wheel manylinux. curl: healthcheck do compose.
+# curl: healthcheck do compose / container.
+# OpenCV e InsightFace foram desacoplados em microsserviço isolado no Proxmox VE.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential libgl1 libglib2.0-0 curl \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/

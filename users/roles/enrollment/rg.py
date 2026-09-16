@@ -185,7 +185,7 @@ def upload_rg_photo(*, user_external_id: str, slot: str, upload) -> dict:
     enr = _require(user_external_id, _S.RG, _S.ADDRESS, _S.EDUCATION, _S.SELFIE)
     path = documents_iface.upload_photo(user_external_id, slot, upload)
     _reset_rg_validation(user_external_id, slot)
-    from django_q.tasks import async_task
+    from core.tasks import async_task
 
     async_task("users.roles.enrollment.tasks.validate_rg", enr.id, slot)
     # ack de polling (proposta #2): a análise acabou de (re)começar → started_at = agora.

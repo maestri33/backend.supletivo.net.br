@@ -406,7 +406,7 @@ def upload_document(
         _set_status(student, Student.Status.DOCUMENTS_UNDER_REVIEW)
 
     def _queue():
-        from django_q.tasks import async_task
+        from core.tasks import async_task
 
         async_task("users.roles.student.tasks.validate_document", doc.id)
 

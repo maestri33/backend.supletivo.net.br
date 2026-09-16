@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from ninja import Schema
 
 
@@ -43,3 +45,18 @@ class TurnstileVerifyOut(Schema):
     error_codes: list[str] = []
     action: str | None = None
     cdata: str | None = None
+
+
+class CronRunOut(Schema):
+    job: str
+    status: str
+    elapsed_ms: float
+    result: Any | None = None
+    error: str | None = None
+
+
+class CronJobItemOut(Schema):
+    job: str
+    func: str | None
+    description: str
+

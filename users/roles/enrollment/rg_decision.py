@@ -68,7 +68,7 @@ def decide_rg(
         _apply_rg_extracted(enr, rg, result["extracted"])
     else:
         # a revisão veio da visão/IA fora do ar — extração roda best-effort em 2º plano
-        from django_q.tasks import async_task
+        from core.tasks import async_task
 
         async_task("users.roles.enrollment.tasks.fill_rg_data", enr.id)
     _rg_post_approval(enr, rg)

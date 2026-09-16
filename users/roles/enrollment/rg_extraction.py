@@ -159,30 +159,16 @@ def _rg_post_approval(enr: Enrollment, rg) -> None:
 
     from integrations.tools.biometric import service as biometric
 
-    from users.roles import _document_ai as doc_ai
-
     face_path = rg.front_photo or rg.full_photo
     face_slot = "rg_front" if rg.front_photo else "rg_full"
     if face_path:
         full = Path(settings.MEDIA_ROOT) / face_path
-        enrolled = biometric.try_enroll_document(
+        biometric.try_enroll_document(
             user=enr.user,
             slot=face_slot,
             image_path=str(full),
             caller="enrollment.document",
         )
-        if enrolled is None and full.exists():
-            cropped = doc_ai.crop_face(full.read_bytes(), caller="enrollment.rg")
-            if cropped:
-                from core.media import save_media
-
-                crop_rel = save_media(prefix="documents", data=cropped, ext="jpg")
-                biometric.try_enroll_document(
-                    user=enr.user,
-                    slot="rg_front",
-                    image_path=str(Path(settings.MEDIA_ROOT) / crop_rel),
-                    caller="enrollment.document_crop",
-                )
 
 
 def run_rg_fill(enrollment_id: int) -> None:

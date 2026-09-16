@@ -77,7 +77,7 @@ def set_selfie(
     if cand.status == _S.EDUCATION:
         _set_status(cand, _S.SELFIE)
     cand.save()
-    from django_q.tasks import async_task
+    from core.tasks import async_task
 
     async_task("users.roles.candidate.tasks.validate_candidate_selfie", cand.id)
     return _selfie_ack(cand)

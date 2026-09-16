@@ -185,7 +185,11 @@ def get_user_dossier(request, user_external_id: str):
     back_photo = getattr(doc, "back_photo", None)
     full_photo = getattr(doc, "full_photo", None)
     selfie_photo = getattr(enr, "selfie_photo", None) or getattr(cand, "selfie_photo", None)
-    face_crop = getattr(enr, "selfie_face_crop", None)
+    from integrations.tools.biometric.models import FaceBiometric, FaceVerification
+
+    # Face crop e biometria
+    last_bio = FaceBiometric.objects.filter(user=user).order_by("-created_at").first()
+    face_crop = last_bio.image_path if last_bio else None
     address_photo = getattr(proof, "photo", None)
 
     # Document data e validação
@@ -194,7 +198,6 @@ def get_user_dossier(request, user_external_id: str):
     extracted_data = res_dict.get("extracted_data") or {}
 
     # Face verification history
-    from integrations.tools.biometric.models import FaceVerification
     verifications = list(
         FaceVerification.objects.filter(user=user).order_by("-created_at").values(
             "score", "status", "approved", "created_at"

@@ -303,29 +303,16 @@ def _doc_post_approval(cand: Candidate, sub) -> None:
 
     from integrations.tools.biometric import service as biometric
 
-    from users.roles import _document_ai as doc_ai
-
     face_path = sub.front_photo or sub.full_photo
     face_slot = f"{cand.doc_type}_front"
     if face_path:
         full = Path(settings.MEDIA_ROOT) / face_path
-        enrolled = biometric.try_enroll_document(
+        biometric.try_enroll_document(
             user=cand.user,
             slot=face_slot,
             image_path=str(full),
             caller="candidate.document",
         )
-        if enrolled is None and full.exists():
-            cropped = doc_ai.crop_face(full.read_bytes(), caller="candidate.document")
-            if cropped:
-                crop_path = full.with_name(f"{cand.doc_type}_face_crop.jpg")
-                crop_path.write_bytes(cropped)
-                biometric.try_enroll_document(
-                    user=cand.user,
-                    slot=face_slot,
-                    image_path=str(crop_path),
-                    caller="candidate.document_crop",
-                )
 
 
 def run_document_fill(candidate_id: int) -> None:

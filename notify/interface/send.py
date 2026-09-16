@@ -65,7 +65,7 @@ def send(
 
         return str(client.post_send(payload, run_sync=True)["external_id"])
 
-    from django_q.tasks import async_task
+    from core.tasks import async_task
 
     transaction.on_commit(lambda: async_task("notify.sdk.push.push_send", payload))
     logger.info("notify.remote_queued", external_id=client_uuid, caller=caller)

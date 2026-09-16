@@ -77,7 +77,7 @@ def decide_document(
     if result.get("extracted"):
         _apply_doc_extracted(cand, sub, result["extracted"])
     else:
-        from django_q.tasks import async_task
+        from core.tasks import async_task
 
         async_task("users.roles.candidate.tasks.fill_document_data", cand.id)
     service._doc_post_approval(cand, sub)

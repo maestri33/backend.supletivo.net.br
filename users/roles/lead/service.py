@@ -317,7 +317,7 @@ def _create_checkout_row(lead: Lead, method: str) -> Checkout:
 def _enqueue_provider_build(checkout: Checkout) -> None:
     """Agenda a criação no gateway via Django-Q (best-effort: broker é o ORM, mas não quebra o register)."""
     try:
-        from django_q.tasks import async_task
+        from core.tasks import async_task
 
         async_task("users.roles.lead.tasks.build_checkout", checkout.pk)
     except Exception as exc:  # noqa: BLE001 — o clique no link curto cobre (lazy build)
@@ -589,7 +589,7 @@ def _enqueue_avatar_fetch(user: User) -> None:
     if profile is None:
         return
     try:
-        from django_q.tasks import async_task
+        from core.tasks import async_task
 
         async_task("users.roles.lead.tasks.fetch_whatsapp_avatar", profile.pk)
     except Exception as exc:  # noqa: BLE001 — enfeite: sem task, fica sem foto
@@ -865,7 +865,7 @@ def mark_paid(*, provider: str, provider_payment_id: str, receipt_url=None) -> b
         hub = _apply_effects(lead)
         if not lead.self_study:
             try:
-                from django_q.tasks import async_task
+                from core.tasks import async_task
 
                 transaction.on_commit(
                     lambda: async_task(

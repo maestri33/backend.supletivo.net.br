@@ -59,7 +59,7 @@ _environment = resolve_environment(
 )
 APP_ENV = _environment.app_env
 TEST_MODE = _environment.test_mode
-APP_VERSION = env("APP_VERSION", default="0.1.0-alpha.1")
+APP_VERSION = env("APP_VERSION", default="0.0.0-sandbox.10")
 TEST_MODE_OTP_CODE = env("TEST_MODE_OTP_CODE", default="000000")
 TEST_DATA_TTL_HOURS = env.int("TEST_DATA_TTL_HOURS", default=24)
 TEST_COLLABORATOR_PHONE = env("TEST_COLLABORATOR_PHONE", default="5511999990001")
@@ -209,10 +209,17 @@ else:
     }
 
 # Conexões persistentes:
-# Em PgBouncer/Neon Pooler, o pooler gerencia conexões.
+# Em PgBouncer/Supavisor/Neon Pooler, o pooler gerencia conexões.
 # CONN_HEALTH_CHECKS evita reusar conexões encerradas por cold-start (scale-to-zero).
 DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=60)
 DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+
+# Hardening Supavisor / Neon / PgBouncer: preparado para transaction pooling
+if "postgresql" in DATABASES["default"].get("ENGINE", "") or "postgres" in str(
+    DATABASES["default"].get("ENGINE", "")
+):
+    DATABASES["default"].setdefault("OPTIONS", {})
+    DATABASES["default"]["OPTIONS"]["prepare_threshold"] = None
 
 
 # Password validation
@@ -291,9 +298,10 @@ ANALYSIS_POLL_MS = env.int("ANALYSIS_POLL_MS", default=2500)
 # comerciais. O 0.90/0.80 sugerido pelo Victor é de outra escala — default no padrão do buffalo_l e a
 # gente CALIBRA com pares reais no teste (Portão 3), ajustando aqui no .env sem mexer no código.
 BIOMETRIC_ENABLED = env.bool("BIOMETRIC_ENABLED", default=True)
+BIOMETRIC_SERVICE_URL = env("BIOMETRIC_SERVICE_URL", default="")
+BIOMETRIC_TIMEOUT = env.float("BIOMETRIC_TIMEOUT", default=15.0)
 BIOMETRIC_MODEL_NAME = env("BIOMETRIC_MODEL_NAME", default="buffalo_l")
-# Pesos do modelo (~298MB) ficam FORA do backend/ (repo git) — em <mvp>/models/insightface — pra não
-# virar bloat/commit. Em prod aponte pra um volume persistente no .env. Baixa sozinho no 1º uso se faltar.
+# Pesos do modelo (~298MB) no microserviço Proxmox ou path local opcional
 BIOMETRIC_MODEL_ROOT = env(
     "BIOMETRIC_MODEL_ROOT", default=str(BASE_DIR.parent / "models" / "insightface")
 )
@@ -474,6 +482,9 @@ TURNSTILE_ENABLED = env.bool("TURNSTILE_ENABLED", default=False)
 # Fail-closed: vazio no .env => a rota sem-OTP recusa (o segredo é a prova de identidade, não a rede).
 BOT_SERVICE_SECRET = env("BOT_SERVICE_SECRET", default="")
 BOT_SERVICE_HEADER = env("BOT_SERVICE_HEADER", default="x-bot-service-token")
+# Segredo dedicado para gatilhos agendados (Cloudflare Cron Triggers / workers)
+CRON_SERVICE_SECRET = env("CRON_SERVICE_SECRET", default=None)
+CRON_SERVICE_HEADER = env("CRON_SERVICE_HEADER", default="x-cron-secret")
 # Wave1 hardening — consumido por api/tools (allowlist DMZ) e pelo serve de mídia privada.
 # TOOLS_ALLOWED_IPS aceita IPs e CIDRs (o gate usa o módulo ipaddress). Default = loopback + rede interna.
 TOOLS_ALLOWED_IPS = env.list(
@@ -496,7 +507,10 @@ NOTIFY_SERVER_URL = env("NOTIFY_SERVER_URL", default="http://notify-web:8000")
 NOTIFY_API_KEY = os.environ.get("NOTIFY_API_KEY", "")
 NOTIFY_TIMEOUT = env.float("NOTIFY_TIMEOUT", default=10.0)
 NOTIFY_SYNC_TIMEOUT = env.float("NOTIFY_SYNC_TIMEOUT", default=60.0)
-
+# Backend de tarefas assíncronas (facade core.tasks):
+# 'django_q' (default com cluster de workers), 'sync' (imediato) ou 'threads' (ThreadPool sem worker dedicado)
+TASK_BACKEND = env("TASK_BACKEND", default="django_q")
+TASK_POOL_WORKERS = env.int("TASK_POOL_WORKERS", default=4)
 
 Q_CLUSTER = {
     "name": env("Q_CLUSTER_NAME", default="mvp"),

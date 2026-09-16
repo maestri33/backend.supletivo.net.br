@@ -228,17 +228,10 @@ def verify_identity(*, user, selfie_image_path: str, caller: str) -> FaceMatchRe
             meta={**meta, "stage": "reference"},
         )
 
-    # 3. melhor par (probe × cada referência) → banda config. A galeria de selfies acumulada
-    # (`selfie_gallery`) entra como probes ADICIONAIS: cada tentativa anterior continua valendo,
-    # então a nota do passo é a MELHOR já obtida — é assim que "ir juntando foto" melhora o
-    # resultado em vez de recomeçar do zero a cada tentativa.
-    # BURACO FECHADO (2026-07-29): a galeria entrava como probe e o "melhor par" podia aprovar
-    # a foto NOVA usando a nota de uma ANTIGA — ou seja, a pessoa da vez não precisava bater com
-    # ninguém. Acumular tentativas só vale ENQUANTO não há âncora: aí é a mesma pessoa tentando
-    # de novo. Com âncora, a foto atual se defende sozinha.
-    probes = (
-        [probe] if ancoras else [probe, *_selfie_gallery(user, exclude_id=probe.id)]
-    )
+    # 3. Melhor par (probe atual x cada referencia do documento / ancoras aprovadas).
+    # Apenas a selfie enviada nesta tentativa (probe) e comparada contra as referencias.
+    # Selfies antigas nunca entram como probes, evitando que fotos antigas aprovem um impostor.
+    probes = [probe]
     best_score, best_ref, best_probe = None, None, None
     for p in probes:
         for ref in references:
@@ -301,17 +294,6 @@ def _selfies_aprovadas(user, *, exclude_id: int | None = None) -> list:
         qs = qs.exclude(id=exclude_id)
     return list(qs[:_GALLERY_LIMIT])
 
-
-def _selfie_gallery(user, *, exclude_id: int | None = None) -> list:
-    """Selfies JÁ enroladas deste usuário — as tentativas anteriores viram probes extras."""
-    qs = (
-        FaceBiometric.objects.filter(user=user, source=Source.SELFIE)
-        .exclude(embedding=[])
-        .order_by("-created_at")
-    )
-    if exclude_id is not None:
-        qs = qs.exclude(id=exclude_id)
-    return list(qs[:_GALLERY_LIMIT])
 
 
 def compare_images(document_image_path: str, selfie_image_path: str) -> dict:

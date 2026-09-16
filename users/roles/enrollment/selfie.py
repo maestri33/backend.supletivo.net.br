@@ -77,7 +77,7 @@ def set_selfie(
     enr.consent_user_agent = consent_user_agent
     enr.consent_accepted_at = enr.selfie_taken_at
     enr.save()
-    from django_q.tasks import async_task
+    from core.tasks import async_task
 
     async_task("users.roles.enrollment.tasks.validate_selfie", enr.id)
     return enr

@@ -1,6 +1,6 @@
 [project]
 name = "backend"
-version = "0.1.0"
+version = "0.1.2"
 requires-python = ">=3.12"
 dependencies = [
     "django>=5.2,<5.3",
@@ -17,9 +17,7 @@ dependencies = [
     # o gate e não ficar num release com CVE conhecido.
     "cryptography>=50",
     "httpx>=0.28.1",
-    "insightface>=1.0.1",
     "pillow>=12.2.0",
-    "pypdfium2>=5.9.0",
     "sentry-sdk[django]>=2.66.1",
     "structlog>=25.5.0",
     "whitenoise>=6.12.0",
@@ -27,6 +25,7 @@ dependencies = [
     "validate-docbr>=2.0.0",
     "psycopg[binary]>=3.1.18",
     "gunicorn>=23.0.0",
+    "pypdf>=6.18.1",
 ]
 
 [project.optional-dependencies]

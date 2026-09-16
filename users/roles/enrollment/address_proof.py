@@ -26,7 +26,7 @@ def upload_address_proof(*, user_external_id: str, upload) -> dict:
         # `needs_new_proof`, que destrava a tela — Victor 2026-07-28).
         ap.validation_result = {}
         ap.save(update_fields=["validation_status", "validation_result"])
-    from django_q.tasks import async_task
+    from core.tasks import async_task
 
     async_task("users.roles.enrollment.tasks.validate_address_proof", enr.id)
     return me_dict(enr)

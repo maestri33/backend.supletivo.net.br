@@ -47,8 +47,7 @@ def build_checkout(checkout_pk: int, attempt: int = 1) -> str:
                 error=str(exc),
             )
             return "exhausted"
-        from django_q.models import Schedule
-        from django_q.tasks import schedule
+        from core.tasks import schedule
 
         schedule(
             "users.roles.lead.tasks.build_checkout",

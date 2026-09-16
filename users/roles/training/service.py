@@ -397,7 +397,7 @@ def _check_can_submit(user_external_id: str, material_external_id: str):
 
 def _queue_grade(sub: Submission) -> None:
     def _queue():
-        from django_q.tasks import async_task
+        from core.tasks import async_task
 
         async_task("users.roles.training.tasks.grade_submission", sub.id)
 

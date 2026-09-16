@@ -31,3 +31,20 @@ def service_secret_ok(request) -> bool:
     return header_token_matches(
         request, settings.BOT_SERVICE_HEADER, settings.BOT_SERVICE_SECRET
     )
+
+
+def cron_secret_ok(request) -> bool:
+    """True se o header de autenticação do Cron Trigger bate.
+
+    Segregação de privilégios: verifica CRON_SERVICE_SECRET via CRON_SERVICE_HEADER.
+    Fallback seguro: se CRON_SERVICE_SECRET não estiver configurado, aceita BOT_SERVICE_SECRET.
+    """
+    cron_secret = getattr(settings, "CRON_SERVICE_SECRET", None) or getattr(
+        settings, "BOT_SERVICE_SECRET", ""
+    )
+    cron_header = getattr(settings, "CRON_SERVICE_HEADER", "x-cron-secret")
+
+    if header_token_matches(request, cron_header, cron_secret):
+        return True
+    return header_token_matches(request, settings.BOT_SERVICE_HEADER, cron_secret)
+

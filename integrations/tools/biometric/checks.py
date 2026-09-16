@@ -18,6 +18,12 @@ from django.core.checks import Warning
 def check_biometric(app_configs, **kwargs):
     warnings = []
 
+    service_url = getattr(settings, "BIOMETRIC_SERVICE_URL", "").strip()
+    if service_url:
+        # Modo microsserviço externo (Proxmox VE / Docker isolado).
+        # Não exige dependências C++ locais nem download do modelo no monolito Django.
+        return warnings
+
     missing = []
     for mod in ("insightface", "onnxruntime", "cv2", "numpy"):
         try:
@@ -27,11 +33,12 @@ def check_biometric(app_configs, **kwargs):
     if missing:
         warnings.append(
             Warning(
-                f"Deps de biometria ausentes: {missing} — o face-match cai em revisão até instalar.",
-                hint="uv add insightface onnxruntime opencv-python-headless numpy",
+                f"Deps de biometria locais ausentes: {missing} e BIOMETRIC_SERVICE_URL não configurado.",
+                hint="Defina BIOMETRIC_SERVICE_URL=http://... no .env ou instale deps locais: uv add insightface onnxruntime opencv-python-headless numpy",
                 id="biometric.W001",
             )
         )
+        return warnings
 
     root = Path(settings.BIOMETRIC_MODEL_ROOT)
     model_dir = root / "models" / settings.BIOMETRIC_MODEL_NAME

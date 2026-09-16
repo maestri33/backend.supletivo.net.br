@@ -23,7 +23,7 @@ def upload_address_proof(*, user_external_id, upload) -> dict:
     if ap is not None:
         ap.validation_status = "pending"
         ap.save(update_fields=["validation_status"])
-    from django_q.tasks import async_task
+    from core.tasks import async_task
 
     async_task("users.roles.candidate.tasks.validate_address_proof", cand.id)
     return me_dict(cand)

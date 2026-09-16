@@ -112,7 +112,7 @@ def upload_document_photo(*, user_external_id, slot: str, upload) -> dict:
     path = documents_iface.upload_photo(user_external_id, slot, upload)
     # pipeline IA async (visão → OCR → extração → biometria) — plan/12+15 B3
     _reset_doc_validation(user_external_id, cand.doc_type, slot)
-    from django_q.tasks import async_task
+    from core.tasks import async_task
 
     async_task("users.roles.candidate.tasks.validate_document", cand.id, slot)
     sub = documents_iface.get_doc_sub(user_external_id, cand.doc_type)
