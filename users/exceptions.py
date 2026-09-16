@@ -51,3 +51,28 @@ class RateLimited(DomainError):
     def __init__(self, detail: str, *, retry_after_s: int, code: str = "RATE_LIMITED"):
         super().__init__(detail, code=code, extra={"retry_after_s": retry_after_s})
         self.retry_after_s = retry_after_s
+
+
+class PhoneNotOnWhatsApp(DomainError):
+    status = 400
+
+    def __init__(
+        self,
+        detail: str = "Telefone sem WhatsApp ativo.",
+        *,
+        code: str = "PHONE_NOT_ON_WHATSAPP",
+    ):
+        super().__init__(detail, code=code)
+
+
+class NotifyUnavailable(DomainError):
+    status = 503
+
+    def __init__(
+        self,
+        detail: str = "Falha temporária no gateway de mensageria.",
+        *,
+        code: str = "NOTIFY_UNAVAILABLE",
+    ):
+        super().__init__(detail, code=code)
+

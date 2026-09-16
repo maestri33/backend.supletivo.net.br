@@ -8,8 +8,9 @@ from ninja.errors import HttpError
 from ninja.responses import Status
 
 from api.base import add_auth_refresh, add_funnel_login
-from api.clients.schemas import LeadCreateIn, LeadOut
+from api.clients.schemas import LeadCaptureIn, LeadCaptureOut, LeadCreateIn, LeadOut
 from api.schemas.auth import CheckIn, CheckOut
+
 from core.request import get_client_ip
 from core.webhook_auth import service_secret_ok
 from integrations.turnstile import verify_turnstile
@@ -99,6 +100,20 @@ def check(request, payload: CheckIn):
     )
 
     return res
+
+
+@router.post(
+    "/capture",
+    response=LeadCaptureOut,
+    auth=None,
+    summary="Captura inteligente de lead (alias auth)",
+)
+def auth_capture(request, payload: LeadCaptureIn):
+    """Alias para /api/v1/clients/lead/capture."""
+    from api.clients.routers.lead import lead_capture
+
+    return lead_capture(request, payload)
+
 
 
 add_funnel_login(

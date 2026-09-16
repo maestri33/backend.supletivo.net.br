@@ -51,6 +51,8 @@ class CheckOut(Schema):
     is_valid: bool = True
     birth_date: str | None = None
     sex: str | None = None
+    next_route: str = Field(default="/autenticacao/otp", description="Próxima rota no frontend")
+
 
 
 class LoginIn(Schema):

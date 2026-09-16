@@ -61,9 +61,14 @@ def build_group(name: str, description: str, auth_override=_DEFAULT_AUTH) -> Nin
     def domain_error(request, exc: DomainError):
         """Erro de DOMÍNIO → JSON padronizado `{detail, code, …extra}` no status do erro. Ex.: etapa
         errada do funil → **409** + `expected_status` (o front roteia o wizard sozinho com isso)."""
-        return JsonResponse(
+        resp = JsonResponse(
             {"detail": exc.detail, "code": exc.code, **exc.extra}, status=exc.status
         )
+        retry_after = getattr(exc, "retry_after_s", None)
+        if retry_after is not None:
+            resp["Retry-After"] = str(retry_after)
+        return resp
+
 
     # Envelope de erro padronizado (proposta API #5): TODO 4xx sai `{detail, code, …extra}` —
     # o front faz `switch(code)`, nunca parseia o texto de `detail`.

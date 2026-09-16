@@ -545,6 +545,21 @@ def _mask_phone_br(phone: str) -> str:
     return phone
 
 
+def mask_phone_privacy(phone: str | None) -> str:
+    """`5543996648750` → `(43) •••••-8750` — mascaramento de privacidade para telas e logs."""
+    if not phone:
+        return ""
+    d = "".join(c for c in phone if c.isdigit())
+    if d.startswith("55") and len(d) in (12, 13):
+        d = d[2:]
+    if len(d) == 11:
+        return f"({d[:2]}) •••••-{d[7:]}"
+    if len(d) == 10:
+        return f"({d[:2]}) ••••-{d[6:]}"
+    return phone
+
+
+
 def _notify_cpf_conflict(owner_profile, attempt_phone: str | None) -> None:
     """Avisa o TITULAR real do CPF que alguém tentou usá-lo com outro número (contrato de segurança
     do funil v2): data, horário e o número usado, orientando acionar o suporte. Best-effort (§12)."""

@@ -596,6 +596,240 @@ def _enqueue_avatar_fetch(user: User) -> None:
         logger.warning("lead.avatar_enqueue_failed", profile=profile.pk, error=str(exc))
 
 
+def capture_lead(
+    *,
+    phone: str,
+    cpf: str | None = None,
+    name: str | None = None,
+    ref: str | None = None,
+    attribution: dict | None = None,
+) -> dict:
+    """Smart zero-friction lead capture (Issue #6).
+
+    - Validação e normalização de telefone + verificação de WhatsApp ativo.
+    - Se CPF informado:
+        - Validação rigorosa de Módulo 11 (levanta ValidationError CPF_INVALID se incorreto).
+        - Cenário B: Se CPF já existe em outra conta, dispara OTP no telefone registrado
+          da conta original e devolve telefone mascarado `(XX) •••••-XXXX` para recuperação.
+        - Cenário A: Se CPF é novo, enriquece via CPFHub, cria User + Profile + endereço +
+          documentos, vincula promotor em cascata, salva atribuição e dispara OTP.
+    - Se apenas telefone informado:
+        - Se telefone já existe, dispara OTP para o usuário existente.
+        - Se telefone é novo, cria conta lead, vincula promotor, salva atribuição e dispara OTP.
+    """
+    from users.address import interface as address_iface
+    from users.auth import validation
+    from users.auth.service import (
+        _check_phone_whatsapp,
+        _lookup_cpf,
+        _send_or_wait,
+        mask_phone_privacy,
+    )
+    from users.documents import service as documents_iface
+    from users.exceptions import (
+
+        NotifyUnavailable,
+        PhoneNotOnWhatsApp,
+        RateLimited,
+        ValidationError,
+    )
+    from users.roles import interface as roles
+
+    # 1. Normalização e validação inicial de telefone
+    try:
+        clean_phone = validation.validate_phone(phone)
+    except ValueError as exc:
+        raise ValidationError(str(exc), code="PHONE_INVALID") from exc
+
+    # 2. Verificação de WhatsApp ativo
+    try:
+        phone_exists, resolved_phone = _check_phone_whatsapp(clean_phone)
+    except Exception:
+        phone_exists, resolved_phone = True, clean_phone
+
+    if not phone_exists:
+        raise PhoneNotOnWhatsApp("Telefone sem WhatsApp ativo.", code="PHONE_NOT_ON_WHATSAPP")
+
+    def _dispatch_and_handle_otp(target_user: User) -> dict:
+        otp_res = _send_or_wait(target_user)
+        if not otp_res.get("otp_sent") and otp_res.get("otp_wait") is not None:
+            raise RateLimited(
+                "Limite de reenvio de OTP excedido.",
+                retry_after_s=otp_res["otp_wait"],
+            )
+        if not otp_res.get("otp_sent") and otp_res.get("otp_wait") is None:
+            raise NotifyUnavailable("Falha temporária no gateway de mensageria.")
+        return otp_res
+
+    # 3. Fluxo com CPF informado
+    if cpf:
+        try:
+            clean_cpf = validation.validate_cpf_strict(cpf)
+        except ValueError as exc:
+            raise ValidationError(
+                "CPF inválido (dígitos verificadores incorretos).", code="CPF_INVALID"
+            ) from exc
+
+        existing_cpf_profile = profiles.find_by_cpf(clean_cpf)
+        if existing_cpf_profile is not None:
+            # Cenário B: CPF já cadastrado em conta existente
+            owner_user = existing_cpf_profile.user
+            registered_phone = existing_cpf_profile.phone or clean_phone
+            otp_res = _dispatch_and_handle_otp(owner_user)
+
+            if attribution and hasattr(owner_user, "lead") and not hasattr(owner_user.lead, "attribution"):
+                try:
+                    _save_attribution_safely(owner_user.lead, attribution, fallback_ref=ref)
+                except Exception as exc:
+                    logger.warning("lead.capture_attribution_backfill_failed", error=str(exc))
+
+            active_roles = roles.active_roles(owner_user) or ["lead"]
+            return {
+                "found": True,
+                "created": False,
+                "external_id": str(owner_user.external_id),
+                "masked_phone": mask_phone_privacy(registered_phone),
+                "otp_sent": otp_res.get("otp_sent", True),
+                "otp_wait": otp_res.get("otp_wait"),
+                "roles": active_roles,
+                "next_route": "/autenticacao/otp",
+            }
+
+        # Telefone já em uso por outra conta
+        existing_phone_profile = profiles.find_by_phone(resolved_phone)
+        if existing_phone_profile is not None:
+            owner_user = existing_phone_profile.user
+            if not existing_phone_profile.cpf:
+                existing_phone_profile.cpf = clean_cpf
+                existing_phone_profile.save(update_fields=["cpf"])
+            roles.assign(owner_user, "lead")
+            otp_res = _dispatch_and_handle_otp(owner_user)
+            return {
+                "found": True,
+                "created": False,
+                "external_id": str(owner_user.external_id),
+                "masked_phone": mask_phone_privacy(existing_phone_profile.phone),
+                "otp_sent": otp_res.get("otp_sent", True),
+                "otp_wait": otp_res.get("otp_wait"),
+                "roles": roles.active_roles(owner_user) or ["lead"],
+                "next_route": "/autenticacao/otp",
+            }
+
+        # Cenário A: CPF novo e telefone novo -> Enriquece e cria conta
+        identity = None
+        try:
+            identity = _lookup_cpf(clean_cpf)
+        except Exception:
+            identity = None
+
+        promoter = _resolve_promoter(ref)
+        resolved_name = (identity.name if identity and identity.name else None) or name
+        gender = identity.gender if identity else None
+        birth_date = identity.birth_date if identity else None
+
+        with transaction.atomic():
+            user = User.objects.create_user()
+            profile = profiles.create(
+                user=user,
+                cpf=clean_cpf,
+                phone=resolved_phone,
+                name=resolved_name,
+                gender=gender,
+                birth_date=birth_date,
+            )
+            profiles.attach_address(profile, address_iface.create_empty())
+            documents_iface.create_empty(user)
+            roles.assign(user, "lead")
+            lead = Lead.objects.create(
+                user=user,
+                promoter=promoter,
+                status=Lead.Status.PENDING,
+            )
+            if attribution:
+                _save_attribution_safely(lead, attribution, fallback_ref=ref)
+
+        otp_res = _dispatch_and_handle_otp(user)
+        logger.info(
+            "lead.captured",
+            external_id=str(lead.external_id),
+            promoter=str(promoter.external_id),
+        )
+        _notify_captured(lead)
+        _notify_promoter_new_lead(lead)
+        _enqueue_avatar_fetch(user)
+
+        return {
+            "found": False,
+            "created": True,
+            "external_id": str(user.external_id),
+            "masked_phone": mask_phone_privacy(resolved_phone),
+            "otp_sent": otp_res.get("otp_sent", True),
+            "otp_wait": otp_res.get("otp_wait"),
+            "roles": ["lead"],
+            "next_route": "/autenticacao/otp",
+        }
+
+    # 4. Fluxo sem CPF (apenas telefone)
+    existing_phone_profile = profiles.find_by_phone(resolved_phone)
+    if existing_phone_profile is not None:
+        owner_user = existing_phone_profile.user
+        otp_res = _dispatch_and_handle_otp(owner_user)
+        if attribution and hasattr(owner_user, "lead") and not hasattr(owner_user.lead, "attribution"):
+            try:
+                _save_attribution_safely(owner_user.lead, attribution, fallback_ref=ref)
+            except Exception as exc:
+                logger.warning("lead.capture_attribution_backfill_failed", error=str(exc))
+        return {
+            "found": True,
+            "created": False,
+            "external_id": str(owner_user.external_id),
+            "masked_phone": mask_phone_privacy(existing_phone_profile.phone),
+            "otp_sent": otp_res.get("otp_sent", True),
+            "otp_wait": otp_res.get("otp_wait"),
+            "roles": roles.active_roles(owner_user) or ["lead"],
+            "next_route": "/autenticacao/otp",
+        }
+
+    # Telefone novo sem CPF
+    promoter = _resolve_promoter(ref)
+    reg = auth_iface.register(role="lead", phone=resolved_phone)
+    user = User.objects.get(external_id=reg["external_id"])
+    if name:
+        prof = profiles.get(user)
+        if prof and not prof.name:
+            prof.name = name
+            prof.save(update_fields=["name"])
+    lead = Lead.objects.create(
+        user=user,
+        promoter=promoter,
+        status=Lead.Status.PENDING,
+    )
+
+    if attribution:
+        _save_attribution_safely(lead, attribution, fallback_ref=ref)
+
+    logger.info(
+        "lead.captured_phone_only",
+        external_id=str(lead.external_id),
+        promoter=str(promoter.external_id),
+    )
+    _notify_captured(lead)
+    _notify_promoter_new_lead(lead)
+    _enqueue_avatar_fetch(user)
+
+    return {
+        "found": False,
+        "created": True,
+        "external_id": str(user.external_id),
+        "masked_phone": mask_phone_privacy(resolved_phone),
+        "otp_sent": reg.get("otp_sent", True),
+        "otp_wait": None,
+        "roles": ["lead"],
+        "next_route": "/autenticacao/otp",
+    }
+
+
+
 def set_checkout(
     *,
     user_external_id: str,

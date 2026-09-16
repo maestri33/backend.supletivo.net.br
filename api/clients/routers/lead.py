@@ -14,10 +14,13 @@ from api.clients.schemas import (
     EmailOut,
     IdentityIn,
     IdentityOut,
+    LeadCaptureIn,
+    LeadCaptureOut,
     LeadMeOut,
     PixPageOut,
     UrlOut,
 )
+
 from core.request import get_client_ip
 from core.webhook_auth import service_secret_ok
 from integrations.turnstile import verify_turnstile
@@ -114,3 +117,50 @@ def lead_set_checkout(request, payload: CheckoutSetIn):
         payment_method=payload.payment_method,
         attribution=attr_data or None,
     )
+
+
+@router.post(
+    "/capture",
+    response=LeadCaptureOut,
+    auth=None,
+    summary="Captura inteligente de lead (zero-friction)",
+)
+def lead_capture(request, payload: LeadCaptureIn):
+    """Zero-friction lead capture com validação de CPF, enriquecimento e recuperação amigável."""
+    client_ip = get_client_ip(request)
+    if getattr(settings, "TURNSTILE_ENABLED", False) and not service_secret_ok(request):
+        if not payload.turnstile_token:
+            raise HttpError(400, "Token Turnstile obrigatório.")
+        result = verify_turnstile(payload.turnstile_token, remote_ip=client_ip)
+        if not result.success:
+            raise HttpError(400, "Falha na verificação de segurança (Turnstile).")
+
+    attr_data = payload.attribution.dict(exclude_unset=True) if payload.attribution else {}
+    if client_ip and "client_ip" not in attr_data:
+        attr_data["client_ip"] = client_ip
+    user_agent = request.META.get("HTTP_USER_AGENT", "")[:400]
+    if user_agent and "user_agent" not in attr_data:
+        attr_data["user_agent"] = user_agent
+
+    effective_ref = payload.ref or attr_data.get("ref")
+
+    res = lead_iface.capture_lead(
+        phone=payload.phone,
+        cpf=payload.cpf,
+        name=payload.name,
+        ref=effective_ref,
+        attribution=attr_data or None,
+    )
+
+    from integrations.posthog import track_funnel_checked
+
+    distinct_id = res.get("external_id") or payload.cpf or payload.phone or "anonymous"
+    track_funnel_checked(
+        distinct_id,
+        found=res.get("found", False),
+        registered=not res.get("created", False),
+        ref=effective_ref,
+    )
+
+    return res
+
