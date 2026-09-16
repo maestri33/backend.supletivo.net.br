@@ -84,6 +84,8 @@ DEFAULT_CORS_ALLOWED_ORIGINS = [
     "https://promotor.supletivo.net.br",
     "https://hub.supletivo.net.br",
     "https://admin.supletivo.net.br",
+    "http://localhost:3000",
+    "http://localhost:3011",
 ]
 
 CORS_ALLOW_ALL_ORIGINS = env.bool("CORS_ALLOW_ALL_ORIGINS", default=False)
