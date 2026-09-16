@@ -102,7 +102,15 @@ def lead_set_checkout(request, payload: CheckoutSetIn):
         if not result.success:
             raise HttpError(400, "Falha na verificação de segurança (Turnstile).")
 
+    attr_data = payload.attribution.dict(exclude_unset=True) if payload.attribution else {}
+    if client_ip and "client_ip" not in attr_data:
+        attr_data["client_ip"] = client_ip
+    user_agent = request.META.get("HTTP_USER_AGENT", "")[:400]
+    if user_agent and "user_agent" not in attr_data:
+        attr_data["user_agent"] = user_agent
+
     return lead_iface.set_checkout(
         user_external_id=request.auth.external_id,
         payment_method=payload.payment_method,
+        attribution=attr_data or None,
     )

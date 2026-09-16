@@ -596,7 +596,12 @@ def _enqueue_avatar_fetch(user: User) -> None:
         logger.warning("lead.avatar_enqueue_failed", profile=profile.pk, error=str(exc))
 
 
-def set_checkout(*, user_external_id: str, payment_method: str | None) -> dict:
+def set_checkout(
+    *,
+    user_external_id: str,
+    payment_method: str | None,
+    attribution: dict | None = None,
+) -> dict:
     """Passo 6 do funil v2: define (ou TROCA) a forma de pagamento do lead logado — cria o
     checkout na hora e devolve o dict (URL nasce async/lazy, como no register legado).
 
@@ -613,6 +618,8 @@ def set_checkout(*, user_external_id: str, payment_method: str | None) -> dict:
     lead = get_for_user_external_id(user_external_id)
     if lead is None:
         raise NotFound("Lead não encontrado.", code="LEAD_NOT_FOUND")
+    if attribution:
+        _save_attribution_safely(lead, attribution)
     method = _API_METHODS.get((payment_method or "").strip().lower())
     if method is None:
         raise LeadError("invalid_payment_method")

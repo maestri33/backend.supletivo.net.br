@@ -31,17 +31,27 @@ def register(request, payload: LeadCreateIn):
         if not result.success:
             raise HttpError(400, "Falha na verificação de segurança (Turnstile).")
 
+    attr_data = payload.attribution.dict(exclude_unset=True) if payload.attribution else {}
+    if client_ip and "client_ip" not in attr_data:
+        attr_data["client_ip"] = client_ip
+    user_agent = request.META.get("HTTP_USER_AGENT", "")[:400]
+    if user_agent and "user_agent" not in attr_data:
+        attr_data["user_agent"] = user_agent
+
+    effective_ref = payload.ref or attr_data.get("ref")
+
     result = lead_iface.create_lead(
         cpf=payload.cpf,
         phone=payload.phone,
         email=payload.email,
         payment_method=payload.payment_method,
-        ref=payload.ref,
+        ref=effective_ref,
+        attribution=attr_data or None,
     )
     from integrations.posthog import track_funnel_created
 
     distinct_id = getattr(result, "external_id", None) or payload.cpf
-    track_funnel_created(distinct_id, payment_method=payload.payment_method, ref=payload.ref)
+    track_funnel_created(distinct_id, payment_method=payload.payment_method, ref=effective_ref)
 
     return Status(201, result)
 

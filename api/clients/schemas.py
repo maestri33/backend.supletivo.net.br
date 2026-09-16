@@ -7,6 +7,7 @@ from typing import Any, Literal
 from ninja import Field, Schema
 
 from api.schemas.address import PublicAddressOut
+from api.schemas.auth import AttributionIn
 from api.schemas.documents import ContractOut, DocClassifyOut
 from api.schemas.student import StudentPlatformFields
 
@@ -22,6 +23,7 @@ class LeadCreateIn(Schema):
     email: str
     payment_method: str | None = None
     ref: str | None = None
+    attribution: AttributionIn | None = None
     turnstile_token: str | None = None  # Token emitido pelo Cloudflare Turnstile
 
 
@@ -243,6 +245,10 @@ class EmailOut(Schema):
 
 class CheckoutSetIn(Schema):
     payment_method: str = Field(description='"pix" | "card"')
+    attribution: AttributionIn | None = Field(
+        default=None,
+        description="Parâmetros de atribuição de tráfego (UTMs, click IDs, ref).",
+    )
     turnstile_token: str | None = Field(
         default=None,
         description="Token Cloudflare Turnstile anti-bot/anti-carding."
