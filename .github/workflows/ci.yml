@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
+      - name: Configure CI Environment
+        run: cp .env.ci .env
+
       - name: Run Django System Check
         run: uv run python manage.py check
 
