@@ -37,7 +37,14 @@ SECRET_KEY = env("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env("DEBUG")
 
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
+DEFAULT_ALLOWED_HOSTS = [
+    "backend.supletivo.net.br",
+    "supletivo.net.br",
+    "127.0.0.1",
+    "localhost",
+    "testserver",
+]
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=DEFAULT_ALLOWED_HOSTS)
 
 # ── APP_ENV / TEST_MODE ───────────────────────────────────────────────────
 # Modo de teste integrado: simula CPFHub (aceita qualquer CPF bem formado), força WhatsApp
@@ -82,10 +89,14 @@ DEFAULT_CORS_ALLOWED_ORIGINS = [
     "https://www.supletivo.net.br",
     "https://app.supletivo.net.br",
     "https://promotor.supletivo.net.br",
+    "https://notify.supletivo.net.br",
+    "https://version.v7m.live",
     "https://hub.supletivo.net.br",
     "https://admin.supletivo.net.br",
     "http://localhost:3000",
     "http://localhost:3011",
+    "http://localhost:3020",
+    "http://localhost:3108",
 ]
 
 CORS_ALLOW_ALL_ORIGINS = env.bool("CORS_ALLOW_ALL_ORIGINS", default=False)
@@ -96,6 +107,7 @@ CORS_ALLOWED_ORIGINS = env.list(
 DEFAULT_CSRF_TRUSTED_ORIGINS = [
     "https://supletivo.net.br",
     "https://*.supletivo.net.br",
+    "https://*.v7m.live",
 ]
 
 CSRF_TRUSTED_ORIGINS = env.list(
