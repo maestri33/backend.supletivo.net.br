@@ -81,12 +81,15 @@ class PlatformSetupBossOut(Schema):
 class PlatformSetupPricingOut(Schema):
     price_pix: str | None = None
     price_card_cents: int | None = None
+    price_card_reais: str | None = None
     promo_price_pix: str | None = None
     promo_price_card_cents: int | None = None
+    promo_price_card_reais: str | None = None
     promoter_study_unlock_threshold: int | None = None
     promoter_study_complete_threshold: int | None = None
     promoter_price_pix: str | None = None
     promoter_price_card_cents: int | None = None
+    promoter_price_card_reais: str | None = None
     card_installments: int | None = None
     anchor_full: str | None = None
     description: str | None = None
