@@ -121,6 +121,10 @@ def render(body: str, ctx: dict) -> str:
         alias_kebab = key.replace("_", "-")
         if alias_kebab in ctx:
             return str(ctx[alias_kebab])
+        if key == "nome" and "name" in ctx:
+            return str(ctx["name"])
+        if key == "name" and "nome" in ctx:
+            return str(ctx["nome"])
         return m.group(0)
 
     return _PLACEHOLDER_RE.sub(_sub, body)

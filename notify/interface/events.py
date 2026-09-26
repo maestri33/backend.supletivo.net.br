@@ -96,6 +96,10 @@ def send_event(
         }
         if ctx:
             render_ctx.update(ctx)
+            if "nome" in ctx and "name" not in ctx:
+                render_ctx["name"] = ctx["nome"]
+            elif "name" in ctx and "nome" not in ctx:
+                render_ctx["nome"] = ctx["name"]
         body = _tpl_iface.render(tpl.body_md, render_ctx)
         channels = list(channels_override) if channels_override is not None else list(tpl.channels)
         t_title = _tpl_iface.render(title or tpl.title or "", render_ctx) if (title or tpl.title) else None
