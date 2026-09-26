@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 import pytest
-from django.core.management import call_command
+from django.core.management import call_command, get_commands
 from io import StringIO
 
 from core.models import PlatformSetting
@@ -149,6 +149,7 @@ def test_sync_secrets_resilient_on_error():
 
 @pytest.mark.django_db
 def test_management_command_sync_infisical_secrets():
+    get_commands.cache_clear()
     out = StringIO()
     mock_resp = MagicMock()
     mock_resp.status_code = 200

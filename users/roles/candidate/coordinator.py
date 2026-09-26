@@ -148,9 +148,15 @@ def reject_candidate(
 def _notify_candidate_rejected(cand: Candidate, reason: str | None = None) -> None:
     from notify.interface.events import send_event
 
-    p = profiles.get(cand.user)
+    try:
+        p = profiles.get(cand.user) if cand.user and hasattr(cand.user, "_meta") else None
+    except Exception:
+        p = None
     hub_name = getattr(cand.hub, "brand", None) or "Polo"
-    coord_p = profiles.get(cand.hub.coordinator) if cand.hub and cand.hub.coordinator else None
+    try:
+        coord_p = profiles.get(cand.hub.coordinator) if cand.hub and cand.hub.coordinator and hasattr(cand.hub.coordinator, "_meta") else None
+    except Exception:
+        coord_p = None
     coord_phone = getattr(coord_p, "phone", None) or "da coordenação"
     try:
         send_event(
