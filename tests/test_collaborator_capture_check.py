@@ -70,3 +70,45 @@ def test_collaborator_check_existing_user_does_not_duplicate():
     assert data["external_id"] == str(user.external_id)
 
 
+@pytest.mark.django_db
+def test_collaborator_check_auto_captures_propagates_cpf_and_email(monkeypatch):
+    """Quando informados, CPF e email são propagados e salvos no profile do candidato."""
+    addr = Address.objects.create(zipcode="86010000", street="Rua Teste", number="100", neighborhood="Centro", city="Londrina", state="PR")
+    hub = Hub.objects.create(address=addr, brand="standard", is_default=True)
+    
+    monkeypatch.setattr("users.auth.service._check_phone_whatsapp", lambda phone: (True, phone))
+    
+    client = Client()
+    phone = "43996648751"
+    cpf = "52998224725"
+    email = "candidato.promotor@exemplo.com"
+    
+    res = client.post(
+        "/api/v1/collaborators/auth/check",
+        data={
+            "phone": phone,
+            "cpf": cpf,
+            "email": email,
+            "hub": str(hub.external_id),
+            "send_otp": True,
+        },
+        content_type="application/json",
+    )
+    
+    assert res.status_code == 200
+    data = res.json()
+    assert data["found"] is False
+    assert data["created"] is True
+    assert data["roles"] == ["candidate"]
+    
+    user = User.objects.get(external_id=data["external_id"])
+    prof = profiles.get(user)
+    assert prof.phone == "5543996648751"
+    assert prof.cpf == "52998224725"
+    assert prof.email == "candidato.promotor@exemplo.com"
+    
+    candidate = Candidate.objects.get(user=user)
+    assert candidate.hub == hub
+
+
+

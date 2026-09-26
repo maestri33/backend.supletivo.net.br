@@ -24,6 +24,8 @@ class CheckIn(Schema):
 
     cpf: str | None = None
     phone: str | None = None
+    email: str | None = None
+    hub: str | None = None
     external_id: str | None = None  # re-dispara OTP de usuário já conhecido (do USER)
     ref: str | None = None  # external_id do promotor (landing ?ref=)
     send_otp: bool = True  # send_otp=False permite checar/gerar token em teste/bot autenticado

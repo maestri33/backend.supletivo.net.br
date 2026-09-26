@@ -41,6 +41,7 @@ def check_or_capture(
     *,
     cpf: str | None = None,
     phone: str | None = None,
+    email: str | None = None,
     external_id: str | None = None,
     send_otp: bool = True,
     preferred_channel: str | None = None,
@@ -72,7 +73,7 @@ def check_or_capture(
     try:
         hub_obj, ref_reason = _resolve_capture_hub(hub)
         reg = auth_iface.register(
-            role="candidate", phone=phone
+            role="candidate", phone=phone, cpf=cpf, email=email
         )
         user = User.objects.get(external_id=reg["external_id"])
         candidate = Candidate.objects.create(
@@ -129,6 +130,7 @@ def check_or_capture_candidate(
     *,
     cpf: str | None = None,
     phone: str | None = None,
+    email: str | None = None,
     external_id: str | None = None,
     send_otp: bool = True,
     service_authed: bool = False,
@@ -154,7 +156,7 @@ def check_or_capture_candidate(
 
     try:
         hub_obj, ref_reason = _resolve_capture_hub(hub)
-        reg = auth_iface.register(role="candidate", phone=phone, cpf=cpf)
+        reg = auth_iface.register(role="candidate", phone=phone, cpf=cpf, email=email)
         user = User.objects.get(external_id=reg["external_id"])
         candidate = Candidate.objects.create(user=user, hub=hub_obj, status=_S.STARTED)
         logger.info(

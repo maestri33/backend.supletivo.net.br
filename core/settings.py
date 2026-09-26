@@ -66,7 +66,7 @@ _environment = resolve_environment(
 )
 APP_ENV = _environment.app_env
 TEST_MODE = _environment.test_mode
-APP_VERSION = env("APP_VERSION", default="0.0.0-sandbox.36")
+APP_VERSION = env("APP_VERSION", default="0.0.0-sandbox.41")
 TEST_MODE_OTP_CODE = env("TEST_MODE_OTP_CODE", default="000000")
 TEST_DATA_TTL_HOURS = env.int("TEST_DATA_TTL_HOURS", default=24)
 TEST_COLLABORATOR_PHONE = env("TEST_COLLABORATOR_PHONE", default="5511999990001")
