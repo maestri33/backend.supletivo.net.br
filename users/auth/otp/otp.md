@@ -1,5 +1,8 @@
-Olá! Seu código de verificação é: *{{codigo}}*
+Seu código de confirmação é:
 
-Este código expira em *{{ttl_minutos}}* minutos.
+👉 **{{codigo}}** 👈
 
-Se você não solicitou este acesso, ignore esta mensagem.*{{rodape}}*
+⏱️ Válido por **{{ttl_minutos}} minutos**.
+🔒 Nunca compartilhe este código com ninguém.
+
+_Se você não solicitou este acesso, desconsidere esta mensagem._*{{rodape}}*

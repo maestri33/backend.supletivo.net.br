@@ -127,7 +127,8 @@ def render(body: str, ctx: dict) -> str:
             return str(ctx["nome"])
         return m.group(0)
 
-    return _PLACEHOLDER_RE.sub(_sub, body)
+    rendered = _PLACEHOLDER_RE.sub(_sub, body)
+    return re.sub(r"\(\s*(\([0-9]{2}\)[^)]+)\)", r"\1", rendered)
 
 
 def _on_template_change(sender, instance, **kwargs):

@@ -164,7 +164,7 @@ source: users.roles.enrollment
 delay_minutes: 0
 active: true
 ~~~
-{name}, a matrícula do aluno {aluno_nome} ({aluno_telefone}) no polo {polo_nome} concluiu o envio de dados e aguarda a sua liberação.
+{name}, a matrícula do aluno {aluno_nome} • {aluno_telefone} no polo {polo_nome} concluiu o envio de dados e aguarda a sua liberação.
 
 Confira os documentos e libere pelo painel:
 {link_painel}
@@ -293,7 +293,7 @@ source: users.roles.enrollment
 delay_minutes: 0
 active: true
 ~~~
-{name}, o RG do aluno {aluno_nome} ({aluno_telefone}) no polo {polo_nome} precisa da sua análise: {detail}
+{name}, o RG do aluno {aluno_nome} • {aluno_telefone} no polo {polo_nome} precisa da sua análise: {detail}
 
 Aprove ou reprove pelo painel:
 {link_painel}
@@ -344,7 +344,7 @@ source: users.roles.enrollment
 delay_minutes: 0
 active: true
 ~~~
-{name}, a selfie do aluno {aluno_nome} ({aluno_telefone}) no polo {polo_nome} precisa da sua análise — a IA ficou em dúvida.
+{name}, a selfie do aluno {aluno_nome} • {aluno_telefone} no polo {polo_nome} precisa da sua análise — a IA ficou em dúvida.
 
 Aprove ou reprove pelo painel:
 {link_painel}
@@ -399,7 +399,7 @@ Olá, {name}! Que bom ter você com a gente. Seu cadastro está pronto, {name} �
 
 [event:lead.captured.promoter]
 channels: whatsapp,email
-title: Novo lead na sua rede
+title: Novo lead na sua rede 🚀
 subject: Supletivo Brasil — {lead_nome} entrou na sua indicação! 🚀
 media_url: 
 media_type: 
@@ -409,9 +409,11 @@ source: users.roles.lead
 delay_minutes: 0
 active: true
 ~~~
-Boa notícia, {name}! {lead_nome} ({lead_telefone}) acabou de entrar na sua rede pela sua indicação. 🚀
+Boa notícia, **{name}**!
+**{lead_nome}** acabou de entrar na sua rede pela sua indicação. 🚀
 
-Chame agora no WhatsApp para tirar dúvidas e incentivar a concluir a matrícula:
+📱 **Contato:** {lead_telefone}
+💬 **Chame no WhatsApp para apoiar na matrícula:**
 {lead_whatsapp_url}
 
 Bora fechar mais essa comissão, {name}! 👊
@@ -483,7 +485,7 @@ active: true
 ~~~
 {name}, uma nova matrícula entrou no polo {polo_nome}!
 
-Aluno: {aluno_nome} ({aluno_telefone})
+Aluno: {aluno_nome} • {aluno_telefone}
 Acompanhe o acolhimento pedagógico e o envio de documentos pelo painel:
 {link_painel}
 ~~~
@@ -500,7 +502,7 @@ source: users.roles.lead
 delay_minutes: 0
 active: true
 ~~~
-{name}, seu indicado {aluno_nome} ({aluno_telefone}) pagou a matrícula! ✅
+{name}, seu indicado {aluno_nome} • {aluno_telefone} pagou a matrícula! ✅
 
 Comissão de {comissao_direta} garantida.
 Total na semana: {leads_semana} (meta: {meta_bonus}). Faltam {falta_para_bonus} para o bônus semanal! 💸
@@ -598,7 +600,7 @@ source: users.roles.student
 delay_minutes: 0
 active: true
 ~~~
-{name}, o documento ({doc_type}) do aluno {aluno_nome} ({aluno_telefone}) no polo {polo_nome} precisa da sua análise — a IA ficou em dúvida.
+{name}, o documento ({doc_type}) do aluno {aluno_nome} • {aluno_telefone} no polo {polo_nome} precisa da sua análise — a IA ficou em dúvida.
 
 Aprove ou reprove pelo painel:
 {link_painel}
@@ -679,7 +681,7 @@ source: users.roles.student
 delay_minutes: 0
 active: true
 ~~~
-{name}, o aluno {aluno_nome} ({aluno_telefone}) do polo {polo_nome} agendou a prova e aguarda a sua correção.
+{name}, o aluno {aluno_nome} • {aluno_telefone} do polo {polo_nome} agendou a prova e aguarda a sua correção.
 
 Confira os detalhes no painel:
 {link_painel}
@@ -727,7 +729,7 @@ source: users.roles.student
 delay_minutes: 0
 active: true
 ~~~
-{name}, o aluno {aluno_nome} ({aluno_telefone}) do polo {polo_nome} se formou e foi diplomado com sucesso! ✅
+{name}, o aluno {aluno_nome} • {aluno_telefone} do polo {polo_nome} se formou e foi diplomado com sucesso! ✅
 
 Sua comissão entra no próximo fechamento semanal, {name}. 💸
 ~~~
@@ -873,8 +875,8 @@ Você foi aprovado, {name}! 🎉 Além do acesso de promotor, você entrou na tr
 
 [event:auth.otp]
 channels: whatsapp,email
-title: Código de verificação
-subject: Seu código de acesso Supletivo Brasil
+title: Código de Acesso
+subject: Seu código de acesso — Supletivo Brasil
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -883,11 +885,14 @@ source: users.auth.otp
 delay_minutes: 0
 active: true
 ~~~
-Olá! Seu código de verificação é: *{codigo}*
+Seu código de confirmação é:
 
-Este código expira em *{ttl_minutos}* minutos.
+👉 **{codigo}** 👈
 
-Se você não solicitou este acesso, ignore esta mensagem.
+⏱️ Válido por **{ttl_minutos} minutos**.
+🔒 Nunca compartilhe este código com ninguém.
+
+_Se você não solicitou este acesso, desconsidere esta mensagem._
 ~~~
 
 [event:auth.cpf_conflict]
@@ -962,7 +967,7 @@ Você confirma seus próprios dados antes de qualquer matrícula.
 
 [event:enrollment.concluded_referral]
 channels: whatsapp,email
-title: Nova matrícula concluída por indicação!
+title: Nova matrícula concluída por indicação! 🎓
 subject: Supletivo Brasil — Sua indicação {aluno_nome} concluiu a matrícula! 🎓
 media_url: 
 media_type: 
@@ -972,9 +977,14 @@ source: users.roles.student
 delay_minutes: 0
 active: true
 ~~~
-Parabéns, {name}! Sua indicação {aluno_nome} ({aluno_telefone}) concluiu a matrícula e agora é oficialmente ALUNO do Supletivo Brasil! 🎓
+Parabéns, **{name}**! 🎉
+Sua indicação **{aluno_nome}** concluiu a matrícula e agora é oficialmente **ALUNO** do Supletivo Brasil! 🎓
 
-Sua comissão está garantida e entra no próximo fechamento semanal. Continue compartilhando seu link! 🚀
+📱 **Contato do Aluno:** {aluno_telefone}
+💰 **Comissão:** entra no próximo fechamento semanal.
+📊 **Acompanhar Carteira:** {link_carteira}
+
+Continue compartilhando seu link e aumentando seus ganhos! 🚀
 ~~~
 
 [event:enrollment.address_proof_rejected]

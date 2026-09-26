@@ -593,16 +593,16 @@ def _notify_phone_recovered(profile, *, old_phone: str, new_phone: str) -> None:
     when = timezone.localtime()
     raw_cpf = profile.cpf or ""
     cpf_masked = (
-        f"***.***.{raw_cpf[-4:-2]}-{raw_cpf[-2:]}"
+        f"•••.•••.{raw_cpf[-4:-2]}-{raw_cpf[-2:]}"
         if len(raw_cpf) == 11
-        else "***.***.***-**"
+        else "•••.•••.•••-••"
     )
     new_phone_masked = mask_phone_privacy(new_phone)
     text = (
-        "🔒 Alerta de Segurança Supletivo Brasil: O número de WhatsApp vinculado ao seu CPF "
-        f"({cpf_masked}) foi alterado para {new_phone_masked} em {when.strftime('%d/%m/%Y')} às {when.strftime('%H:%M')}. "
-        "Todas as sessões anteriores foram encerradas por segurança. Se você não reconhece ou não solicitou esta alteração, "
-        "entre em contato imediatamente com o suporte oficial."
+        "🔒 **Alerta de Segurança — Supletivo Brasil**\n\n"
+        f"O número de WhatsApp vinculado ao seu CPF ({cpf_masked}) foi alterado para **{new_phone_masked}** em {when.strftime('%d/%m/%Y')} às {when.strftime('%H:%M')}.\n\n"
+        "✅ Todas as sessões anteriores foram encerradas por segurança.\n\n"
+        "⚠️ **Não reconhece esta alteração?** Entre em contato imediatamente com o nosso suporte oficial."
     )
     if old_phone:
         try:
@@ -610,6 +610,7 @@ def _notify_phone_recovered(profile, *, old_phone: str, new_phone: str) -> None:
                 text=text,
                 caller="auth.phone_recovered_old_phone",
                 phone=old_phone,
+                title="Alerta de Segurança",
                 whatsapp=True,
             )
         except Exception as exc:  # noqa: BLE001
@@ -620,7 +621,8 @@ def _notify_phone_recovered(profile, *, old_phone: str, new_phone: str) -> None:
                 text=text,
                 caller="auth.phone_recovered_email",
                 email=profile.email,
-                subject="Alerta de Segurança: Troca de Telefone Cadastrado - Supletivo Brasil",
+                title="Alerta de Segurança",
+                subject="Alerta de Segurança: Troca de Telefone Cadastrado — Supletivo Brasil",
                 email_channel=True,
                 whatsapp=False,
             )
