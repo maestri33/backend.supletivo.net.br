@@ -514,8 +514,12 @@ def apply_grade(submission_id: int, grade_value, justification: str) -> None:
             send_event(
                 "training.submission_rejected",
                 user=sub.user,
-                subject=f"Atividade rejeitada: {sub.material.title}",
-                body_md_override=(justification or "")[:400],
+                ctx={
+                    "materia_titulo": sub.material.title,
+                    "motivo": (justification or "Ajuste necessário conforme as instruções.")[:400],
+                    "link_app": "https://app.supletivo.net.br/treinamento",
+                },
+                subject=f"Supletivo Brasil — Atividade de {sub.material.title} precisa de ajuste",
             )
         except Exception:  # noqa: BLE001
             logger.warning(

@@ -172,12 +172,21 @@ def _notify_fee_event(
         return
     cp = profiles.get(coord)
     sp = profiles.get(enr.user)
+    s_name = (sp.name if sp and sp.name else None) or "Aluno"
+    raw_phone = sp.phone if sp else None
+    d = "".join(c for c in (raw_phone or "") if c.isdigit())
+    if d.startswith("55") and len(d) in (12, 13):
+        d = d[2:]
+    fmt_phone = f"({d[:2]}) {d[2:7]}-{d[7:]}" if len(d) == 11 else (f"({d[:2]}) {d[2:6]}-{d[6:]}" if len(d) == 10 else (raw_phone or "-"))
     try:
         send_event(
             event,
             profile=cp,
             ctx={
-                "student_name": (sp.name if sp else None) or "um aluno",
+                "student_name": s_name,
+                "aluno_nome": s_name,
+                "student_phone": fmt_phone,
+                "aluno_telefone": fmt_phone,
                 **placeholders,
             },
             idempotency_key=f"{event}_{enr.external_id}{idem_suffix}",

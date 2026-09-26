@@ -963,7 +963,7 @@ Você confirma seus próprios dados antes de qualquer matrícula.
 [event:enrollment.concluded_referral]
 channels: whatsapp,email
 title: Nova matrícula concluída por indicação!
-subject: Sua indicação concluiu a matrícula! 🎓
+subject: Supletivo Brasil — Sua indicação {aluno_nome} concluiu a matrícula! 🎓
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -972,5 +972,47 @@ source: users.roles.student
 delay_minutes: 0
 active: true
 ~~~
-Parabéns, {nome}! Sua indicação concluiu a matrícula e virou aluno com sucesso! 🎓
+Parabéns, {name}! Sua indicação {aluno_nome} ({aluno_telefone}) concluiu a matrícula e agora é oficialmente ALUNO do Supletivo Brasil! 🎓
+
+Sua comissão está garantida e entra no próximo fechamento semanal. Continue compartilhando seu link! 🚀
 ~~~
+
+[event:enrollment.address_proof_rejected]
+channels: whatsapp,email
+title: Comprovante de residência precisa de ajuste
+subject: Supletivo Brasil — Ajuste no comprovante de endereço
+media_url: 
+media_type: 
+mail_template: supletivo
+fires_on: 
+source: users.roles.enrollment
+delay_minutes: 0
+active: true
+~~~
+{name}, seu comprovante de residência não pôde ser aceito. Motivo: {motivo}
+
+Envie pelo aplicativo uma conta recente no seu nome ou de parente direto:
+{link_app}
+~~~
+
+[event:training.submission_rejected]
+channels: whatsapp,email
+title: Atividade precisa de revisão
+subject: Supletivo Brasil — Sua atividade em {materia_titulo} precisa de ajuste
+media_url: 
+media_type: 
+mail_template: supletivo
+fires_on: 
+source: users.roles.training
+delay_minutes: 0
+active: true
+~~~
+{name}, sua atividade no treinamento ({materia_titulo}) precisa de um ajuste antes de ser aprovada. ✍️
+
+Feedback:
+{motivo}
+
+Acesse o aplicativo para enviar novamente e destravar seu painel:
+{link_app}
+~~~
+

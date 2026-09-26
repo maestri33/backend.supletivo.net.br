@@ -284,11 +284,14 @@ def validate_and_store(user_external_id: str, *, caller: str) -> str:
         try:
             from notify.interface.events import send_event
 
+            ev = "candidate.address_proof_rejected" if caller == "candidate" else "enrollment.address_proof_rejected"
             send_event(
-                "enrollment.address_proof_rejected",
+                ev,
                 profile=p,
-                subject="Seu comprovante de endereço precisa de ajuste",
-                body_md_override=payload.get("reason", "")[:400],
+                ctx={
+                    "motivo": payload.get("reason", "Comprovante ilegível ou em nome de terceiros.")[:400],
+                    "link_app": "https://app.supletivo.net.br/documentos",
+                },
             )
         except Exception:  # noqa: BLE001
             logger.warning("address_proof.notify_failed", caller=caller, status=status)

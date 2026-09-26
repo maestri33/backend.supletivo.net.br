@@ -32,6 +32,7 @@ class CheckIn(Schema):
     preferred_channel: str | None = Field(default=None, description="Canal preferido para envio de OTP: 'whatsapp', 'email' ou 'all'")
     attribution: AttributionIn | None = None
     turnstile_token: str | None = None  # Token emitido pelo Cloudflare Turnstile
+    auto_capture: bool = Field(default=True, description="Se False, apenas valida existência e WhatsApp sem capturar lead nem criar usuário")
 
 
 

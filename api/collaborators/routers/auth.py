@@ -31,6 +31,17 @@ def register(request, payload: CandidateCreateIn):
 @router.post("/check", response=CheckOut, auth=None, summary="Verificação de conta / disparo de OTP ou cadastro de candidato")
 def check(request, payload: CheckIn):
     """Check de telefone/CPF: dispara OTP ou captura promotor (candidato) no funil de entrada."""
+    service_authed = service_secret_ok(request)
+    if not payload.auto_capture:
+        return auth_iface.check(
+            cpf=payload.cpf,
+            phone=payload.phone,
+            external_id=payload.external_id,
+            send_otp=payload.send_otp,
+            preferred_channel=payload.preferred_channel,
+            service_authed=service_authed,
+        )
+
     return candidate_iface.check_or_capture(
         cpf=payload.cpf,
         phone=payload.phone,
@@ -38,7 +49,7 @@ def check(request, payload: CheckIn):
         external_id=payload.external_id,
         send_otp=payload.send_otp,
         preferred_channel=payload.preferred_channel,
-        service_authed=service_secret_ok(request),
+        service_authed=service_authed,
         hub=payload.hub or payload.ref,
     )
 

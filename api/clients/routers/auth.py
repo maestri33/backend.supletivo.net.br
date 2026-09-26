@@ -14,6 +14,7 @@ from api.schemas.auth import CheckIn, CheckOut, PhoneRecoveryIn, PhoneRecoveryOu
 from core.request import get_client_ip
 from core.webhook_auth import service_secret_ok
 from integrations.turnstile import verify_turnstile
+from users.auth import service as auth_iface
 from users.roles.lead import service as lead_iface
 
 router = Router(tags=["auth"])
@@ -79,6 +80,18 @@ def check(request, payload: CheckIn):
 
     effective_ref = payload.ref or attr_data.get("ref")
 
+    if not payload.auto_capture:
+        # Modo de verificação pura (ex: app.supletivo.net.br): NUNCA cria usuário ou lead
+        res = auth_iface.check(
+            cpf=payload.cpf,
+            phone=payload.phone,
+            external_id=payload.external_id,
+            send_otp=payload.send_otp,
+            preferred_channel=payload.preferred_channel,
+            service_authed=service_authed,
+        )
+        return res
+
     res = lead_iface.check_or_capture(
         cpf=payload.cpf,
         phone=payload.phone,
@@ -127,6 +140,12 @@ def auth_capture(request, payload: LeadCaptureIn):
     response=PhoneRecoveryOut,
     auth=None,
     summary="Recuperação de conta e atualização de telefone por CPF (alias)",
+)
+@router.post(
+    "/recovery/contact",
+    response=PhoneRecoveryOut,
+    auth=None,
+    summary="Recuperação de conta e atualização de contato por CPF (alias contact)",
 )
 def recover_phone_endpoint(request, payload: PhoneRecoveryIn):
     """Endpoint seguro para solicitação e execução de troca de número de WhatsApp por CPF.

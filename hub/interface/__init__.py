@@ -71,10 +71,15 @@ def _notify_coordinator_assigned(user: User) -> None:
     from users.profiles import interface as profiles
 
     p = profiles.get(user)
+    from hub.models import Hub
+
+    h = Hub.objects.filter(coordinator=user).first()
+    polo_name = getattr(h, "brand", None) or "Polo Supletivo Brasil"
     try:
         send_event(
             "hub.coordinator_assigned",
             profile=p,
+            ctx={"polo_nome": polo_name},
             idempotency_key=f"hub_coord_assigned_{user.external_id}",
         )
     except Exception as exc:  # noqa: BLE001

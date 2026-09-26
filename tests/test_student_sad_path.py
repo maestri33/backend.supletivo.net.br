@@ -438,3 +438,29 @@ def test_student_me_forbidden_for_enrollment_role(client: Client, default_hub: H
         HTTP_AUTHORIZATION=f"Bearer {token}",
     )
     assert res.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# 16. Check com auto_capture=False NUNCA cria usuário no banco (app.supletivo.net.br)
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_student_check_with_auto_capture_false_never_creates_user(client: Client, monkeypatch):
+    monkeypatch.setattr("users.auth.service._check_phone_whatsapp", lambda phone: (True, phone))
+    initial_user_count = User.objects.count()
+
+    res = client.post(
+        f"{BASE}/auth/check",
+        data=json.dumps({"phone": "43999077150", "auto_capture": False}),
+        content_type="application/json",
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["found"] is False
+    assert data["registered"] is False
+    assert data["external_id"] is None
+    assert data["whatsapp"] is True
+    assert data["created"] is False
+
+    # Confirma que absolutamente nenhum usuário foi inserido no banco de dados
+    assert User.objects.count() == initial_user_count
+
