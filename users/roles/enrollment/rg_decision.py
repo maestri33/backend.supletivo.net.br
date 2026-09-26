@@ -116,19 +116,29 @@ def _notify_rg_rejected(enr: Enrollment, reason: str | None) -> None:
 
 
 def _notify_rg_review(enr: Enrollment, reason: str | None) -> None:
-    # wave-2: send_event lê teor/canais/is_tts do Template no DB. WhatsApp-only (coordenador).
     from notify.interface.events import send_event
 
-    coord = enr.hub.coordinator
+    coord = enr.hub.coordinator if enr.hub else None
     if coord is None:
         return
     cp = profiles.get(coord)
+    student_p = profiles.get(enr.user)
+    student_name = (student_p.name if student_p else None) or "Aluno"
+    student_phone = (student_p.phone if student_p else None) or "-"
+    polo_name = getattr(enr.hub, "brand", None) or "Polo"
     try:
         send_event(
             "enrollment.rg_in_review",
             profile=cp,
-            ctx={"detail": (reason or "").strip()},
-            channels_override=("whatsapp",),
+            ctx={
+                "detail": (reason or "").strip(),
+                "aluno_nome": student_name,
+                "student_name": student_name,
+                "aluno_telefone": student_phone,
+                "student_phone": student_phone,
+                "polo_nome": polo_name,
+                "link_painel": "https://app.supletivo.net.br/painel/matriculas",
+            },
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("enrollment.notify_rg_review_failed", error=str(exc))

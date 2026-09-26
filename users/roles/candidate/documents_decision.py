@@ -103,24 +103,39 @@ def _notify_doc_event(
     wave-2: send_event lê teor/canais/is_tts do Template no DB."""
     from notify.interface.events import send_event
 
+    cand_p = profiles.get(cand.user)
+    cand_name = (cand_p.name if cand_p else None) or "Candidato"
+    cand_phone = (cand_p.phone if cand_p else None) or "-"
+    polo_name = getattr(cand.hub, "brand", None) or "Polo"
+
     if event == "candidate.document_in_review":
-        coord = cand.hub.coordinator
+        coord = cand.hub.coordinator if cand.hub else None
         if coord is None:
             return
-        cp = profiles.get(coord)
-        target_profile = cp
-        channels = ("whatsapp",)  # coordenador: WhatsApp-only (legado)
+        target_profile = profiles.get(coord)
+        ctx_data = {
+            "detail": detail or "",
+            "motivo_ia": detail or "Análise visual inconclusiva",
+            "candidato_nome": cand_name,
+            "candidato_telefone": cand_phone,
+            "doc_tipo": "Documento (RG/CNH)",
+            "polo_nome": polo_name,
+            "link_painel": "https://app.supletivo.net.br/painel/analise",
+        }
     else:
-        target_profile = profiles.get(cand.user)
-        channels = None  # Template decide os canais
+        target_profile = cand_p
+        ctx_data = {
+            "detail": detail or "",
+            "candidato_nome": cand_name,
+            "link_app": "https://app.supletivo.net.br/documentos",
+        }
 
     try:
         send_event(
             event,
             profile=target_profile,
-            ctx={"detail": detail or ""},
+            ctx=ctx_data,
             subject=subject,
-            channels_override=channels,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(

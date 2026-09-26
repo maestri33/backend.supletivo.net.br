@@ -16,7 +16,10 @@ router = Router(tags=["auth"])
 def staff_check(request, payload: StaffCheckIn):
     """Acha o staff (superuser) por cpf/phone/external_id e dispara OTP."""
     return auth_iface.check_staff(
-        cpf=payload.cpf, phone=payload.phone, external_id=payload.external_id
+        cpf=payload.cpf,
+        phone=payload.phone,
+        external_id=payload.external_id,
+        preferred_channel=payload.preferred_channel,
     )
 
 

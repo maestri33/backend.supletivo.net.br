@@ -17,6 +17,7 @@ def _reject(status):
         coordinator_id = 1
 
     class _User:
+        id = 1
         external_id = "u1"
 
     class _Cand:
@@ -32,7 +33,7 @@ def _reject(status):
     with (
         patch.object(cs.Candidate, "objects") as cobj,
         patch.object(cs, "_set_status") as setst,
-        patch.object(cs, "_notify_candidate_rejected"),
+        patch("users.roles.candidate.coordinator._notify_candidate_rejected"),
     ):
         cobj.filter.return_value.select_related.return_value.first.return_value = (
             _Cand()

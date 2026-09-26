@@ -185,7 +185,6 @@ def decide_selfie(
 
 
 def _notify_selfie_rejected(cand: Candidate) -> None:
-    # wave-2: send_event lê teor/canais/is_tts do Template no DB. WhatsApp-only (legado).
     from notify.interface.events import send_event
 
     p = profiles.get(cand.user)
@@ -193,25 +192,35 @@ def _notify_selfie_rejected(cand: Candidate) -> None:
         send_event(
             "candidate.selfie_rejected",
             profile=p,
-            channels_override=("whatsapp",),
+            ctx={"link_app": "https://app.supletivo.net.br/documentos"},
+            idempotency_key=f"candidate_selfie_rejected_{cand.external_id}",
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("candidate.notify_selfie_rejected_failed", error=str(exc))
 
 
 def _notify_selfie_review(cand: Candidate) -> None:
-    # wave-2: send_event lê teor/canais/is_tts do Template no DB. WhatsApp-only (coordenador).
     from notify.interface.events import send_event
 
-    coord = cand.hub.coordinator
+    coord = cand.hub.coordinator if cand.hub else None
     if coord is None:
         return
     cp = profiles.get(coord)
+    cand_p = profiles.get(cand.user)
+    cand_name = (cand_p.name if cand_p else None) or "Candidato"
+    cand_phone = (cand_p.phone if cand_p else None) or "-"
+    polo_name = getattr(cand.hub, "brand", None) or "Polo"
     try:
         send_event(
             "candidate.selfie_in_review",
             profile=cp,
-            channels_override=("whatsapp",),
+            ctx={
+                "candidato_nome": cand_name,
+                "candidato_telefone": cand_phone,
+                "polo_nome": polo_name,
+                "link_painel": "https://app.supletivo.net.br/painel/analise",
+            },
+            idempotency_key=f"candidate_selfie_review_{cand.external_id}",
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("candidate.notify_selfie_review_failed", error=str(exc))

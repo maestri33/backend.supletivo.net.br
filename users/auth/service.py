@@ -363,16 +363,28 @@ def _find_user(
     return None
 
 
-def _send_or_wait(user) -> dict:
+def mask_email_privacy(email: str | None) -> str | None:
+    """`carlos.silva@gmail.com` → `c***a@gmail.com` — mascaramento de privacidade para telas e logs."""
+    if not email or "@" not in email:
+        return None
+    user_part, domain_part = email.split("@", 1)
+    if len(user_part) <= 2:
+        masked_user = user_part[0] + "***"
+    else:
+        masked_user = user_part[0] + "***" + user_part[-1]
+    return f"{masked_user}@{domain_part}"
+
+
+def _send_or_wait(user, channel: str | None = None) -> dict:
     """Dispara OTP p/ um user CONHECIDO (check/recover/staff). Devolve o resultado REAL, não finge:
 
-    - `otp_sent True`  → foi mesmo pro WhatsApp.
+    - `otp_sent True`  → foi mesmo pro WhatsApp ou E-mail.
     - `otp_sent False` + `otp_wait` → rate-limitado; um código recente já saiu, peça reenvio depois.
-    - `otp_sent False` + `otp_wait=None` → falha real (sem telefone / dispatch). O caller interativo
+    - `otp_sent False` + `otp_wait=None` → falha real (sem telefone/email / dispatch). O caller interativo
       (check) deve levantar OTP_NOT_SENT em vez de mentir que enviou.
     """
     try:
-        otp = otp_service.generate_and_send(user)
+        otp = otp_service.generate_and_send(user, channel=channel)
     except RateLimited as exc:
         return {"otp_sent": False, "otp_wait": exc.retry_after_s}
     except Exception as exc:  # noqa: BLE001 — falha de dispatch não pode virar sucesso silencioso
@@ -392,6 +404,7 @@ def check(
     external_id: str | None = None,
     send_otp: bool = True,
     service_authed: bool = False,
+    preferred_channel: str | None = None,
 ) -> dict:
     """Acha o usuário por cpf/phone/external_id. **O NORMAL é disparar OTP** (`send_otp=True`).
 
@@ -464,6 +477,7 @@ def check(
     user_profile = profiles.get(user)
     user_name = user_profile.name if user_profile else None
     masked_phone = _mask_phone_br(user_profile.phone) if (user_profile and user_profile.phone) else None
+    masked_email = mask_email_privacy(user_profile.email) if (user_profile and user_profile.email) else None
 
     if not send_otp:
         if not service_authed:
@@ -483,16 +497,39 @@ def check(
             "external_id": str(user.external_id),
             "name": user_name,
             "masked_phone": masked_phone,
+            "masked_email": masked_email,
+            "channels_sent": [],
             "whatsapp": None,
             "roles": active,
             "token": tokens["access_token"],
         }
 
-    result = _send_or_wait(user)
+    result = _send_or_wait(user, channel=preferred_channel)
     if not result["otp_sent"] and result["otp_wait"] is None:
         raise IntegrationError(
             "Não foi possível enviar o código OTP.", code="OTP_NOT_SENT"
         )
+
+    # Identifica os canais para onde o código foi direcionado
+    channels_sent: list[str] = []
+    if result["otp_sent"]:
+        pref = (preferred_channel or "whatsapp").lower().strip()
+        has_phone = bool(user_profile and user_profile.phone)
+        has_email = bool(user_profile and user_profile.email)
+        if pref == "all":
+            if has_phone:
+                channels_sent.append("whatsapp")
+            if has_email:
+                channels_sent.append("email")
+        elif pref == "email":
+            if has_email:
+                channels_sent.append("email")
+        else:  # whatsapp
+            if has_phone:
+                channels_sent.append("whatsapp")
+            elif has_email:
+                channels_sent.append("email")
+
     return {
         **result,
         "found": True,
@@ -500,13 +537,15 @@ def check(
         "external_id": str(user.external_id),
         "name": user_name,
         "masked_phone": masked_phone,
+        "masked_email": masked_email,
+        "channels_sent": channels_sent,
         "whatsapp": None,
         "roles": active,
         "token": None,
     }
 
 
-def recover(*, cpf: str | None = None, phone: str | None = None) -> dict:
+def recover(*, cpf: str | None = None, phone: str | None = None, preferred_channel: str | None = None) -> dict:
     """Recupera acesso por cpf/phone: dispara OTP no canal conhecido. NUNCA devolve o external_id."""
     if cpf:
         try:
@@ -526,7 +565,7 @@ def recover(*, cpf: str | None = None, phone: str | None = None) -> dict:
         _jitter()
         return {"found": True, "otp_sent": True, "otp_wait": None}  # shape uniforme
 
-    result = _send_or_wait(user)
+    result = _send_or_wait(user, channel=preferred_channel)
     return {"found": True, **result}
 
 
@@ -779,7 +818,11 @@ def _is_staff_user(user) -> bool:
 
 
 def check_staff(
-    *, cpf: str | None = None, phone: str | None = None, external_id: str | None = None
+    *,
+    cpf: str | None = None,
+    phone: str | None = None,
+    external_id: str | None = None,
+    preferred_channel: str | None = None,
 ) -> dict:
     """Acha o STAFF (superuser) por cpf/phone/external_id e dispara OTP se for staff.
 
@@ -810,10 +853,39 @@ def check_staff(
             "otp_wait": None,
             "found": False,
             "external_id": None,
+            "masked_email": None,
+            "channels_sent": [],
         }
 
-    result = _send_or_wait(user)
-    return {**result, "found": True, "external_id": str(user.external_id)}
+    result = _send_or_wait(user, channel=preferred_channel)
+    user_profile = profiles.get(user)
+    masked_email = mask_email_privacy(user_profile.email) if (user_profile and user_profile.email) else None
+    channels_sent = []
+    if result["otp_sent"]:
+        pref = (preferred_channel or "whatsapp").lower().strip()
+        has_phone = bool(user_profile and user_profile.phone)
+        has_email = bool(user_profile and user_profile.email)
+        if pref == "all":
+            if has_phone:
+                channels_sent.append("whatsapp")
+            if has_email:
+                channels_sent.append("email")
+        elif pref == "email":
+            if has_email:
+                channels_sent.append("email")
+        else:
+            if has_phone:
+                channels_sent.append("whatsapp")
+            elif has_email:
+                channels_sent.append("email")
+
+    return {
+        **result,
+        "found": True,
+        "external_id": str(user.external_id),
+        "masked_email": masked_email,
+        "channels_sent": channels_sent,
+    }
 
 
 def login_staff(*, external_id: str, otp: str) -> dict:

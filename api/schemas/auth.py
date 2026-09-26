@@ -27,6 +27,7 @@ class CheckIn(Schema):
     external_id: str | None = None  # re-dispara OTP de usuário já conhecido (do USER)
     ref: str | None = None  # external_id do promotor (landing ?ref=)
     send_otp: bool = True  # send_otp=False permite checar/gerar token em teste/bot autenticado
+    preferred_channel: str | None = Field(default=None, description="Canal preferido para envio de OTP: 'whatsapp', 'email' ou 'all'")
     attribution: AttributionIn | None = None
     turnstile_token: str | None = None  # Token emitido pelo Cloudflare Turnstile
 
@@ -42,6 +43,8 @@ class CheckOut(Schema):
     )
     name: str | None = None
     masked_phone: str | None = None
+    masked_email: str | None = Field(default=None, description="E-mail mascarado para onde o OTP foi enviado")
+    channels_sent: list[str] | None = Field(default=None, description="Canais para onde o código foi despachado")
     otp_sent: bool = False
     otp_wait: int | None = None
     whatsapp: bool | None = None

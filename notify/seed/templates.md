@@ -4,8 +4,8 @@
 
 [event:candidate.awaiting_approval]
 channels: whatsapp,email
-title: 
-subject: 
+title: Novo candidato aguardando aprovação
+subject: Supletivo Brasil — {candidato_nome} concluiu o cadastro e aguarda sua aprovação
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -14,13 +14,16 @@ source: users.roles.candidate
 delay_minutes: 0
 active: true
 ~~~
-{name}, um candidato concluiu o cadastro e aguarda a sua aprovação para virar promotor. Confira no painel, {name}.
+{name}, o candidato {candidato_nome} ({candidato_telefone}) concluiu o cadastro no polo {polo_nome} e aguarda a sua aprovação para virar promotor.
+
+Confira os dados e aprove pelo painel:
+{link_painel}
 ~~~
 
 [event:candidate.doc_type_reset]
 channels: whatsapp,email
-title: 
-subject: 
+title: Reenvio de documento liberado
+subject: Supletivo Brasil — Seu reenvio de documento foi liberado
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -34,8 +37,8 @@ active: true
 
 [event:candidate.document_approved]
 channels: whatsapp,email
-title: 
-subject: 
+title: Documento aprovado
+subject: Supletivo Brasil — Seu documento foi aprovado com sucesso! ✅
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -49,8 +52,8 @@ Pode seguir, {name}! ✅ Seu documento foi aprovado e o cadastro segue em frente
 
 [event:candidate.document_in_review]
 channels: whatsapp,email
-title: 
-subject: 
+title: Documento de candidato em análise
+subject: Supletivo Brasil — Documento de {candidato_nome} precisa da sua análise
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -59,13 +62,16 @@ source: users.roles.candidate
 delay_minutes: 0
 active: true
 ~~~
-{name}, o documento de um candidato precisa da sua análise — a IA ficou em dúvida. Aprove ou reprove no painel, {name}.
+{name}, o documento ({doc_tipo}) do candidato {candidato_nome} ({candidato_telefone}) precisa da sua análise — a IA ficou em dúvida.
+
+Aprove ou reprove pelo painel:
+{link_painel}
 ~~~
 
 [event:candidate.document_rejected]
 channels: whatsapp,email
-title: 
-subject: 
+title: Documento precisa ser reenviado
+subject: Supletivo Brasil — Precisamos de uma nova foto do seu documento 📄
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -74,13 +80,16 @@ source: users.roles.candidate
 delay_minutes: 0
 active: true
 ~~~
-{name}, precisamos de uma nova foto do seu documento: {detail} Reenvie pelo aplicativo, {name} — é rapidinho. 📄
+{name}, precisamos de uma nova foto do seu documento: {detail}
+
+Reenvie pelo aplicativo, {name} — é rapidinho:
+{link_app}
 ~~~
 
 [event:candidate.rejected]
 channels: whatsapp,email
-title: 
-subject: 
+title: Cadastro não aprovado
+subject: Supletivo Brasil — Informações sobre o seu cadastro de colaborador
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -89,13 +98,15 @@ source: users.roles.candidate
 delay_minutes: 0
 active: true
 ~~~
-{name}, seu cadastro de colaborador não foi aprovado neste momento. Fale com o coordenador do seu polo para entender os próximos passos, {name}.
+{name}, seu cadastro de colaborador não foi aprovado neste momento. Motivo: {motivo}
+
+Fale com o coordenador do seu polo {polo_nome} ({polo_contato}) para entender os próximos passos, {name}.
 ~~~
 
 [event:candidate.selfie_approved]
 channels: whatsapp,email
-title: 
-subject: 
+title: Selfie aprovada
+subject: Supletivo Brasil — Sua selfie foi confirmada! ✅
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -109,8 +120,8 @@ Aprovado, {name}! ✅ Sua selfie foi confirmada e o cadastro segue em frente. Co
 
 [event:candidate.selfie_in_review]
 channels: whatsapp,email
-title: 
-subject: 
+title: Selfie de candidato em análise
+subject: Supletivo Brasil — Selfie de {candidato_nome} precisa da sua análise
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -119,13 +130,16 @@ source: users.roles.candidate
 delay_minutes: 0
 active: true
 ~~~
-{name}, a selfie de um candidato precisa da sua análise — a IA ficou em dúvida. Aprove ou reprove no painel, {name}.
+{name}, a selfie do candidato {candidato_nome} ({candidato_telefone}) no polo {polo_nome} precisa da sua análise — a IA ficou em dúvida.
+
+Aprove ou reprove pelo painel:
+{link_painel}
 ~~~
 
 [event:candidate.selfie_rejected]
 channels: whatsapp,email
-title: 
-subject: 
+title: Selfie precisa ser reenviada
+subject: Supletivo Brasil — Precisamos de uma nova selfie
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -134,13 +148,14 @@ source: users.roles.candidate
 delay_minutes: 0
 active: true
 ~~~
-{name}, sua selfie não pôde ser confirmada. Envie uma nova foto, nítida e mostrando o rosto, {name}.
+{name}, sua selfie não pôde ser confirmada. Envie uma nova foto pelo aplicativo, nítida e mostrando bem o rosto, {name}:
+{link_app}
 ~~~
 
 [event:enrollment.awaiting_release]
 channels: whatsapp,email
-title: 
-subject: 
+title: Matrícula aguarda liberação
+subject: Supletivo Brasil — Matrícula de {aluno_nome} aguarda liberação
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -149,13 +164,16 @@ source: users.roles.enrollment
 delay_minutes: 0
 active: true
 ~~~
-{name}, uma matrícula concluiu o envio de dados e aguarda a sua liberação no painel. Confira quando puder, {name}.
+{name}, a matrícula do aluno {aluno_nome} ({aluno_telefone}) no polo {polo_nome} concluiu o envio de dados e aguarda a sua liberação.
+
+Confira os documentos e libere pelo painel:
+{link_painel}
 ~~~
 
 [event:enrollment.credentials]
 channels: whatsapp,email
-title: 
-subject: 
+title: Seus dados de acesso à plataforma
+subject: Supletivo Brasil — Seu login e senha de acesso chegaram! 📚
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -175,8 +193,8 @@ Guarde com você, {name} — é por aqui que você entra nas suas aulas. Bons es
 
 [event:enrollment.fee_due_paid]
 channels: whatsapp,email
-title: 
-subject: 
+title: 2ª parcela da taxa paga
+subject: Supletivo Brasil — 2ª parcela da taxa de {student_name} foi paga ✅
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -190,8 +208,8 @@ active: true
 
 [event:enrollment.fee_paid]
 channels: whatsapp,email
-title: 
-subject: 
+title: 1ª parcela da taxa paga
+subject: Supletivo Brasil — 1ª parcela de {student_name} paga! Liberar acesso
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -205,8 +223,8 @@ active: true
 
 [event:enrollment.fee_problem]
 channels: whatsapp,email
-title: 
-subject: 
+title: Problema na taxa de matrícula
+subject: Supletivo Brasil — Problema no pagamento da taxa de {student_name}
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -220,8 +238,8 @@ active: true
 
 [event:enrollment.fee_scheduled]
 channels: whatsapp,email
-title: 
-subject: 
+title: 2ª parcela da taxa agendada
+subject: Supletivo Brasil — 2ª parcela de {student_name} agendada
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -235,8 +253,8 @@ active: true
 
 [event:enrollment.released]
 channels: whatsapp,email
-title: 
-subject: 
+title: Sua matrícula foi liberada!
+subject: Supletivo Brasil — Bem-vindo(a)! Sua matrícula foi liberada 💚
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -250,8 +268,8 @@ active: true
 
 [event:enrollment.rg_approved]
 channels: whatsapp,email
-title: 
-subject: 
+title: RG aprovado
+subject: Supletivo Brasil — Seu documento foi aprovado com sucesso! ✅
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -265,8 +283,8 @@ Tudo certo, {name}! ✅ Seu RG foi aprovado e sua matrícula segue em frente. Co
 
 [event:enrollment.rg_in_review]
 channels: whatsapp,email
-title: 
-subject: 
+title: RG de matrícula em análise
+subject: Supletivo Brasil — RG de {aluno_nome} precisa da sua análise
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -275,13 +293,16 @@ source: users.roles.enrollment
 delay_minutes: 0
 active: true
 ~~~
-{name}, o RG de uma matrícula precisa da sua análise: {detail} Aprove ou reprove no painel, {name}.
+{name}, o RG do aluno {aluno_nome} ({aluno_telefone}) no polo {polo_nome} precisa da sua análise: {detail}
+
+Aprove ou reprove pelo painel:
+{link_painel}
 ~~~
 
 [event:enrollment.rg_rejected]
 channels: whatsapp,email
-title: 
-subject: 
+title: RG precisa ser reenviado
+subject: Supletivo Brasil — Precisamos de uma nova foto do seu RG 📄
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -290,13 +311,16 @@ source: users.roles.enrollment
 delay_minutes: 0
 active: true
 ~~~
-{name}, precisamos de uma nova foto do seu RG: {detail} Reenvie pelo aplicativo, {name} — é rapidinho. 📄
+{name}, precisamos de uma nova foto do seu RG: {detail}
+
+Reenvie pelo aplicativo, {name} — é rapidinho:
+{link_app}
 ~~~
 
 [event:enrollment.selfie_approved]
 channels: whatsapp,email
-title: 
-subject: 
+title: Matrícula assinada com sucesso
+subject: Supletivo Brasil — Sua matrícula foi assinada! ✍️
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -310,8 +334,8 @@ active: true
 
 [event:enrollment.selfie_in_review]
 channels: whatsapp,email
-title: 
-subject: 
+title: Selfie de matrícula em análise
+subject: Supletivo Brasil — Selfie de {aluno_nome} precisa da sua análise
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -320,13 +344,16 @@ source: users.roles.enrollment
 delay_minutes: 0
 active: true
 ~~~
-{name}, a selfie de uma matrícula precisa da sua análise — a IA ficou em dúvida. Aprove ou reprove no painel, {name}.
+{name}, a selfie do aluno {aluno_nome} ({aluno_telefone}) no polo {polo_nome} precisa da sua análise — a IA ficou em dúvida.
+
+Aprove ou reprove pelo painel:
+{link_painel}
 ~~~
 
 [event:enrollment.selfie_rejected]
 channels: whatsapp,email
-title: 
-subject: 
+title: Selfie precisa ser reenviada
+subject: Supletivo Brasil — Precisamos de uma nova selfie para sua matrícula
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -335,13 +362,14 @@ source: users.roles.enrollment
 delay_minutes: 0
 active: true
 ~~~
-{name}, sua selfie não pôde ser confirmada. Envie uma nova foto pelo aplicativo, nítida e mostrando bem o rosto, {name}.
+{name}, sua selfie não pôde ser confirmada. Envie uma nova foto pelo aplicativo, nítida e mostrando bem o rosto, {name}:
+{link_app}
 ~~~
 
 [event:hub.coordinator_assigned]
 channels: whatsapp,email
-title: 
-subject: 
+title: Nomeação de coordenação de polo
+subject: Supletivo Brasil — Você agora é coordenador(a) do polo {polo_nome}! 🎉
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -350,13 +378,14 @@ source: hub.interface
 delay_minutes: 0
 active: true
 ~~~
-Parabéns, {name}! Você agora é COORDENADOR de um polo. {name}, acompanhe as matrículas e libere os alunos pelo painel.
+Parabéns, {name}! Você agora é COORDENADOR(A) do polo {polo_nome}. {name}, acompanhe as matrículas, revise documentos e libere os alunos pelo painel:
+{link_painel}
 ~~~
 
 [event:lead.captured]
 channels: whatsapp,email
-title: 
-subject: 
+title: Bem-vindo(a) ao Supletivo Brasil!
+subject: Supletivo Brasil — Seu cadastro foi iniciado! Falta só um passo
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -370,8 +399,8 @@ Olá, {name}! Que bom ter você com a gente. Seu cadastro está pronto, {name} �
 
 [event:lead.captured.promoter]
 channels: whatsapp,email
-title: 
-subject: 
+title: Novo lead na sua rede
+subject: Supletivo Brasil — {lead_nome} entrou na sua indicação! 🚀
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -380,13 +409,18 @@ source: users.roles.lead
 delay_minutes: 0
 active: true
 ~~~
-Boa notícia, {name}! {lead_name} acaba de entrar na sua rede pela sua indicação. Incentive a concluir o pagamento, {name}. 👊
+Boa notícia, {name}! {lead_nome} ({lead_telefone}) acabou de entrar na sua rede pela sua indicação. 🚀
+
+Chame agora no WhatsApp para tirar dúvidas e incentivar a concluir a matrícula:
+{lead_whatsapp_url}
+
+Bora fechar mais essa comissão, {name}! 👊
 ~~~
 
 [event:lead.checkout.card]
 channels: whatsapp,email
-title: 
-subject: 
+title: Link de pagamento da sua matrícula
+subject: Supletivo Brasil — Link para pagamento no cartão ({valor})
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -403,8 +437,8 @@ Qualquer dúvida é só chamar, {name}.
 
 [event:lead.checkout.pix]
 channels: whatsapp,email
-title: 
-subject: 
+title: PIX da sua matrícula
+subject: Supletivo Brasil — Código PIX para pagamento ({valor})
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -422,8 +456,8 @@ Ou use o PIX copia-e-cola, {name}:
 
 [event:lead.paid]
 channels: whatsapp,email
-title: 
-subject: 
+title: Matrícula confirmada!
+subject: Supletivo Brasil — Pagamento confirmado! Inicie seus documentos 🎉
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -437,8 +471,8 @@ Parabéns, {name}! 🎉 Seu pagamento foi confirmado e sua matrícula começou. 
 
 [event:lead.paid.coordinator]
 channels: whatsapp,email
-title: 
-subject: 
+title: Nova matrícula no seu polo!
+subject: Supletivo Brasil — Nova matrícula no polo {polo_nome} ({aluno_nome})
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -447,13 +481,17 @@ source: users.roles.lead
 delay_minutes: 0
 active: true
 ~~~
-{name}, uma nova matrícula entrou no polo {polo_nome}! Aluno: {aluno_nome} ({aluno_telefone}). Acompanhe o acolhimento pedagógico e o envio de documentos.
+{name}, uma nova matrícula entrou no polo {polo_nome}!
+
+Aluno: {aluno_nome} ({aluno_telefone})
+Acompanhe o acolhimento pedagógico e o envio de documentos pelo painel:
+{link_painel}
 ~~~
 
 [event:lead.paid.promoter]
 channels: whatsapp,email
-title: 
-subject: 
+title: Matrícula paga por sua indicação!
+subject: Supletivo Brasil — Seu indicado {aluno_nome} pagou a matrícula! ✅
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -462,13 +500,19 @@ source: users.roles.lead
 delay_minutes: 0
 active: true
 ~~~
-{name}, seu indicado {aluno_nome} pagou a matrícula! ✅ Comissão de {comissao_direta} garantida. Total na semana: {leads_semana} (meta: {meta_bonus}). Faltam {falta_para_bonus} para o bônus semanal! 💸
+{name}, seu indicado {aluno_nome} ({aluno_telefone}) pagou a matrícula! ✅
+
+Comissão de {comissao_direta} garantida.
+Total na semana: {leads_semana} (meta: {meta_bonus}). Faltam {falta_para_bonus} para o bônus semanal! 💸
+
+Dê os parabéns ao novo aluno no WhatsApp:
+{aluno_whatsapp_url}
 ~~~
 
 [event:lead.paid.receipt]
 channels: whatsapp,email
-title: 
-subject: 
+title: Comprovante de pagamento
+subject: Supletivo Brasil — Comprovante de pagamento ({valor})
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -484,8 +528,8 @@ Guarde para referência, {name}.
 
 [event:promoter.reactivated]
 channels: whatsapp,email
-title: 
-subject: 
+title: Atuação de promotor reativada
+subject: Supletivo Brasil — Sua conta de promotor foi reativada! 🚀
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -499,8 +543,8 @@ Que bom te ver de volta, {name}! Sua atuação como promotor foi reativada. {nam
 
 [event:promoter.suspended]
 channels: whatsapp,email
-title: 
-subject: 
+title: Atuação de promotor suspensa
+subject: Supletivo Brasil — Aviso sobre sua conta de promotor
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -514,8 +558,8 @@ active: true
 
 [event:student.diploma_issued]
 channels: whatsapp,email
-title: 
-subject: 
+title: Seu diploma está pronto!
+subject: Supletivo Brasil — Parabéns! O seu diploma foi emitido! 🎓
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -529,8 +573,8 @@ active: true
 
 [event:student.diploma_pickup]
 channels: whatsapp,email
-title: 
-subject: 
+title: Retirada de diploma liberada
+subject: Supletivo Brasil — Seu diploma já pode ser retirado no polo! 🎓
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -539,13 +583,13 @@ source: users.roles.student
 delay_minutes: 0
 active: true
 ~~~
-Para retirar o seu diploma, {name}, é só procurar o coordenador do seu polo. Ele já está esperando por você, {name}.
+Para retirar o seu diploma, {name}, é só procurar o coordenador do seu polo {polo_nome}. Ele já está esperando por você, {name}.
 ~~~
 
 [event:student.document_in_review]
 channels: whatsapp,email
-title: 
-subject: 
+title: Documento de aluno em análise
+subject: Supletivo Brasil — Documento ({doc_type}) de {aluno_nome} em análise
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -554,13 +598,16 @@ source: users.roles.student
 delay_minutes: 0
 active: true
 ~~~
-{name}, um documento de aluno ({doc_type}) precisa da sua análise — a IA ficou em dúvida. Aprove ou reprove no painel, {name}.
+{name}, o documento ({doc_type}) do aluno {aluno_nome} ({aluno_telefone}) no polo {polo_nome} precisa da sua análise — a IA ficou em dúvida.
+
+Aprove ou reprove pelo painel:
+{link_painel}
 ~~~
 
 [event:student.document_rejected]
 channels: whatsapp,email
-title: 
-subject: 
+title: Documento precisa ser reenviado
+subject: Supletivo Brasil — Precisamos de uma nova foto do seu documento ({doc_type})
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -570,12 +617,15 @@ delay_minutes: 0
 active: true
 ~~~
 {name}, seu documento ({doc_type}) precisa ser reenviado. Envie uma nova foto, nítida e legível, {name}.{reason_text}
+
+Acesse pelo aplicativo para enviar:
+{link_app}
 ~~~
 
 [event:student.exam_failed]
 channels: whatsapp,email
-title: 
-subject: 
+title: Resultado da sua prova
+subject: Supletivo Brasil — Resultado da sua prova e próximos passos
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -589,8 +639,8 @@ active: true
 
 [event:student.exam_passed]
 channels: whatsapp,email
-title: 
-subject: 
+title: Aprovado na prova final!
+subject: Supletivo Brasil — Você foi APROVADO(A) na prova! 🎉
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -604,8 +654,8 @@ Você foi APROVADO na prova, {name}! 🎉 Estamos finalizando a sua documentaç�
 
 [event:student.exam_released]
 channels: whatsapp,email
-title: 
-subject: 
+title: Prova final liberada para agendamento!
+subject: Supletivo Brasil — Seus documentos foram aprovados! Agende sua prova 📅
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -619,8 +669,8 @@ active: true
 
 [event:student.exam_scheduled]
 channels: whatsapp,email
-title: 
-subject: 
+title: Prova de aluno agendada
+subject: Supletivo Brasil — {aluno_nome} agendou a prova final no polo {polo_nome}
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -629,13 +679,16 @@ source: users.roles.student
 delay_minutes: 0
 active: true
 ~~~
-{name}, um aluno do seu polo agendou a prova e aguarda a sua correção. Confira no painel, {name}.
+{name}, o aluno {aluno_nome} ({aluno_telefone}) do polo {polo_nome} agendou a prova e aguarda a sua correção.
+
+Confira os detalhes no painel:
+{link_painel}
 ~~~
 
 [event:student.pendency_opened]
 channels: whatsapp,email
-title: 
-subject: 
+title: Pendência na sua matrícula
+subject: Supletivo Brasil — Há uma pendência para resolver na sua matrícula
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -649,8 +702,8 @@ active: true
 
 [event:student.veteran]
 channels: whatsapp,email
-title: 
-subject: 
+title: Parabéns, veterano(a)!
+subject: Supletivo Brasil — Você concluiu seus estudos e agora é veterano(a)! 🎓💚
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -664,8 +717,8 @@ active: true
 
 [event:student.veteran.coordinator]
 channels: whatsapp,email
-title: 
-subject: 
+title: Aluno diplomado no polo!
+subject: Supletivo Brasil — {aluno_nome} formou e foi diplomado no polo {polo_nome}! 🎓
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -674,13 +727,15 @@ source: users.roles.student
 delay_minutes: 0
 active: true
 ~~~
-{name}, um aluno do seu polo se formou e foi diplomado. ✅ Sua comissão entra no próximo fechamento, {name}. 💸
+{name}, o aluno {aluno_nome} ({aluno_telefone}) do polo {polo_nome} se formou e foi diplomado com sucesso! ✅
+
+Sua comissão entra no próximo fechamento semanal, {name}. 💸
 ~~~
 
 [event:training.approved]
 channels: whatsapp,email
-title: 
-subject: 
+title: Treinamento aprovado — Você é promotor!
+subject: Supletivo Brasil — Parabéns! Você foi aprovado e agora é PROMOTOR 🎉
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -694,8 +749,8 @@ Parabéns, {name}! 🎉 Você foi aprovado e agora é PROMOTOR. {name}, seu link
 
 [event:training.cleared]
 channels: whatsapp,email
-title: 
-subject: 
+title: Treinamento concluído
+subject: Supletivo Brasil — Painel liberado e link de captação ativo! 🚀
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -709,8 +764,8 @@ Treinamento concluído, {name}! 🎉 Seu painel está liberado e seu link de cap
 
 [event:training.must_train]
 channels: whatsapp,email
-title: 
-subject: 
+title: Conclua seu treinamento de promotor
+subject: Supletivo Brasil — Falta pouco! Conclua o treinamento para ativar seu painel
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -724,8 +779,8 @@ Parabéns, {name}! Você foi aprovado e agora é PROMOTOR. Antes de liberar seu 
 
 [event:training.new_material]
 channels: whatsapp,email
-title: 
-subject: 
+title: Novo treinamento disponível
+subject: Supletivo Brasil — Novo treinamento obrigatório disponível no app
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -741,10 +796,10 @@ active: true
 channels: whatsapp,email
 title: Comprovante de endereço precisa ser reenviado
 subject: Supletivo Brasil — precisamos de outro comprovante de endereço
-media_url:
-media_type:
+media_url: 
+media_type: 
 mail_template: supletivo
-fires_on:
+fires_on: 
 source: users.roles.candidate
 delay_minutes: 0
 active: true
@@ -760,10 +815,10 @@ Envie pelo aplicativo uma conta ou documento recente que mostre o endereço comp
 channels: whatsapp,email
 title: Sua indicação avançou sua bolsa
 subject: Supletivo Brasil — sua indicação pagou e sua bolsa avançou
-media_url:
-media_type:
+media_url: 
+media_type: 
 mail_template: supletivo
-fires_on:
+fires_on: 
 source: users.roles.lead
 delay_minutes: 0
 active: true
@@ -775,11 +830,11 @@ Boa notícia, {name}: sua indicação virou uma matrícula paga! ✅ A comissão
 channels: whatsapp,email
 title: Sua bolsa foi efetivada
 subject: Supletivo Brasil — suas três matrículas efetivaram sua bolsa
-media_url:
-media_type:
+media_url: 
+media_type: 
 mail_template: supletivo
-fires_on:
-source: users.roles.promote
+fires_on: 
+source: users.roles.promoter
 delay_minutes: 0
 active: true
 ~~~
@@ -790,10 +845,10 @@ Você conseguiu, {name}! 🎓 Suas {enroll_goal} matrículas pagas efetivaram su
 channels: whatsapp,email
 title: Promotor ativo e trilha da bolsa iniciada
 subject: Supletivo Brasil — seu acesso está ativo e sua trilha da bolsa começou
-media_url:
-media_type:
+media_url: 
+media_type: 
 mail_template: supletivo
-fires_on:
+fires_on: 
 source: users.roles.training
 delay_minutes: 0
 active: true
@@ -805,10 +860,10 @@ Deu certo, {name}! 🎉 Seu acesso de promotor está ativo e você também entro
 channels: whatsapp,email
 title: Treinamento e trilha da bolsa
 subject: Supletivo Brasil — conclua o treinamento para iniciar sua trilha
-media_url:
-media_type:
+media_url: 
+media_type: 
 mail_template: supletivo
-fires_on:
+fires_on: 
 source: users.roles.training
 delay_minutes: 0
 active: true
@@ -817,7 +872,7 @@ Você foi aprovado, {name}! 🎉 Além do acesso de promotor, você entrou na tr
 ~~~
 
 [event:auth.otp]
-channels: whatsapp
+channels: whatsapp,email
 title: Código de verificação
 subject: Seu código de acesso Supletivo Brasil
 media_url: 
@@ -887,7 +942,7 @@ Se já pagou, pode ignorar esta mensagem — a confirmação é automática. Qua
 ~~~
 
 [event:promoter.lead_invite]
-channels: whatsapp
+channels: whatsapp,email
 title: Convite Supletivo Brasil
 subject: Você recebeu um convite para conhecer o Supletivo
 media_url: 
@@ -919,4 +974,3 @@ active: true
 ~~~
 Parabéns, {nome}! Sua indicação concluiu a matrícula e virou aluno com sucesso! 🎓
 ~~~
-

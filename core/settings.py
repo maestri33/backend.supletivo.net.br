@@ -52,7 +52,7 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=DEFAULT_ALLOWED_HOSTS)
 # (`TEST_MODE=1`). TRAVA anti-prod única e correta: `socket.gethostname() ∈
 # TEST_MODE_ALLOWED_HOSTS` (lista explícita, default vazia). **Não** trava por nome de
 # settings module — o `core.prod_settings` é usado tanto em prod real quanto em STAGING
-# ISOLADO (test-v7m), que não é prod: tem DB local + Asaas sandbox + DEBUG=true. O que
+# ISOLADO (test-staging), que não é prod: tem DB local + Asaas sandbox + DEBUG=true. O que
 # protege prod é o HOSTNAME, não o módulo (o .env do prod real fica num host NÃO listado).
 # Falha → ImproperlyConfigured no import. Source of truth único: este settings.
 TEST_MODE_ALLOWED_HOSTS = env.list("TEST_MODE_ALLOWED_HOSTS", default=[])
@@ -66,13 +66,13 @@ _environment = resolve_environment(
 )
 APP_ENV = _environment.app_env
 TEST_MODE = _environment.test_mode
-APP_VERSION = env("APP_VERSION", default="0.0.0-sandbox.10")
+APP_VERSION = env("APP_VERSION", default="0.0.0-sandbox.36")
 TEST_MODE_OTP_CODE = env("TEST_MODE_OTP_CODE", default="000000")
 TEST_DATA_TTL_HOURS = env.int("TEST_DATA_TTL_HOURS", default=24)
 TEST_COLLABORATOR_PHONE = env("TEST_COLLABORATOR_PHONE", default="5511999990001")
 TEST_COLLABORATOR_CPF = env("TEST_COLLABORATOR_CPF", default="52998224725")
 TEST_COLLABORATOR_EMAIL = env(
-    "TEST_COLLABORATOR_EMAIL", default="e2e-promotor@v7m.test"
+    "TEST_COLLABORATOR_EMAIL", default="e2e-promotor@supletivo.test"
 )
 TEST_EXTERNAL_ADAPTERS = resolve_external_fakes(
     app_env=APP_ENV,
@@ -161,6 +161,7 @@ AUTH_USER_MODEL = "users.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "core.platform_middleware.PlatformVersionMiddleware",
     # WhiteNoise logo após o Security (doc): serve /static/ (admin) MESMO com DEBUG=False —
     # o runserver puro só serve static com DEBUG=True (auditoria front 2026-06-11, item DEBUG).
     "whitenoise.middleware.WhiteNoiseMiddleware",

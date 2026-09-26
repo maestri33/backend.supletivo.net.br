@@ -123,8 +123,14 @@ def _check_and_record_rate_limit(user) -> None:
         _check_and_record_rate_limit(user)
 
 
-def generate_and_send(user) -> OtpCode:
-    """Gera o OTP, persiste (hash), e envia por WhatsApp via notify. Aplica rate-limit antes."""
+def generate_and_send(user, channel: str | None = None) -> OtpCode:
+    """Gera o OTP, persiste (hash), e envia por WhatsApp e/ou E-mail via notify. Aplica rate-limit antes.
+
+    Canais suportados:
+    - "whatsapp" (default): envia pro telefone; se não houver telefone mas houver e-mail, faz fallback transparente.
+    - "email": envia exclusivamente pro e-mail do Profile.
+    - "all": envia para ambos os canais disponíveis.
+    """
     if not settings.OTP_ACTIVE:
         logger.warning("otp.generate.blocked_inactive", user=user.id)
         return OtpCode.objects.create(
@@ -144,16 +150,46 @@ def generate_and_send(user) -> OtpCode:
     )
     logger.info("otp.generated", id=otp.id, user=user.id)
 
-    # destinatário (phone) vem do Profile — import tardio evita ciclo de import.
+    # destinatário (phone e email) vêm do Profile — import tardio evita ciclo de import.
     from users.profiles.interface import get as get_profile
 
     profile = get_profile(user)
-    if profile is None or not profile.phone:
-        otp.status = STATUS_FAILED
-        otp.failure_reason = "no_phone"
-        otp.save(update_fields=["status", "failure_reason"])
-        logger.warning("otp.send.no_phone", id=otp.id, user=user.id)
-        return otp
+    phone = profile.phone if profile and profile.phone else None
+    email = profile.email if profile and profile.email else None
+
+    # Resolução de canais
+    channel_mode = (channel or "whatsapp").lower().strip()
+    want_whatsapp = False
+    want_email = False
+
+    if channel_mode == "email":
+        want_email = bool(email)
+        if not want_email:
+            otp.status = STATUS_FAILED
+            otp.failure_reason = "no_email"
+            otp.save(update_fields=["status", "failure_reason"])
+            logger.warning("otp.send.no_email", id=otp.id, user=user.id)
+            return otp
+    elif channel_mode == "all":
+        want_whatsapp = bool(phone)
+        want_email = bool(email)
+        if not want_whatsapp and not want_email:
+            otp.status = STATUS_FAILED
+            otp.failure_reason = "no_phone"
+            otp.save(update_fields=["status", "failure_reason"])
+            logger.warning("otp.send.no_destination", id=otp.id, user=user.id)
+            return otp
+    else:  # "whatsapp" ou default
+        if phone:
+            want_whatsapp = True
+        elif email:
+            want_email = True  # Fallback transparente para quem só tem e-mail cadastrado
+        else:
+            otp.status = STATUS_FAILED
+            otp.failure_reason = "no_phone"
+            otp.save(update_fields=["status", "failure_reason"])
+            logger.warning("otp.send.no_phone", id=otp.id, user=user.id)
+            return otp
 
     ttl_min = settings.OTP_TTL_S // 60
     content = _render(code, ttl_min)
@@ -163,13 +199,18 @@ def generate_and_send(user) -> OtpCode:
     notif_external_id = send(
         text=content,
         caller="users.auth.otp",
-        phone=profile.phone,
-        whatsapp=True,
+        phone=phone if want_whatsapp else None,
+        email=email if want_email else None,
+        whatsapp=want_whatsapp,
+        email_channel=want_email,
+        subject="Seu código de acesso — Supletivo Brasil",
+        title="Código de Acesso",
+        mail_template="otp",
     )
     otp.status = STATUS_SENT
     otp.notification_external_id = notif_external_id
     otp.save(update_fields=["status", "notification_external_id"])
-    logger.info("otp.sent", id=otp.id, notification=notif_external_id)
+    logger.info("otp.sent", id=otp.id, notification=notif_external_id, whatsapp=want_whatsapp, email=want_email)
     return otp
 
 

@@ -18,6 +18,7 @@ class StaffCheckIn(Schema):
     cpf: str | None = None
     phone: str | None = None
     external_id: str | None = None
+    preferred_channel: str | None = Field(default=None, description="Canal preferido para envio de OTP: 'whatsapp', 'email' ou 'all'")
 
 
 class StaffCheckOut(Schema):
@@ -25,6 +26,8 @@ class StaffCheckOut(Schema):
     external_id: str | None = None
     otp_sent: bool
     otp_wait: int | None = None
+    masked_email: str | None = Field(default=None, description="E-mail mascarado para onde o OTP foi enviado")
+    channels_sent: list[str] | None = Field(default=None, description="Canais para onde o código foi despachado")
 
 
 class StaffLoginIn(Schema):

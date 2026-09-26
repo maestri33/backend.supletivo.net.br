@@ -43,6 +43,7 @@ def check_or_capture(
     phone: str | None = None,
     external_id: str | None = None,
     send_otp: bool = True,
+    preferred_channel: str | None = None,
     service_authed: bool = False,
     hub: str | None = None,
 ) -> dict:
@@ -61,6 +62,7 @@ def check_or_capture(
         external_id=external_id,
         send_otp=send_otp,
         service_authed=service_authed,
+        preferred_channel=preferred_channel,
     )
     if result["found"] or not phone or not send_otp:
         return {**result, "created": False}

@@ -36,6 +36,7 @@ def check(request, payload: CheckIn):
         phone=payload.phone,
         external_id=payload.external_id,
         send_otp=payload.send_otp,
+        preferred_channel=payload.preferred_channel,
         service_authed=service_secret_ok(request),
         hub=payload.ref,
     )

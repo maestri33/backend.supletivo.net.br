@@ -147,23 +147,55 @@ def _notify_captured(lead: Lead) -> None:
         )
 
 
+def _format_phone_br(phone: str | None) -> str:
+    if not phone:
+        return "-"
+    d = "".join(c for c in phone if c.isdigit())
+    if d.startswith("55") and len(d) in (12, 13):
+        d = d[2:]
+    if len(d) == 11:
+        return f"({d[:2]}) {d[2:7]}-{d[7:]}"
+    if len(d) == 10:
+        return f"({d[:2]}) {d[2:6]}-{d[6:]}"
+    return phone
+
+
+def _whatsapp_url(phone: str | None) -> str:
+    if not phone:
+        return ""
+    digits = "".join(c for c in phone if c.isdigit())
+    if not digits.startswith("55") and len(digits) in (10, 11):
+        digits = "55" + digits
+    return f"https://wa.me/{digits}"
+
+
 def _notify_promoter_new_lead(lead: Lead) -> None:
     """Evento **NOVO LEAD NA REDE** → destinatário: o **PROMOTOR** (o ref que indicou o lead).
 
-    Avisa que um lead entrou pela indicação dele. Teor final o Victor edita depois. Best-effort (§12).
-    `{name}` = 1º nome do promotor (do profile); `{lead_name}` vem no ctx."""
+    Avisa que um lead entrou pela indicação dele. Envia nome real, telefone formatado e link WhatsApp.
+    `{name}` = 1º nome do promotor; `{lead_name}`, `{lead_phone}`, `{lead_whatsapp_url}` no ctx."""
     from notify.interface.events import send_event
 
     lead_p = profiles.get(lead.user)
     prom_p = profiles.get(lead.promoter)
     if prom_p is None:
         return
-    lead_name = (lead_p.name if lead_p else None) or "Um novo lead"
+    raw_phone = lead_p.phone if lead_p else None
+    fmt_phone = _format_phone_br(raw_phone)
+    wa_url = _whatsapp_url(raw_phone)
+    lead_name = (lead_p.name if lead_p and lead_p.name else None) or f"Contato {fmt_phone}"
     try:
         send_event(
             "lead.captured.promoter",
             profile=prom_p,
-            ctx={"lead_name": lead_name},
+            ctx={
+                "lead_name": lead_name,
+                "lead_nome": lead_name,
+                "lead_phone": fmt_phone,
+                "lead_telefone": fmt_phone,
+                "lead_whatsapp_url": wa_url,
+                "lead_email": (lead_p.email if lead_p else None) or "-",
+            },
             idempotency_key=f"lead_new_promoter_{lead.external_id}",
         )
     except Exception as exc:  # noqa: BLE001
@@ -505,6 +537,7 @@ def check_or_capture(
     phone: str | None = None,
     external_id: str | None = None,
     send_otp: bool = True,
+    preferred_channel: str | None = None,
     service_authed: bool = False,
     ref: str | None = None,
     attribution: dict | None = None,
@@ -528,6 +561,7 @@ def check_or_capture(
         external_id=external_id,
         send_otp=send_otp,
         service_authed=service_authed,
+        preferred_channel=preferred_channel,
     )
     if result["found"] or not phone or not send_otp:
         if result.get("found") and attribution and result.get("external_id"):
@@ -1268,7 +1302,15 @@ def _notify_paid(lead: Lead, hub, checkout: Checkout | None = None) -> None:
         # Calcula progressão semanal do bônus
         bonus_ctx = _weekly_bonus_context(lead.promoter)
         lead_name = (profile.name if profile else None) or "Um aluno"
-        ctx = {"aluno_nome": lead_name, **bonus_ctx}
+        raw_phone = profile.phone if profile else None
+        fmt_phone = _format_phone_br(raw_phone)
+        wa_url = _whatsapp_url(raw_phone)
+        ctx = {
+            "aluno_nome": lead_name,
+            "aluno_telefone": fmt_phone,
+            "aluno_whatsapp_url": wa_url,
+            **bonus_ctx,
+        }
         _safe(
             "promoter",
             "lead.paid.promoter",

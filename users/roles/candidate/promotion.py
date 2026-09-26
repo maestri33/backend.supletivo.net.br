@@ -15,12 +15,12 @@ def _notify_became_promoter(cand: Candidate, *, locked: bool) -> None:
     from notify.interface.events import send_event
 
     p = profiles.get(cand.user)
+    event = "training.must_train" if locked else "training.approved"
     try:
         send_event(
-            "candidate.approved",
+            event,
             profile=p,
             idempotency_key=f"candidate_approved_{cand.external_id}",
-            locked=locked,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("candidate.notify_approved_failed", error=str(exc))

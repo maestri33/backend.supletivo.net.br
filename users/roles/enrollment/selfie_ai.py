@@ -187,18 +187,28 @@ def _notify_selfie_approved(enr: Enrollment) -> None:
 
 
 def _notify_selfie_review(enr: Enrollment) -> None:
-    # wave-2: send_event lê teor/canais/is_tts do Template no DB. WhatsApp-only (coordenador).
     from notify.interface.events import send_event
 
-    coord = enr.hub.coordinator
+    coord = enr.hub.coordinator if enr.hub else None
     if coord is None:
         return
     cp = profiles.get(coord)
+    student_p = profiles.get(enr.user)
+    student_name = (student_p.name if student_p else None) or "Aluno"
+    student_phone = (student_p.phone if student_p else None) or "-"
+    polo_name = getattr(enr.hub, "brand", None) or "Polo"
     try:
         send_event(
             "enrollment.selfie_in_review",
             profile=cp,
-            channels_override=("whatsapp",),
+            ctx={
+                "aluno_nome": student_name,
+                "student_name": student_name,
+                "aluno_telefone": student_phone,
+                "student_phone": student_phone,
+                "polo_nome": polo_name,
+                "link_painel": "https://app.supletivo.net.br/painel/matriculas",
+            },
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("enrollment.notify_selfie_review_failed", error=str(exc))
@@ -269,18 +279,28 @@ def _save_selfie(enr: Enrollment, image_bytes: bytes, content_type: str) -> str:
 
 
 def _notify_coordinator_awaiting(enr: Enrollment) -> None:
-    # wave-2: send_event lê teor/canais/is_tts do Template no DB. WhatsApp-only (coordenador).
     from notify.interface.events import send_event
 
-    coord = enr.hub.coordinator
+    coord = enr.hub.coordinator if enr.hub else None
     if coord is None:
         return
     cp = profiles.get(coord)
+    student_p = profiles.get(enr.user)
+    student_name = (student_p.name if student_p else None) or "Aluno"
+    student_phone = (student_p.phone if student_p else None) or "-"
+    polo_name = getattr(enr.hub, "brand", None) or "Polo"
     try:
         send_event(
             "enrollment.awaiting_release",
             profile=cp,
-            channels_override=("whatsapp",),
+            ctx={
+                "aluno_nome": student_name,
+                "student_name": student_name,
+                "aluno_telefone": student_phone,
+                "student_phone": student_phone,
+                "polo_nome": polo_name,
+                "link_painel": "https://app.supletivo.net.br/painel/matriculas",
+            },
             idempotency_key=f"enr_awaiting_{enr.external_id}",
         )
     except Exception as exc:  # noqa: BLE001

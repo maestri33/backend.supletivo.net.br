@@ -73,6 +73,7 @@ class Command(BaseCommand):
             send_event(
                 "lead.payment_reminder",
                 phone=t.phone,
+                email=t.email,
                 gender=t.gender,
                 ctx={
                     "nome": t.name or "Futuro Aluno",

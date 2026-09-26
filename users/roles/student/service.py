@@ -1135,12 +1135,15 @@ def veteran_detail(*, user_external_id: str) -> dict:
 
 
 def _notify(student: Student, *, event: str, key: str, **ctx) -> None:
-    """Notifica o ALUNO. Teor/canais/is_tts/storytelling vêm do Template no DB (`send_event`):
-    `student.diploma_issued` é TTS+story (voz + discurso motivacional da IA); `{nome}` do profile."""
+    """Notifica o ALUNO. Teor/canais/is_tts/storytelling vêm do Template no DB (`send_event`)."""
     from notify.interface.events import send_event
     from users.profiles import interface as profiles
 
     p = profiles.get(student.user)
+    if "reason" in ctx and "reason_text" not in ctx:
+        r = ctx.get("reason")
+        ctx["reason_text"] = f" Motivo: {r}" if r else ""
+    ctx.setdefault("link_app", "https://app.supletivo.net.br/documentos")
     try:
         send_event(event, profile=p, ctx=ctx or None, idempotency_key=key)
     except Exception as exc:  # noqa: BLE001 — notificação é best-effort (§12, canais isolados)
@@ -1148,15 +1151,24 @@ def _notify(student: Student, *, event: str, key: str, **ctx) -> None:
 
 
 def _notify_coordinator(student: Student, *, event: str, key: str, **ctx) -> None:
-    """Notifica o COORDENADOR do polo do aluno. Teor/canais do DB; `{nome}` do profile do coordenador.
+    """Notifica o COORDENADOR do polo do aluno com nome, telefone e link de painel.
     Sem coordenador ou sem profile → send_event devolve None (no-op, sem row morto)."""
     from notify.interface.events import send_event
     from users.profiles import interface as profiles
 
-    coord = student.hub.coordinator
+    coord = student.hub.coordinator if student.hub else None
     if coord is None:
         return
     cp = profiles.get(coord)
+    student_p = profiles.get(student.user)
+    student_name = (student_p.name if student_p else None) or "Aluno"
+    student_phone = (student_p.phone if student_p else None) or "-"
+    ctx.setdefault("aluno_nome", student_name)
+    ctx.setdefault("student_name", student_name)
+    ctx.setdefault("aluno_telefone", student_phone)
+    ctx.setdefault("student_phone", student_phone)
+    ctx.setdefault("polo_nome", getattr(student.hub, "brand", None) or "Polo")
+    ctx.setdefault("link_painel", "https://app.supletivo.net.br/painel")
     try:
         send_event(event, profile=cp, ctx=ctx or None, idempotency_key=key)
     except Exception as exc:  # noqa: BLE001

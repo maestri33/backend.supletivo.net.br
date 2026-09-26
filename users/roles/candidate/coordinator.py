@@ -140,23 +140,28 @@ def reject_candidate(
             extra={"expected_status": _S.SELFIE},
         )
     service._set_status(cand, _S.REJECTED)
-    service._notify_candidate_rejected(cand)
+    _notify_candidate_rejected(cand, reason=reason)
     logger.info("candidate.rejected", external_id=str(cand.external_id))
     return cand
 
 
-
-
-def _notify_candidate_rejected(cand: Candidate) -> None:
-    # wave-2: send_event lê teor/canais/is_tts do Template no DB. WhatsApp-only (legado).
+def _notify_candidate_rejected(cand: Candidate, reason: str | None = None) -> None:
     from notify.interface.events import send_event
 
     p = profiles.get(cand.user)
+    hub_name = getattr(cand.hub, "brand", None) or "Polo"
+    coord_p = profiles.get(cand.hub.coordinator) if cand.hub and cand.hub.coordinator else None
+    coord_phone = getattr(coord_p, "phone", None) or "da coordenação"
     try:
         send_event(
             "candidate.rejected",
             profile=p,
-            channels_override=("whatsapp",),
+            ctx={
+                "motivo": reason or "Critérios cadastrais não atendidos neste momento.",
+                "detail": reason or "",
+                "polo_nome": hub_name,
+                "polo_contato": coord_phone,
+            },
             idempotency_key=f"candidate_rejected_{cand.external_id}",
         )
     except Exception as exc:  # noqa: BLE001

@@ -98,8 +98,8 @@ def send_event(
             render_ctx.update(ctx)
         body = _tpl_iface.render(tpl.body_md, render_ctx)
         channels = list(channels_override) if channels_override is not None else list(tpl.channels)
-        t_title = title or tpl.title
-        t_subject = subject or tpl.subject
+        t_title = _tpl_iface.render(title or tpl.title or "", render_ctx) if (title or tpl.title) else None
+        t_subject = _tpl_iface.render(subject or tpl.subject or "", render_ctx) if (subject or tpl.subject) else None
         t_media_url = media_url or tpl.media_url
         t_media_type = media_type or tpl.media_type
         t_mail_tpl = mail_template or tpl.mail_template

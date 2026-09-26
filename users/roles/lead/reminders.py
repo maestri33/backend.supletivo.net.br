@@ -32,6 +32,7 @@ class ReminderTarget:
     gender: str | None
     payment_link: str
     age_hours: int
+    email: str | None = None
 
 
 def due_reminders(
@@ -69,6 +70,7 @@ def due_reminders(
             continue  # sem telefone: sem canal
         first = ((profile.name or "").strip().split() or [""])[0] if profile else ""
         age_hours = int((now - lead.created_at).total_seconds() // 3600)
+        email = (profile.email if profile else None) or None
         targets.append(
             ReminderTarget(
                 lead_external_id=str(lead.external_id),
@@ -77,6 +79,7 @@ def due_reminders(
                 gender=(profile.gender if profile else None) or None,
                 payment_link=link,
                 age_hours=age_hours,
+                email=email,
             )
         )
     return targets
