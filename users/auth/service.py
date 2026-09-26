@@ -569,6 +569,229 @@ def recover(*, cpf: str | None = None, phone: str | None = None, preferred_chann
     return {"found": True, **result}
 
 
+def _normalize_birth_date(val: str | None) -> str | None:
+    if not val:
+        return None
+    val = val.strip()
+    if "/" in val:
+        parts = val.split("/")
+        if len(parts) == 3:
+            return f"{parts[2].zfill(4)}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+    digits = "".join(c for c in val if c.isdigit())
+    if len(digits) == 8:
+        if val.startswith("19") or val.startswith("20"):
+            return f"{digits[0:4]}-{digits[4:6]}-{digits[6:8]}"
+        return f"{digits[4:8]}-{digits[2:4]}-{digits[0:2]}"
+    return val
+
+
+def _notify_phone_recovered(profile, *, old_phone: str, new_phone: str) -> None:
+    """Dispara alerta transacional de segurança no WhatsApp antigo e no e-mail do titular avisando da troca (§12)."""
+    from django.utils import timezone
+    from notify.interface.send import send
+
+    when = timezone.localtime()
+    raw_cpf = profile.cpf or ""
+    cpf_masked = (
+        f"***.***.{raw_cpf[-4:-2]}-{raw_cpf[-2:]}"
+        if len(raw_cpf) == 11
+        else "***.***.***-**"
+    )
+    new_phone_masked = mask_phone_privacy(new_phone)
+    text = (
+        "🔒 Alerta de Segurança Supletivo Brasil: O número de WhatsApp vinculado ao seu CPF "
+        f"({cpf_masked}) foi alterado para {new_phone_masked} em {when.strftime('%d/%m/%Y')} às {when.strftime('%H:%M')}. "
+        "Todas as sessões anteriores foram encerradas por segurança. Se você não reconhece ou não solicitou esta alteração, "
+        "entre em contato imediatamente com o suporte oficial."
+    )
+    if old_phone:
+        try:
+            send(
+                text=text,
+                caller="auth.phone_recovered_old_phone",
+                phone=old_phone,
+                whatsapp=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("auth.phone_recovered_notify_old_failed", error=type(exc).__name__)
+    if profile.email:
+        try:
+            send(
+                text=text,
+                caller="auth.phone_recovered_email",
+                email=profile.email,
+                subject="Alerta de Segurança: Troca de Telefone Cadastrado - Supletivo Brasil",
+                email_channel=True,
+                whatsapp=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("auth.phone_recovered_notify_email_failed", error=type(exc).__name__)
+
+
+def recover_phone(
+    *,
+    cpf: str,
+    new_phone: str,
+    birth_date: str | None = None,
+    email: str | None = None,
+    otp: str | None = None,
+    method: str = "email",
+    client_ip: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    """Recupera conta e atualiza telefone por CPF (Issue #12).
+
+    1. Validação estrita de formato do CPF (Módulo 11) e do novo telefone.
+    2. Localiza o perfil vinculado ao CPF. Se inexistente -> 404 (CPF_NOT_FOUND).
+    3. Idempotência: se new_phone for igual ao phone já cadastrado, retorna sucesso.
+    4. Anti-colisão: se new_phone pertencer a OUTRO usuário -> 409 (PHONE_CONFLICT).
+    5. Desafio de segurança (Prevenção de Account Takeover):
+       - Se `otp` fornecido: valida via `otp_service.verify(profile.user, otp)`. Se inválido/expirado, erro.
+       - Se `birth_date` fornecido: valida se coincide com `profile.birth_date`.
+       - Se nenhum desafio foi cumprido e perfil possui e-mail:
+         Dispara OTP para o e-mail do titular e retorna `status="CHALLENGE_REQUIRED"`.
+       - Se nenhum desafio cumprido e perfil não tem e-mail nem data:
+         Abre protocolo e retorna `status="PENDING_SECRETARIA"`.
+    6. Ao validar o desafio:
+       - Atualiza `profile.phone = new_phone`.
+       - Invalida todas as sessões ativas: `user.token_version += 1`.
+       - Registra log de auditoria estruturado.
+       - Dispara notificação transacional de segurança (§12).
+    """
+    from django.utils import timezone
+
+    try:
+        clean_cpf = validation.validate_cpf(cpf)
+    except ValueError as exc:
+        raise ValidationError(str(exc), code="CPF_INVALID") from exc
+    if not validation.cpf_check_digits_ok(clean_cpf):
+        raise ValidationError("CPF inválido (dígito verificador).", code="CPF_INVALID")
+
+    try:
+        clean_phone = validation.validate_phone(new_phone)
+    except ValueError as exc:
+        raise ValidationError(str(exc), code="PHONE_INVALID") from exc
+
+    profile = profiles.find_by_cpf(clean_cpf)
+    if profile is None:
+        _jitter()
+        raise NotFound("Nenhum cadastro encontrado para o CPF informado.", code="CPF_NOT_FOUND")
+
+    protocol = f"SEC-REC-{timezone.now().year}-{random.randint(100000, 999999)}"
+
+    # Idempotência: já é o telefone do titular
+    if profile.phone == clean_phone:
+        return {
+            "success": True,
+            "protocol": protocol,
+            "status": "COMPLETED",
+            "message": "O telefone informado já é o telefone ativo cadastrado nesta conta.",
+            "masked_email": mask_email_privacy(profile.email),
+            "masked_new_phone": mask_phone_privacy(clean_phone),
+            "requires_challenge": False,
+        }
+
+    # Anti-colisão: novo telefone já cadastrado em outra conta
+    other_profile = profiles.find_by_phone(clean_phone)
+    if other_profile is not None and other_profile.user_id != profile.user_id:
+        raise Conflict("Este novo telefone já está cadastrado em outra conta.", code="PHONE_CONFLICT")
+
+    challenge_passed = False
+
+    # 1. Validação por OTP (código despachado previamente ao e-mail ou SMS)
+    if otp:
+        otp_clean = otp.strip()
+        verify_status = otp_service.verify(profile.user, otp_clean)
+        if verify_status == otp_service.OK:
+            challenge_passed = True
+        elif verify_status == otp_service.INVALID:
+            raise ValidationError("Código de verificação incorreto.", code="OTP_INVALID")
+        else:
+            raise ValidationError("Código expirado ou limite de tentativas excedido. Solicite um novo código.", code="OTP_EXPIRED")
+
+    # 2. Validação por Data de Nascimento
+    elif birth_date:
+        norm_input_bdate = _normalize_birth_date(birth_date)
+        profile_bdate = profile.birth_date.isoformat() if profile.birth_date else None
+        if profile_bdate and norm_input_bdate == profile_bdate:
+            challenge_passed = True
+        else:
+            raise Forbidden("Data de nascimento não confere com o cadastro do titular.", code="IDENTITY_VERIFICATION_FAILED")
+
+    # 3. Nenhum desafio enviado: disparar OTP para o e-mail cadastrado se existir
+    if not challenge_passed:
+        if profile.email:
+            otp_obj = otp_service.generate_and_send(profile.user, channel="email")
+            masked_email = mask_email_privacy(profile.email)
+            logger.info(
+                "auth.recover_phone_challenge_dispatched",
+                user_external_id=str(profile.user.external_id),
+                protocol=protocol,
+                masked_email=masked_email,
+            )
+            return {
+                "success": True,
+                "protocol": protocol,
+                "status": "CHALLENGE_REQUIRED",
+                "message": f"Enviamos um código de segurança de 6 dígitos para o e-mail {masked_email}. Informe-o para confirmar a alteração.",
+                "masked_email": masked_email,
+                "masked_new_phone": mask_phone_privacy(clean_phone),
+                "requires_challenge": True,
+            }
+        else:
+            # Titular não tem e-mail nem enviou birth_date: encaminha para atendimento seguro
+            logger.info(
+                "auth.recover_phone_pending_secretaria",
+                user_external_id=str(profile.user.external_id),
+                protocol=protocol,
+            )
+            return {
+                "success": True,
+                "protocol": protocol,
+                "status": "PENDING_SECRETARIA",
+                "message": "Não há e-mail de segurança vinculado para validação automática. Protocolo aberto com sucesso; nossa secretaria acadêmica entrará em contato.",
+                "masked_email": None,
+                "masked_new_phone": mask_phone_privacy(clean_phone),
+                "requires_challenge": False,
+            }
+
+    # Desafio cumprido: Executa a troca segura
+    old_phone = profile.phone
+    profile.phone = clean_phone
+    profile.save(update_fields=["phone"])
+
+    # Invalidação de sessões ativas (Prevenção de Account Takeover)
+    user = profile.user
+    user.token_version += 1
+    user.save(update_fields=["token_version"])
+
+    # Log estruturado de auditoria
+    logger.info(
+        "auth.phone_recovered",
+        protocol=protocol,
+        user_external_id=str(user.external_id),
+        cpf=clean_cpf,
+        old_phone=_mask_phone_br(old_phone),
+        new_phone=_mask_phone_br(clean_phone),
+        client_ip=client_ip,
+        user_agent=user_agent,
+    )
+
+    # Notificação transacional de segurança no canal anterior e e-mail (§12)
+    _notify_phone_recovered(profile, old_phone=old_phone, new_phone=clean_phone)
+
+    return {
+        "success": True,
+        "protocol": protocol,
+        "status": "COMPLETED",
+        "message": "Telefone atualizado com sucesso. Você já pode acessar sua conta utilizando seu novo número de WhatsApp.",
+        "masked_email": mask_email_privacy(profile.email),
+        "masked_new_phone": mask_phone_privacy(clean_phone),
+        "requires_challenge": False,
+    }
+
+
+
 # ── identidade + e-mail (funil do lead v2 — protótipo 2026-07-18) ─────────
 # Caminho canônico da conta: [1] telefone (conta nasce) → [2] OTP → [3] CPF → [4] pergaminho
 # (identidade) → [5] e-mail → [6] checkout. Estes passos rodam AUTENTICADOS (a conta já existe).

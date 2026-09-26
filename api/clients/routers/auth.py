@@ -9,7 +9,7 @@ from ninja.responses import Status
 
 from api.base import add_auth_refresh, add_funnel_login
 from api.clients.schemas import LeadCaptureIn, LeadCaptureOut, LeadCreateIn, LeadOut
-from api.schemas.auth import CheckIn, CheckOut
+from api.schemas.auth import CheckIn, CheckOut, PhoneRecoveryIn, PhoneRecoveryOut
 
 from core.request import get_client_ip
 from core.webhook_auth import service_secret_ok
@@ -116,6 +116,46 @@ def auth_capture(request, payload: LeadCaptureIn):
     return lead_capture(request, payload)
 
 
+@router.post(
+    "/recover-phone",
+    response=PhoneRecoveryOut,
+    auth=None,
+    summary="Recuperação de conta e atualização de telefone por CPF",
+)
+@router.post(
+    "/recovery/phone",
+    response=PhoneRecoveryOut,
+    auth=None,
+    summary="Recuperação de conta e atualização de telefone por CPF (alias)",
+)
+def recover_phone_endpoint(request, payload: PhoneRecoveryIn):
+    """Endpoint seguro para solicitação e execução de troca de número de WhatsApp por CPF.
+
+    Exige segundo fator (data de nascimento ou código OTP por e-mail) antes de autorizar a troca.
+    Invalida sessões ativas e dispara alertas transacionais de segurança no canal anterior e e-mail.
+    """
+    client_ip = get_client_ip(request)
+    user_agent = request.META.get("HTTP_USER_AGENT", "")[:400]
+
+    if getattr(settings, "TURNSTILE_ENABLED", False) and not service_secret_ok(request):
+        if payload.turnstile_token:
+            result = verify_turnstile(payload.turnstile_token, remote_ip=client_ip)
+            if not result.success:
+                raise HttpError(400, "Falha na verificação de segurança (Turnstile).")
+
+    from users.auth import service as auth_service
+
+    return auth_service.recover_phone(
+        cpf=payload.cpf,
+        new_phone=payload.new_phone,
+        birth_date=payload.birth_date,
+        email=payload.email,
+        otp=payload.otp,
+        method=payload.method,
+        client_ip=client_ip,
+        user_agent=user_agent,
+    )
+
 
 add_funnel_login(
     router,
@@ -123,3 +163,4 @@ add_funnel_login(
     not_in_funnel_msg="Usuário não faz parte do funil do aluno.",
 )
 add_auth_refresh(router)
+

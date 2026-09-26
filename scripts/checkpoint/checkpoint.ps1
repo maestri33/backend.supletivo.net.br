@@ -69,7 +69,11 @@ if (-not $SkipOracle) {
                 $LocalVersion = $Matches[1]
             }
         }
-        Write-Host "[Oracle Gate] Oraculo Online: v$GlobalVersion | Local: v$LocalVersion (Conferido com sucesso)" -ForegroundColor Cyan
+        if ($LocalVersion -eq $GlobalVersion) {
+            Write-Host "[Oracle Gate] Versao Centralizada da Plataforma: v$GlobalVersion (100% Sincronizado)" -ForegroundColor Green
+        } else {
+            Write-Host "[Oracle Gate] Oraculo Online: v$GlobalVersion | Local: v$LocalVersion (Atencao: Alinhar versao local ao Oraculo)" -ForegroundColor Yellow
+        }
     } catch {
         Write-Host "[Oracle Gate] Aviso: Nao foi possivel consultar version.v7m.live ($($_.Exception.Message))" -ForegroundColor Yellow
     }

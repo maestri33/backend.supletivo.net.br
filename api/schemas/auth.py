@@ -79,3 +79,54 @@ class TokenOut(Schema):
     access_token: str
     refresh_token: str
     token_type: str
+
+
+class PhoneRecoveryIn(Schema):
+    """Payload de solicitação e execução de troca de telefone / recuperação de conta por CPF."""
+
+    cpf: str = Field(description="CPF do titular (11 dígitos)")
+    new_phone: str = Field(description="Novo número de WhatsApp (com DDD)")
+    birth_date: str | None = Field(
+        default=None,
+        description="Data de nascimento do titular (YYYY-MM-DD ou DD/MM/YYYY) para validação de segurança",
+    )
+    email: str | None = Field(
+        default=None,
+        description="E-mail cadastrado para validação ou recebimento do código de desafio",
+    )
+    otp: str | None = Field(
+        default=None,
+        description="Código OTP de validação (enviado ao e-mail cadastrado)",
+    )
+    method: str = Field(
+        default="email",
+        description="Método de verificação solicitado ('email', 'birth_date', 'secretaria')",
+    )
+    turnstile_token: str | None = Field(
+        default=None,
+        description="Token de segurança Cloudflare Turnstile antifraude",
+    )
+
+
+class PhoneRecoveryOut(Schema):
+    """Resposta do processo de recuperação de conta / troca de telefone."""
+
+    success: bool
+    protocol: str = Field(description="Número de protocolo auditável da solicitação")
+    status: str = Field(
+        description="Status do processamento: 'COMPLETED', 'CHALLENGE_REQUIRED', 'PENDING_SECRETARIA'"
+    )
+    message: str = Field(description="Mensagem explicativa orientando o usuário")
+    masked_email: str | None = Field(
+        default=None,
+        description="E-mail mascarado para onde o desafio foi enviado, se aplicável",
+    )
+    masked_new_phone: str | None = Field(
+        default=None,
+        description="Novo número mascarado com regras de privacidade",
+    )
+    requires_challenge: bool = Field(
+        default=False,
+        description="Indica se é necessário submeter OTP enviado por e-mail",
+    )
+

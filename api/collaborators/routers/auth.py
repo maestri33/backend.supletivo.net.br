@@ -7,7 +7,7 @@ from ninja.responses import Status
 
 from api.base import add_auth_refresh, add_funnel_login
 from api.collaborators.schemas import CandidateCreateIn, CandidateJoinIn, CandidateOut
-from api.schemas.auth import CheckIn, CheckOut, TokenOut
+from api.schemas.auth import CheckIn, CheckOut, PhoneRecoveryIn, PhoneRecoveryOut, TokenOut
 from core.webhook_auth import service_secret_ok
 from users.auth import service as auth_iface
 from users.roles.candidate import service as candidate_iface
@@ -53,9 +53,39 @@ def join(request, payload: CandidateJoinIn):
     )
 
 
+@router.post(
+    "/recover-phone",
+    response=PhoneRecoveryOut,
+    auth=None,
+    summary="Recuperação de conta e atualização de telefone por CPF",
+)
+@router.post(
+    "/recovery/phone",
+    response=PhoneRecoveryOut,
+    auth=None,
+    summary="Recuperação de conta e atualização de telefone por CPF (alias)",
+)
+def recover_phone_endpoint(request, payload: PhoneRecoveryIn):
+    """Endpoint de autoatendimento para recuperação de conta e troca segura de número de WhatsApp de promotores/colaboradores."""
+    client_ip = request.META.get("HTTP_CF_CONNECTING_IP") or request.META.get("HTTP_X_FORWARDED_FOR") or "127.0.0.1"
+    user_agent = request.META.get("HTTP_USER_AGENT", "")[:400]
+
+    return auth_iface.recover_phone(
+        cpf=payload.cpf,
+        new_phone=payload.new_phone,
+        birth_date=payload.birth_date,
+        email=payload.email,
+        otp=payload.otp,
+        method=payload.method,
+        client_ip=client_ip,
+        user_agent=user_agent,
+    )
+
+
 add_funnel_login(
     router,
     funnel_roles=FUNNEL_ROLES,
     not_in_funnel_msg="Usuário não faz parte do funil do colaborador.",
 )
 add_auth_refresh(router)
+
