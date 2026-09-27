@@ -1014,30 +1014,30 @@ def lead_self_dict(lead: Lead) -> dict:
 def pricing(ref: str | None = None) -> dict:
     """Preço público de vitrine — É O MESMO que é cobrado (Victor 2026-06-07): PIX (valor cheio) + cartão 12x.
 
-    Lê a MESMA fonte da cobrança (`price_pix`/`price_card`): PIX em reais; cartão do `.env` em centavos → reais.
-    Suporta precificação promocional com desconto quando acessado via `ref` de promotor válido.
+    Regra Canônica:
+    - Sem Ref: O valor é o PREÇO ÂNCORA de tabela (anchor_full) em 12x fixas ou PIX.
+    - Com Ref: Desbloqueia o valor promocional com desconto de indicação (promo_pix / promo_card em 12x).
     """
     from decimal import Decimal
+    from finance import config as fin_config
 
-    pix = config.price_pix()
-    total = config.price_card()
-    installments = config.card_installments()
-    installment = (total / installments).quantize(Decimal("0.01"))
+    installments = 12
+    anchor_full = config.anchor_full()
+    anchor_installment = (anchor_full / installments).quantize(Decimal("0.01"))
 
     promo_pix = config.promo_price_pix()
     promo_total = config.promo_price_card()
     promo_installment = (promo_total / installments).quantize(Decimal("0.01"))
-    anchor_full = config.anchor_full()
 
     name = referral_name(ref) if ref else None
     has_discount = bool(name)
 
     return {
-        "pix": f"{pix:.2f}",
+        "pix": f"{anchor_full:.2f}",
         "card": {
             "installments": installments,
-            "installment": f"{installment:.2f}",
-            "total": f"{total:.2f}",
+            "installment": f"{anchor_installment:.2f}",
+            "total": f"{anchor_full:.2f}",
         },
         "promo_pix": f"{promo_pix:.2f}",
         "promo_card": {
@@ -1048,16 +1048,20 @@ def pricing(ref: str | None = None) -> dict:
         "has_discount": has_discount,
         "promoter_name": name,
         "anchor_full": f"{anchor_full:.2f}",
+        "commission_direct": f"{fin_config.direct_amount():.2f}",
+        "commission_bonus_flat": f"{fin_config.bonus_amount():.2f}",
+        "commission_bonus_threshold": fin_config.bonus_threshold(),
+        "commission_coordinator": f"{fin_config.coordinator_amount():.2f}",
     }
 
 
 def promoter_pricing() -> dict:
-    """Vitrine da auto-matrícula do PROMOTOR (preço próprio; mesma estrutura do `pricing`)."""
+    """Vitrine da auto-matrícula do PROMOTOR (paga o preço anterior com desconto; 12x fixas)."""
     from decimal import Decimal
 
-    pix = config.promoter_price_pix()
-    total = config.promoter_price_card()
-    installments = config.card_installments()
+    pix = config.promo_price_pix()
+    total = config.promo_price_card()
+    installments = 12
     installment = (total / installments).quantize(Decimal("0.01"))
     return {
         "pix": f"{pix:.2f}",

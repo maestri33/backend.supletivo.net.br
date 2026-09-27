@@ -232,3 +232,109 @@ def users_with_role(role: str) -> list:
         "user_id", flat=True
     )
     return list(get_user_model().objects.filter(id__in=user_ids).order_by("id"))
+
+
+CANONICAL_ROLES = ("student", "promoter", "hub", "admin")
+
+
+def resolve_user_roles_and_statuses(
+    user, raw_roles: list[str] | None = None
+) -> tuple[list[str], dict[str, str]]:
+    """Resolve os 4 papéis canônicos da plataforma ('student', 'promoter', 'hub', 'admin')
+    e seus respectivos status operacionais:
+    - student: 'lead' | 'enrollment' | 'active' | 'veteran'
+    - promoter: 'candidate' | 'training' | 'active' | 'suspended'
+    - hub: 'active' | 'review'
+    - admin: 'active'
+    """
+    raw = set(raw_roles or [])
+    if user:
+        raw.update(active_roles(user))
+        if getattr(user, "is_superuser", False):
+            raw.add("admin")
+            raw.add("staff")
+
+    roles: list[str] = []
+    statuses: dict[str, str] = {}
+
+    def _rel(name: str):
+        if not user:
+            return None
+        try:
+            return getattr(user, name, None)
+        except Exception:
+            return None
+
+    # 1. Aluno (student)
+    student_obj = _rel("student")
+    enrollment_obj = _rel("enrollment")
+    lead_obj = _rel("lead")
+    is_student = (
+        student_obj is not None
+        or enrollment_obj is not None
+        or lead_obj is not None
+        or any(r in raw for r in ("lead", "enrollment", "student", "veteran", "aluno"))
+    )
+
+    if is_student:
+        roles.append("student")
+        if student_obj is not None:
+            if getattr(student_obj, "status", None) == "veteran" or "veteran" in raw:
+                statuses["student"] = "veteran"
+            else:
+                statuses["student"] = "active"
+        elif enrollment_obj is not None or "enrollment" in raw:
+            statuses["student"] = "enrollment"
+        elif "veteran" in raw:
+            statuses["student"] = "veteran"
+        elif "student" in raw:
+            statuses["student"] = "active"
+        else:
+            statuses["student"] = "lead"
+
+    # 2. Promotor (promoter)
+    promoter_obj = _rel("promoter")
+    candidate_obj = _rel("candidate")
+    is_promoter = (
+        promoter_obj is not None
+        or candidate_obj is not None
+        or any(r in raw for r in ("candidate", "training", "promoter", "promotor"))
+    )
+
+    if is_promoter:
+        roles.append("promoter")
+        if "training" in raw:
+            statuses["promoter"] = "training"
+        elif promoter_obj is not None:
+            statuses["promoter"] = (
+                "active" if getattr(promoter_obj, "is_active", True) else "suspended"
+            )
+        elif "promoter" in raw or "promotor" in raw:
+            statuses["promoter"] = "active"
+        elif candidate_obj is not None or "candidate" in raw:
+            statuses["promoter"] = "candidate"
+        else:
+            statuses["promoter"] = "candidate"
+
+    # 3. Coordenador de Polo / Hub (hub)
+    is_hub = any(r in raw for r in ("coordinator", "hub", "polo", "coordenador"))
+    if not is_hub and user:
+        coordinated = _rel("coordinated_hubs")
+        if coordinated is not None and coordinated.exists():
+            is_hub = True
+
+    if is_hub:
+        roles.append("hub")
+        statuses["hub"] = "active"
+
+    # 4. Administrador (admin)
+    is_admin = any(r in raw for r in ("admin", "staff", "superuser"))
+    if not is_admin and user and getattr(user, "is_superuser", False):
+        is_admin = True
+
+    if is_admin:
+        roles.append("admin")
+        statuses["admin"] = "active"
+
+    ordered_roles = [r for r in CANONICAL_ROLES if r in roles]
+    return ordered_roles, statuses

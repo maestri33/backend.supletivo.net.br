@@ -108,6 +108,9 @@ class Payment(models.Model):
     bank_slip_url = models.URLField(
         max_length=500, null=True, blank=True
     )  # URL do PDF do boleto bancário
+    invoice_url = models.URLField(
+        max_length=500, null=True, blank=True
+    )  # URL da fatura hospedada no Asaas
     identification_field = models.CharField(
         max_length=128, null=True, blank=True
     )  # Linha digitável do boleto

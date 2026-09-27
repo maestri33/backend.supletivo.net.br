@@ -217,6 +217,7 @@ def create_charge(
         qrcode_payload=(qr or {}).get("payload"),
         pix_qr_image=encoded,
         bank_slip_url=bank_slip,
+        invoice_url=created.get("invoiceUrl"),
         identification_field=ident_line,
         nosso_numero=nosso_num,
         installment_count=installment_count,
@@ -229,8 +230,6 @@ def create_charge(
         status=initial_status if initial_status in ("PAID", "CONFIRMED") else "PENDING",
         asaas_id=created["id"],
     )
-    # invoiceUrl = fatura hospedada do Asaas
-    row.invoice_url = created.get("invoiceUrl")
     logger.info(
         "charge_created",
         payment_id=pid,

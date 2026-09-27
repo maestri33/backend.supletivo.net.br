@@ -30,3 +30,6 @@ data/
 # limpeza 2026-08-14
 .coverage
 .claude/worktrees/
+.wrangler/
+dist-test/
+node_modules/

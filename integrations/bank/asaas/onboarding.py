@@ -60,9 +60,14 @@ WEBHOOK_PATH = "/integrations/asaas/webhook/"
 
 
 def target_webhook_url() -> str:
-    """URL pública do nosso receiver (EXTERNAL_URL + path). '' se não houver EXTERNAL_URL."""
+    """URL pública do nosso receiver (edge gateway prioritário; fallback para EXTERNAL_URL + path)."""
     from core.system_config import get_setting
 
+    edge_url = get_setting(
+        "ASAAS_WEBHOOK_URL", getattr(settings, "ASAAS_WEBHOOK_URL", "https://webhooks.v7m.live/bank/asaas")
+    )
+    if edge_url:
+        return edge_url.rstrip("/")
     base = (get_setting("EXTERNAL_URL", getattr(settings, "EXTERNAL_URL", "")) or "").rstrip("/")
     return f"{base}{WEBHOOK_PATH}" if base else ""
 

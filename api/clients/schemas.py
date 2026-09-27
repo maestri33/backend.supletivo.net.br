@@ -101,6 +101,10 @@ class PricingOut(Schema):
     has_discount: bool = False
     promoter_name: str | None = None
     anchor_full: str | None = None
+    commission_direct: str | None = None
+    commission_bonus_flat: str | None = None
+    commission_bonus_threshold: int | None = None
+    commission_coordinator: str | None = None
 
 
 class UrlOut(Schema):

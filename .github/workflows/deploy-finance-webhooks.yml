@@ -1,0 +1,46 @@
+name: Deploy Cloudflare Finance Webhooks Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/cloudflare-workers/finance-webhooks/**'
+      - '.github/workflows/deploy-finance-webhooks.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy Edge Webhook Worker
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/cloudflare-workers/finance-webhooks
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Typecheck TypeScript
+        run: npm run typecheck
+
+      - name: Apply D1 Database Schema Migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: deploy/cloudflare-workers/finance-webhooks
+          command: d1 execute v7m-webhooks --remote --file=schema.sql
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: deploy/cloudflare-workers/finance-webhooks

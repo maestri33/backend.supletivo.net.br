@@ -25,13 +25,26 @@ def webhook(request):
     O `order_nsu` (UUID opaco) chega na query; o pagamento é reconfirmado via payment_check antes de
     marcar pago. Responde sempre 200 (a InfinitePay re-tenta se não-200; o evento bruto já fica salvo).
     """
-    order_nsu = request.GET.get("order_nsu")
     payload = _parse_json(request)
+    order_nsu = (
+        request.GET.get("order_nsu")
+        or payload.get("order_nsu")
+        or payload.get("external_id")
+    )
+    source_ip = (
+        request.headers.get("x-cf-connecting-ip")
+        or request.headers.get("x-forwarded-for")
+        or _source_ip(request)
+    )
+    user_agent = (
+        request.headers.get("x-original-user-agent")
+        or request.headers.get("user-agent")
+    )
     _, result = webhooks.handle_event(
         order_nsu,
         payload,
-        source_ip=_source_ip(request),
-        user_agent=request.headers.get("user-agent"),
+        source_ip=source_ip,
+        user_agent=user_agent,
     )
     return JsonResponse(result)
 

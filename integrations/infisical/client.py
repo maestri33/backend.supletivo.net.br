@@ -172,6 +172,26 @@ class InfisicalClient:
         environment: str | None = None,
         secret_path: str = "/",
     ) -> str | None:
-        """Busca o valor de um segredo específico."""
-        secrets = self.get_secrets(environment=environment, secret_path=secret_path)
-        return secrets.get(secret_name)
+        """Busca o valor de um segredo específico (com fallback para endpoint individual)."""
+        try:
+            secrets = self.get_secrets(environment=environment, secret_path=secret_path)
+            if secret_name in secrets:
+                return secrets[secret_name]
+        except InfisicalClientError:
+            pass
+
+        # Fallback resiliente: consulta direta pelo nome
+        try:
+            token = self.login()
+            env = environment or self.environment
+            headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+            url = f"{self.base_url}/api/v3/secrets/raw/{secret_name}"
+            params = {"workspaceId": self.project_id, "environment": env, "secretPath": secret_path}
+            with httpx.Client(timeout=self.timeout) as http:
+                resp = http.get(url, params=params, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json().get("secret") or {}
+                    return data.get("secretValue")
+        except Exception as exc:
+            logger.warning("infisical.get_secret_fallback_failed", secret=secret_name, error=str(exc))
+        return None

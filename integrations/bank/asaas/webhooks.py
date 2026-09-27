@@ -178,6 +178,8 @@ def _apply_charge(payload, event):
         row.billing_type = data.get("billingType")
     if data.get("bankSlipUrl") and not row.bank_slip_url:
         row.bank_slip_url = data.get("bankSlipUrl")
+    if data.get("invoiceUrl") and not row.invoice_url:
+        row.invoice_url = data.get("invoiceUrl")
     if data.get("identificationField") and not row.identification_field:
         row.identification_field = data.get("identificationField")
     if data.get("nossoNumero") and not row.nosso_numero:

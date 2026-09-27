@@ -48,15 +48,17 @@ def version_matches(external_id: str, claims_version) -> bool:
 
 
 def _claim_roles(external_id: str, roles: list[str]) -> list[str]:
-    """Roles de claims + a sintética `staff` p/ superuser: o front (apps/group) roteia pós-login
-    por ela; os gates de staff seguem no banco (`require_superuser`), nunca nos claims."""
+    """Roles de claims + a sintética `admin` e `staff` p/ superuser: o front (apps/group) roteia pós-login
+    por ela; os gates de staff/admin seguem no banco (`require_admin`/`require_superuser`), nunca nos claims."""
     from users.auth.models import User
 
-    if "staff" in roles or not User.objects.filter(
+    res = set(roles)
+    if User.objects.filter(
         external_id=external_id, is_active=True, is_superuser=True
     ).exists():
-        return roles
-    return sorted([*roles, "staff"])
+        res.add("admin")
+        res.add("staff")
+    return sorted(res)
 
 
 def issue(external_id: str, roles: list[str]) -> dict:

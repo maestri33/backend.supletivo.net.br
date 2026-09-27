@@ -28,7 +28,22 @@ class Principal:
         self.roles = roles
 
     def has_any(self, roles: tuple[str, ...]) -> bool:
-        return any(r in self.roles for r in roles)
+        if any(r in self.roles for r in roles):
+            return True
+        aliases = {
+            "staff": ("admin",),
+            "admin": ("staff",),
+            "coordinator": ("hub",),
+            "hub": ("coordinator",),
+            "lead": ("student",),
+            "enrollment": ("student",),
+            "candidate": ("promoter",),
+        }
+        for r in roles:
+            mapped = aliases.get(r, ())
+            if any(m in self.roles for m in mapped):
+                return True
+        return False
 
 
 class JWTAuth(HttpBearer):
@@ -52,10 +67,10 @@ def require_roles(principal: Principal, *roles: str) -> None:
         raise Forbidden("Acesso negado para o seu papel.", code="FORBIDDEN_ROLE")
 
 
-def require_superuser(principal: Principal):
-    """Gate do grupo `staff`: exige SUPERUSER. 403 se não for. Retorna o User.
+def require_admin(principal: Principal):
+    """Gate do grupo `admin` (antigo staff): exige SUPERUSER. 403 se não for. Retorna o User.
 
-    staff = superuser nativo do Django (Victor 2026-06-03): o JWT carrega só `roles`, então o gate
+    admin/staff = superuser nativo do Django (Victor 2026-06-03): o JWT carrega só `roles`, então o gate
     confere a flag `is_superuser` no banco (não nos claims). Endpoint administrativo, raro — tudo bem
     tocar o banco aqui (ao contrário do gate de role, que é só claims).
     """
@@ -67,5 +82,8 @@ def require_superuser(principal: Principal):
         .first()
     )
     if user is None or not user.is_superuser:
-        raise Forbidden("Acesso restrito ao staff.", code="STAFF_ONLY")
+        raise Forbidden("Acesso restrito à administração.", code="STAFF_ONLY")
     return user
+
+
+require_superuser = require_admin  # alias canônico de retrocompatibilidade

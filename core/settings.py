@@ -95,7 +95,9 @@ DEFAULT_CORS_ALLOWED_ORIGINS = [
     "https://admin.supletivo.net.br",
     "http://localhost:3000",
     "http://localhost:3011",
+    "http://localhost:3015",
     "http://localhost:3020",
+    "http://localhost:3030",
     "http://localhost:3108",
 ]
 
@@ -346,6 +348,9 @@ ASAAS_BASE_URL = env("ASAAS_BASE_URL", default="https://api.asaas.com")
 # externa, usados a partir do 1a-ii/1a-iii. Hex/URL, sem "$" (lê via env normal). Um token só pros
 # dois endpoints que o Asaas chama de volta: webhook de eventos e mecanismo de validação de saque.
 ASAAS_WEBHOOK_SECRET = env("ASAAS_WEBHOOK_SECRET", default="")
+ASAAS_WEBHOOK_URL = env(
+    "ASAAS_WEBHOOK_URL", default="https://webhooks.v7m.live/bank/asaas"
+)
 EXTERNAL_URL = env("EXTERNAL_URL", default="")
 # Base do link de divulgação do promotor (ref_url). Vazio => cai no EXTERNAL_URL (= backend → 404).
 # Sem esta linha o valor do .env é ignorado pelo getattr(settings, "LANDING_BASE_URL", "") em ref_url().
@@ -367,6 +372,8 @@ ASAAS_CHARGE_DUE_DAYS = env.int("ASAAS_CHARGE_DUE_DAYS", default=3)
 # URL; o nome é só fallback) e TTL (segundos) do nonce de verificação da URL pública.
 ASAAS_WEBHOOK_NAME = env("ASAAS_WEBHOOK_NAME", default="dmz-asaas-managed")
 URL_VERIFY_NONCE_TTL = env.int("URL_VERIFY_NONCE_TTL", default=600)
+ASAAS_ENABLE_SANDBOX_TRANSFERS = env.bool("ASAAS_ENABLE_SANDBOX_TRANSFERS", default=False)
+ASAAS_PIX_ADDRESS_KEY = env("ASAAS_PIX_ADDRESS_KEY", default="")
 
 
 # InfinitePay (integrations.bank.infinitepay) — config via .env (CONVENTION §8/§10).
@@ -383,6 +390,10 @@ INFINITEPAY_BASE_URL = env(
 INFINITEPAY_HTTP_TIMEOUT = env.float("INFINITEPAY_HTTP_TIMEOUT", default=10.0)
 # URL de sucesso pós-pagamento (opcional; default = EXTERNAL_URL no serviço de checkout).
 INFINITEPAY_REDIRECT_URL = env("INFINITEPAY_REDIRECT_URL", default="")
+# URL do edge webhook gateway (Cloudflare Worker webhooks.v7m.live)
+INFINITEPAY_WEBHOOK_URL = env(
+    "INFINITEPAY_WEBHOOK_URL", default="https://webhooks.v7m.live/bank/infinitepay"
+)
 
 
 # ViaCEP (integrations.tools.cep) — lookup de CEP. API pública, sem api-key: só URL e timeout,

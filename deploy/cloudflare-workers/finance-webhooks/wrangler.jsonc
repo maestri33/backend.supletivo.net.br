@@ -6,8 +6,21 @@
   "compatibility_flags": ["nodejs_compat"],
   "routes": [
     {
-      "pattern": "webhooks.v7m.live/bank/*",
-      "zone_name": "v7m.live"
+      "pattern": "webhooks.v7m.live",
+      "custom_domain": true
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "FINANCE_WEBHOOKS_KV",
+      "id": "7b9bdf30fd2b47d3a4b6d042bed0969e"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "v7m-webhooks",
+      "database_id": "c10a46d6-1ab1-4cdd-bdb6-421a8f01d852"
     }
   ],
   "queues": {
@@ -27,7 +40,12 @@
       }
     ]
   },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
   "vars": {
-    "BACKEND_INGEST_URL": "https://backend.supletivo.net.br/api/internal/webhooks/ingest/"
+    "BACKEND_ASAAS_URL": "https://backend.supletivo.net.br/integrations/asaas/webhook/",
+    "BACKEND_INFINITEPAY_URL": "https://backend.supletivo.net.br/integrations/infinitepay/webhook/",
+    "BACKEND_HEALTH_URL": "https://backend.supletivo.net.br/api/v1/health/"
   }
 }

@@ -30,6 +30,7 @@ from core.media_views import media_serve
 from api.clients import api as clients_api
 from api.collaborators import api as collaborators_api
 from api.leadership import api as leadership_api
+from api.admin import api as admin_api
 from api.staff import api as staff_api
 
 # Grupo extra `tools`: ferramentas internas de integração — auth por segredo de serviço + IP interno.
@@ -72,6 +73,7 @@ urlpatterns = [
     path("api/v1/clients/", clients_api.urls),
     path("api/v1/collaborators/", collaborators_api.urls),
     path("api/v1/leadership/", leadership_api.urls),
+    path("api/v1/admin/", admin_api.urls),
     path("api/v1/staff/", staff_api.urls),
     path("api/v1/tools/", tools_api.urls),
     path("api/v1/health/", health_api.urls),

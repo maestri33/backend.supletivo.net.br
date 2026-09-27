@@ -29,6 +29,11 @@ def test_pricing_endpoint_without_ref(client: Client):
     assert data["card"]["installments"] == 12
     assert data["has_discount"] is False
     assert data["promoter_name"] is None
+    assert "anchor_full" in data
+    assert "commission_direct" in data
+    assert "commission_bonus_flat" in data
+    assert "commission_bonus_threshold" in data
+    assert "commission_coordinator" in data
 
     # Performance & Cloudflare edge cache assertion
     cache_header = resp.headers.get("Cache-Control", "")

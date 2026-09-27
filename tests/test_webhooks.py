@@ -92,3 +92,109 @@ def test_infinitepay_webhook_valor_correto_aprova():
     checkout.refresh_from_db()
     assert checkout.status == Checkout.Status.PAID
     assert checkout.paid_amount_cents == 1000
+
+
+def test_infinitepay_create_link_routes_to_edge_gateway(settings):
+    """create_checkout deve direcionar o webhook_url para o gateway Cloudflare webhooks.v7m.live."""
+    from unittest.mock import patch
+    from integrations.bank.infinitepay.checkout import create_checkout
+
+    settings.INFINITEPAY_HANDLE = "test_handle"
+    settings.EXTERNAL_URL = "https://api.supletivo.net.br"
+    settings.INFINITEPAY_WEBHOOK_URL = "https://webhooks.v7m.live/bank/infinitepay"
+
+    with patch("integrations.bank.infinitepay.checkout._create_link") as mock_create:
+        mock_create.return_value = {
+            "url": "https://pay.infinitepay.io/test",
+            "slug": "test-slug",
+        }
+        checkout = create_checkout(amount_cents=5000, description="Matrícula Teste")
+
+    payload = checkout.request_payload
+    expected_webhook = f"https://webhooks.v7m.live/bank/infinitepay?order_nsu={checkout.external_id}"
+    assert payload["webhook_url"] == expected_webhook
+
+
+def test_infinitepay_create_link_fallback_if_edge_unconfigured(settings):
+    """create_checkout deve fazer fallback para backend direto se edge webhook estiver desativado."""
+    from unittest.mock import patch
+    from integrations.bank.infinitepay.checkout import create_checkout
+
+    settings.INFINITEPAY_HANDLE = "test_handle"
+    settings.EXTERNAL_URL = "https://api.supletivo.net.br"
+    settings.INFINITEPAY_WEBHOOK_URL = ""
+
+    with patch("integrations.bank.infinitepay.checkout._create_link") as mock_create:
+        mock_create.return_value = {
+            "url": "https://pay.infinitepay.io/test",
+            "slug": "test-slug",
+        }
+        checkout = create_checkout(amount_cents=5000, description="Matrícula Teste Fallback")
+
+    payload = checkout.request_payload
+    expected_webhook = f"https://api.supletivo.net.br/integrations/infinitepay/webhook/?order_nsu={checkout.external_id}"
+    assert payload["webhook_url"] == expected_webhook
+
+
+def test_asaas_onboarding_target_webhook_url_routes_to_edge_gateway(settings):
+    """target_webhook_url do Asaas deve apontar para o edge gateway webhooks.v7m.live."""
+    from integrations.bank.asaas.onboarding import target_webhook_url
+
+    settings.ASAAS_WEBHOOK_URL = "https://webhooks.v7m.live/bank/asaas"
+    assert target_webhook_url() == "https://webhooks.v7m.live/bank/asaas"
+
+    # Fallback quando unconfigured
+    settings.ASAAS_WEBHOOK_URL = ""
+    settings.EXTERNAL_URL = "https://api.supletivo.net.br"
+    assert target_webhook_url() == "https://api.supletivo.net.br/integrations/asaas/webhook/"
+
+
+def test_infinitepay_view_extracts_order_nsu_from_json_and_edge_headers(rf):
+    """View do webhook deve extrair order_nsu do JSON e capturar cabeçalhos de borda."""
+    import json
+    from unittest.mock import patch
+    from integrations.bank.infinitepay.views import webhook
+
+    body = json.dumps({"order_nsu": "EDGE-NSU-999", "status": "paid"}).encode("utf-8")
+    req = rf.post(
+        "/integrations/infinitepay/webhook/",
+        data=body,
+        content_type="application/json",
+        HTTP_X_CF_CONNECTING_IP="189.1.2.3",
+        HTTP_X_ORIGINAL_USER_AGENT="InfinitePay-Edge-Bot/1.0",
+    )
+
+    with patch("integrations.bank.infinitepay.webhooks.handle_event") as mock_handle:
+        mock_handle.return_value = (None, {"ok": True, "handled": True})
+        resp = webhook(req)
+
+    assert resp.status_code == 200
+    mock_handle.assert_called_once_with(
+        "EDGE-NSU-999",
+        {"order_nsu": "EDGE-NSU-999", "status": "paid"},
+        source_ip="189.1.2.3",
+        user_agent="InfinitePay-Edge-Bot/1.0",
+    )
+
+
+def test_infinitepay_checkout_handles_network_timeout(settings):
+    """create_checkout deve persistir log de falha de conexão e levantar CheckoutError."""
+    import httpx
+    import pytest
+    from unittest.mock import patch
+    from integrations.bank.infinitepay.checkout import create_checkout, CheckoutError
+    from integrations.bank.infinitepay.models import Checkout
+
+    settings.INFINITEPAY_HANDLE = "test_handle"
+    settings.EXTERNAL_URL = "https://api.supletivo.net.br"
+
+    with patch("integrations.bank.infinitepay.checkout._create_link") as mock_create:
+        mock_create.side_effect = httpx.ConnectTimeout("Edge timeout connecting to InfinitePay")
+        with pytest.raises(CheckoutError) as exc_info:
+            create_checkout(amount_cents=5000, description="Matrícula Timeout")
+
+    assert "Edge timeout" in str(exc_info.value)
+    failed_row = Checkout.objects.order_by("-created_at").first()
+    assert failed_row is not None
+    assert failed_row.status == Checkout.Status.PENDING
+    assert "ConnectTimeout" in str(failed_row.response_payload)

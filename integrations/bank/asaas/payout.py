@@ -17,6 +17,7 @@ O envio é síncrono e idempotente; a fila de negócio fica em `finance.PaymentR
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from decimal import Decimal, InvalidOperation
 
@@ -58,7 +59,11 @@ def create_payout(*, amount, pix_key, description=None, payment_id=None) -> Paym
         description=description or f"payout {pid}",
     )
 
-    if settings.APP_ENV != "prod":
+    allow_sandbox = (
+        getattr(settings, "ASAAS_ENABLE_SANDBOX_TRANSFERS", False)
+        or os.environ.get("ASAAS_ENABLE_SANDBOX_TRANSFERS", "").lower() in ("1", "true", "yes")
+    )
+    if settings.TEST_EXTERNAL_ADAPTERS or (settings.APP_ENV != "prod" and not allow_sandbox):
         from core.test_adapters import payout_response
 
         response = payout_response(payment_id=pid)

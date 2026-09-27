@@ -207,6 +207,10 @@ def test_create_pix_charge_with_qr(monkeypatch):
     assert charge_dict["billing_type"] == "PIX"
     assert charge_dict["amount"] == "197.00"
     assert charge_dict["net_value"] == "195.01"
+    assert charge_dict["invoice_url"] == "https://sandbox.asaas.com/i/pay_pix_999"
+
+    refetched = asaas_charge.get_charge(charge.payment_id)
+    assert refetched.invoice_url == "https://sandbox.asaas.com/i/pay_pix_999"
 
 
 @pytest.mark.django_db
@@ -650,3 +654,50 @@ def test_staff_reconciliation_and_cashflow_endpoints(api_client, auth_headers, m
     assert "pending_payouts_queue" in data_cash
     assert "unclosed_commissions_liability" in data_cash
     assert "total_obligations_due" in data_cash
+
+
+@pytest.mark.django_db
+def test_payout_sandbox_transfers_flag(hub_and_promoter, monkeypatch):
+    """Testa que ASAAS_ENABLE_SANDBOX_TRANSFERS permite invocar o gateway em dev/sandbox."""
+    from integrations.bank.asaas import payout as asaas_payout
+
+    _, prom_user, _ = hub_and_promoter
+    pix_key = asaas_models.PixKey.objects.create(
+        key="promotor@v7m.org",
+        key_type="email",
+        holder_document="22222222222",
+        holder_name="Promotor V7M",
+        bank_name="Banco Inter",
+    )
+
+    # 1. Com flag desativada (padrão): stubbed
+    monkeypatch.setattr(settings, "ASAAS_ENABLE_SANDBOX_TRANSFERS", False)
+    monkeypatch.setattr(settings, "TEST_EXTERNAL_ADAPTERS", False)
+    res_stubbed = asaas_payout.create_payout(
+        amount=Decimal("50.00"),
+        pix_key=pix_key,
+        payment_id=f"pay_stub_{uuid.uuid4().hex[:8]}",
+    )
+    assert res_stubbed.status == "SUBMITTED"
+
+    # 2. Com flag ativada: chama _send
+    called_send = []
+
+    async def mock_send(amt, key, pid, desc):
+        called_send.append((amt, key, pid, desc))
+        return {"id": "trans_sandbox_live_123"}
+
+    monkeypatch.setattr(settings, "ASAAS_ENABLE_SANDBOX_TRANSFERS", True)
+    monkeypatch.setattr(settings, "TEST_EXTERNAL_ADAPTERS", False)
+    monkeypatch.setattr(asaas_payout, "_send", mock_send)
+
+    res_live = asaas_payout.create_payout(
+        amount=Decimal("75.00"),
+        pix_key=pix_key,
+        payment_id=f"pay_live_{uuid.uuid4().hex[:8]}",
+    )
+    assert res_live.status == "SUBMITTED"
+    assert res_live.asaas_id == "trans_sandbox_live_123"
+    assert len(called_send) == 1
+    assert called_send[0][0] == Decimal("75.00")
+

@@ -13,6 +13,7 @@ import asyncio
 from decimal import Decimal, InvalidOperation
 
 import structlog
+import httpx
 from django.conf import settings
 
 from .client import InfinitePayError, get_client
@@ -81,7 +82,16 @@ def create_checkout(
     redirect = (
         redirect_url or getattr(settings, "INFINITEPAY_REDIRECT_URL", "") or get_setting("FRONTEND_URL", getattr(settings, "FRONTEND_URL", "")) or ext_url
     )
-    webhook_url = f"{ext_url}/integrations/infinitepay/webhook/?order_nsu={order_nsu}"
+    edge_webhook = get_setting(
+        "INFINITEPAY_WEBHOOK_URL",
+        getattr(settings, "INFINITEPAY_WEBHOOK_URL", "https://webhooks.v7m.live/bank/infinitepay"),
+    )
+    if edge_webhook:
+        sep = "&" if "?" in edge_webhook else "?"
+        webhook_url = f"{edge_webhook}{sep}order_nsu={order_nsu}"
+    else:
+        sep = "&" if "?" in ext_url else "?"
+        webhook_url = f"{ext_url}/integrations/infinitepay/webhook/?order_nsu={order_nsu}"
     payload = {
         "handle": handle,
         "items": [{"quantity": 1, "price": cents, "description": description}],
@@ -94,15 +104,16 @@ def create_checkout(
 
     try:
         resp = asyncio.run(_create_link(payload))
-    except InfinitePayError as e:
+    except (InfinitePayError, httpx.HTTPError) as e:
         # mantém a intenção (PENDING) como registro auditável da tentativa que falhou
+        payload_err = getattr(e, "payload", None)
         row.request_payload = payload
-        row.response_payload = {"error": str(e), "payload": e.payload}
+        row.response_payload = {"error": f"{type(e).__name__}: {e}", "payload": payload_err}
         row.save(update_fields=["request_payload", "response_payload", "updated_at"])
         logger.warning(
-            "checkout_create_failed", external_id=order_nsu, body=str(e.payload)
+            "checkout_create_failed", external_id=order_nsu, body=str(payload_err or e)
         )
-        raise CheckoutError(f"infinitepay_create_link_failed: {e.payload or e}") from e
+        raise CheckoutError(f"infinitepay_create_link_failed: {payload_err or e}") from e
 
     row.checkout_url = resp.get("url") or resp.get("checkout_url") or resp.get("link")
     row.slug = resp.get("slug")

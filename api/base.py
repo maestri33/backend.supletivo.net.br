@@ -31,6 +31,7 @@ class WhoamiOut(Schema):
         description="external_id do USER autenticado (≠ enrollment, ≠ lead — proposta #8)"
     )
     roles: list[str]
+    role_statuses: dict[str, str] = Field(default_factory=dict)
     name: str | None = None  # do Profile — o front saúda pelo nome
     phone: str | None = None  # telefone do Profile para exibição e suporte
     photo_url: str | None = None  # foto do WhatsApp ou avatar registrado
@@ -110,19 +111,31 @@ def build_group(name: str, description: str, auth_override=_DEFAULT_AUTH) -> Nin
 
     @api.get("/whoami", response=WhoamiOut, tags=["auth"])
     def whoami(request):
-        """Eco do principal autenticado + `name`, `phone` e `photo_url` do Profile (exige Bearer)."""
+        """Eco do principal autenticado + `name`, `phone`, `photo_url`, canonical `roles` e `role_statuses`."""
+        from django.contrib.auth import get_user_model
         from users.models import Profile
+        from users.roles.service import resolve_user_roles_and_statuses
 
         principal = request.auth
-        profile = (
-            Profile.objects.filter(user__external_id=principal.external_id)
-            .only("name", "phone", "whatsapp_photo_url")
+        user = (
+            get_user_model()
+            .objects.filter(external_id=principal.external_id)
             .first()
         )
+        profile = (
+            Profile.objects.filter(user=user)
+            .only("name", "phone", "whatsapp_photo_url")
+            .first()
+            if user
+            else None
+        )
         photo = profile.whatsapp_photo_url if profile and profile.whatsapp_photo_url else None
+        canonical_roles, role_statuses = resolve_user_roles_and_statuses(user, principal.roles)
+
         return {
             "external_id": principal.external_id,
-            "roles": principal.roles,
+            "roles": canonical_roles if canonical_roles else principal.roles,
+            "role_statuses": role_statuses,
             "name": profile.name if profile else None,
             "phone": profile.phone if profile else None,
             "photo_url": photo,
