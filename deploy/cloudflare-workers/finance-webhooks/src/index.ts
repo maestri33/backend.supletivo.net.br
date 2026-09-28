@@ -214,18 +214,17 @@ export default {
     // 2. Reprocessamento Manual sob Demanda (/bank/drain) - Fail Closed com Timing-Safe Check
     if (pathname === "/bank/drain" && request.method === "POST") {
       const authHeader = request.headers.get("X-Service-Secret") || request.headers.get("Authorization");
-      if (!env.INTERNAL_SERVICE_SECRET) {
-        return new Response(JSON.stringify({ error: "Service secret unconfigured" }), {
-          status: 500,
+      if (!env.INTERNAL_SERVICE_SECRET || !authHeader) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
           headers: { "Content-Type": "application/json" },
         });
       }
 
       const expectedBearer = `Bearer ${env.INTERNAL_SERVICE_SECRET}`;
       const isAuthorized = Boolean(
-        authHeader &&
-          (timingSafeCompare(authHeader, env.INTERNAL_SERVICE_SECRET) ||
-            timingSafeCompare(authHeader, expectedBearer))
+        timingSafeCompare(authHeader, env.INTERNAL_SERVICE_SECRET) ||
+          timingSafeCompare(authHeader, expectedBearer)
       );
 
       if (!isAuthorized) {
@@ -281,13 +280,17 @@ export default {
     // 3. Webhook Asaas (/bank/asaas) - Normalização de trailing slash e autenticação segura
     if (pathname === "/bank/asaas" || pathname.endsWith("/bank/asaas")) {
       const token = request.headers.get("asaas-access-token");
-      if (env.ASAAS_WEBHOOK_SECRET) {
-        if (!token || !timingSafeCompare(token, env.ASAAS_WEBHOOK_SECRET)) {
-          return new Response(JSON.stringify({ error: "Unauthorized" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
+      if (!token) {
+        return new Response(JSON.stringify({ error: "Missing asaas-access-token header" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (env.ASAAS_WEBHOOK_SECRET && !timingSafeCompare(token, env.ASAAS_WEBHOOK_SECRET)) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
       }
 
       try {
