@@ -32,3 +32,30 @@ def on_payment_refunded(
         provider_payment_id=provider_payment_id,
     )
 
+
+def on_payment_failed(
+    *, provider: str, provider_payment_id: str, reason: str = "card_declined", **kwargs
+) -> bool:
+    """True se a falha de pagamento era de um lead (consumido e recuperação disparada)."""
+    from users.roles.lead.service import mark_payment_failed
+
+    return mark_payment_failed(
+        provider=provider,
+        provider_payment_id=provider_payment_id,
+        reason=reason,
+    )
+
+
+def on_payment_expired(
+    *, provider: str, provider_payment_id: str, reason: str = "pix_expired", **kwargs
+) -> bool:
+    """True se a expiração de pagamento era de um lead (consumido e recuperação disparada)."""
+    from users.roles.lead.service import mark_payment_expired
+
+    return mark_payment_expired(
+        provider=provider,
+        provider_payment_id=provider_payment_id,
+        reason=reason,
+    )
+
+

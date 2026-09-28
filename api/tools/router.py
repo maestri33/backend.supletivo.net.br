@@ -11,6 +11,8 @@ from api.tools.schemas import (
     ToolsNotifySentOut,
     TurnstileVerifyIn,
     TurnstileVerifyOut,
+    AiRoutingIn,
+    AiRoutingOut,
 )
 from core.net import require_internal_ip
 from core.webhook_auth import service_secret_ok
@@ -246,4 +248,18 @@ def cron_selfies_age_stale(request):
     if res.get("status") == "failure":
         raise HttpError(500, res.get("error", "Erro no envelhecimento de selfies"))
     return res
+
+
+@api.post(
+    "/ai/classify-route",
+    response=AiRoutingOut,
+    auth=service_secret_auth,
+    tags=["ai"],
+    summary="Catraca cognitiva Jev: Classifica complexidade e define tier de modelo",
+)
+def classify_ai_route(request, payload: AiRoutingIn):
+    """Classifica a complexidade cognitiva da solicitação via Jev (System One)."""
+    from integrations.ai.router import classify_complexity
+
+    return classify_complexity(payload.prompt, payload.context)
 

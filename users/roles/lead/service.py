@@ -10,6 +10,7 @@ no GATEWAY (PIX Asaas / Cartão InfinitePay) é criada em task ASYNC com retry (
 
 from __future__ import annotations
 
+import time
 import structlog
 from django.db import transaction
 
@@ -1453,4 +1454,83 @@ def mark_refunded(*, provider: str, provider_payment_id: str) -> bool:
 
     logger.info("lead.refunded", external_id=str(lead.external_id), provider=provider)
     return True
+
+
+def _notify_payment_recovery(lead: Lead, event_type: str, reason: str = "") -> None:
+    """Dispara notificação de recuperação de pagamento ao lead (cartão recusado / PIX vencido)."""
+    from notify.interface.events import send_event
+
+    profile = profiles.get(lead.user)
+    if profile is None:
+        return
+    c = getattr(lead, "checkout", None)
+    link = checkout_links.short_url(c.short_token) if c else ""
+    ctx = {
+        "nome": (profile.name or "Estudante").split()[0],
+        "link": link,
+        "motivo": reason,
+    }
+    try:
+        send_event(
+            event_type,
+            profile=profile,
+            ctx=ctx,
+            idempotency_key=f"{event_type}_{lead.external_id}_{int(time.time() // 3600)}",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "lead.recovery_notify_failed",
+            event=event_type,
+            external_id=str(lead.external_id),
+            error=str(exc),
+        )
+
+
+def mark_payment_failed(*, provider: str, provider_payment_id: str, reason: str = "card_declined") -> bool:
+    """Registra falha de pagamento (cartão recusado) e dispara playbook de recuperação do lead."""
+    checkout = (
+        Checkout.objects.select_related("lead", "lead__user", "lead__promoter")
+        .filter(provider=provider, provider_payment_id=provider_payment_id)
+        .first()
+    )
+    if checkout is None:
+        return False
+
+    lead = checkout.lead
+    if lead.status == Lead.Status.PAID:
+        return True
+
+    with transaction.atomic():
+        lead.status = Lead.Status.FAILED
+        lead.failed_reason = reason[:64]
+        lead.save(update_fields=["status", "failed_reason", "updated_at"])
+
+    _notify_payment_recovery(lead, event_type="lead.card_declined", reason=reason)
+    logger.info("lead.payment_failed_recovery_dispatched", external_id=str(lead.external_id), provider=provider)
+    return True
+
+
+def mark_payment_expired(*, provider: str, provider_payment_id: str, reason: str = "pix_expired") -> bool:
+    """Registra expiração de pagamento (PIX vencido) e dispara playbook de renovação de 1 toque."""
+    checkout = (
+        Checkout.objects.select_related("lead", "lead__user", "lead__promoter")
+        .filter(provider=provider, provider_payment_id=provider_payment_id)
+        .first()
+    )
+    if checkout is None:
+        return False
+
+    lead = checkout.lead
+    if lead.status == Lead.Status.PAID:
+        return True
+
+    with transaction.atomic():
+        lead.status = Lead.Status.FAILED
+        lead.failed_reason = reason[:64]
+        lead.save(update_fields=["status", "failed_reason", "updated_at"])
+
+    _notify_payment_recovery(lead, event_type="lead.pix_expired", reason=reason)
+    logger.info("lead.payment_expired_recovery_dispatched", external_id=str(lead.external_id), provider=provider)
+    return True
+
 

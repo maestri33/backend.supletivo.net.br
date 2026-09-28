@@ -122,8 +122,23 @@ def handle_event(payload, source_ip=None, user_agent=None):
                 reraise=False,
                 provider="asaas",
                 provider_payment_id=payment.payment_id,
-                amount_cents=int(payment.amount * 100),
                 asaas_event=event,
+            )
+        elif payment.status == "FAILED" and payment.kind == Payment.Kind.CHARGE:
+            consumed = core_hooks.dispatch(
+                "payment.failed",
+                reraise=False,
+                provider="asaas",
+                provider_payment_id=payment.payment_id,
+                reason=(payload.get("payment") or {}).get("failReason") or "charge_failed",
+            )
+        elif payment.status == "OVERDUE" and payment.kind == Payment.Kind.CHARGE:
+            consumed = core_hooks.dispatch(
+                "payment.expired",
+                reraise=False,
+                provider="asaas",
+                provider_payment_id=payment.payment_id,
+                reason="pix_or_slip_overdue",
             )
         row.forwarded_ok = True
         row.forwarded_at = timezone.now()

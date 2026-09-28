@@ -60,3 +60,18 @@ class CronJobItemOut(Schema):
     func: str | None
     description: str
 
+
+class AiRoutingIn(Schema):
+    prompt: str
+    context: dict[str, Any] | None = None
+
+
+class AiRoutingOut(Schema):
+    score: float
+    tier: str
+    recommended_model: str
+    confidence: float
+    source: str
+    latency_ms: int
+    raw_probabilities: dict[str, float]
+

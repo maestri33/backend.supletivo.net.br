@@ -22,10 +22,17 @@ class UsersConfig(AppConfig):
         # Hook de pagamento do lead (CONVENTION §7.3): o webhook do asaas/infinitepay dispara
         # 'payment.paid' → o lead casa o checkout e marca pago. Registra no boot (apps já carregados).
         from core import hooks as core_hooks
-        from users.roles.lead.hooks import on_payment_paid, on_payment_refunded
+        from users.roles.lead.hooks import (
+            on_payment_paid,
+            on_payment_refunded,
+            on_payment_failed,
+            on_payment_expired,
+        )
 
         core_hooks.register("payment.paid", on_payment_paid)
         core_hooks.register("payment.refunded", on_payment_refunded)
+        core_hooks.register("payment.failed", on_payment_failed)
+        core_hooks.register("payment.expired", on_payment_expired)
 
         # Hooks da TAXA da matrícula (plan/14): o worker do finance dispara 'fee.paid'/'fee.problem'
         # → a matrícula avança o status (1ª paga → fee_paid) e o COORDENADOR é notificado.
