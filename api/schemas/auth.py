@@ -68,6 +68,7 @@ class LoginIn(Schema):
         default="", description="external_id do USER (veio do /auth/check)"
     )
     otp: str
+
     phone: str | None = Field(
         default=None, description="Fallback opcional de telefone caso external_id esteja ausente"
     )

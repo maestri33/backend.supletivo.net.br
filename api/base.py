@@ -202,13 +202,16 @@ def add_funnel_login(
     """Registra o `POST /login` passwordless (OTP) de um funil — idêntico entre grupos, só mudam a
     cadeia de papéis (`funnel_roles`, do mais avançado ao menos) e a mensagem do 403 (dedup)."""
     from users.auth import service as auth_iface
-    from users.exceptions import Forbidden, NotFound
+    from users.exceptions import Forbidden, NotFound, ValidationError
     from users.roles import interface as roles
 
     @router.post("/login", response=TokenOut, auth=None)
     def login(request, payload: LoginIn):
         """Login passwordless (OTP) — resolve o papel mais avançado do funil e emite JWT com TODAS
         as roles ativas."""
+        if not payload.external_id and not getattr(payload, "phone", None) and not getattr(payload, "cpf", None):
+            raise ValidationError("external_id é obrigatório para login.", code="MISSING_FIELD")
+
         user = auth_iface._find_user(
             external_id=payload.external_id,
             phone=getattr(payload, "phone", None),
@@ -223,3 +226,4 @@ def add_funnel_login(
         return auth_iface.login(
             external_id=str(user.external_id), role=funnel_role, otp=payload.otp
         )
+

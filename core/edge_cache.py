@@ -131,9 +131,13 @@ class EdgeCacheMiddleware:
 
                 # 2. Garantir cabeçalho Vary
                 existing_vary = response.headers.get("Vary", "")
-                needed_vary = {"Accept-Encoding", "Origin"}
-                current_vary = {v.strip() for v in existing_vary.split(",") if v.strip()}
-                response["Vary"] = ", ".join(sorted(current_vary | needed_vary))
+                if not existing_vary:
+                    response["Vary"] = "Accept-Encoding, Origin"
+                elif "Origin" not in existing_vary:
+                    needed_vary = {"Accept-Encoding", "Origin"}
+                    current_vary = {v.strip() for v in existing_vary.split(",") if v.strip()}
+                    response["Vary"] = ", ".join(sorted(current_vary | needed_vary))
+
 
                 # 3. Avaliação de Revalidação Condicional (If-None-Match)
                 inm = request.headers.get("if-none-match", "").strip()
