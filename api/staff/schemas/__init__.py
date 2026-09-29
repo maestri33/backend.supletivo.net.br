@@ -84,6 +84,7 @@ from api.staff.schemas.materials import (
     DeleteMaterialOut,
     PublishMaterialOut,
     StaffMaterialOut,
+    TrainingOverrideIn,
     TrainingOverrideOut,
     TrainingSubmissionFilterSchema,
     TrainingSubmissionOut,
@@ -207,6 +208,7 @@ __all__ = [
     "DeleteMaterialOut",
     "TrainingSubmissionFilterSchema",
     "TrainingSubmissionOut",
+    "TrainingOverrideIn",
     "TrainingOverrideOut",
     "TrainingUnlockOut",
     # Network

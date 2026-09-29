@@ -129,7 +129,7 @@ def test_integration_live(request, name: str):
         elif name == "notify":
             from notify.sdk import client as notify_client
             # Testa phone check ou endpoint de health do notify-server
-            res = notify_client.phone_check(["5511999999999"])
+            res = notify_client.phone_check(["5543996648750"])
             details["phone_check"] = res
             success = bool(res)
 
@@ -153,7 +153,7 @@ def test_integration_live(request, name: str):
 
         elif name in ("whatsapp", "evolution"):
             from notify.sdk import client as notify_client
-            res = notify_client.phone_check(["5511999999999"])
+            res = notify_client.phone_check(["5543996648750"])
             details["evolution_check"] = res
             success = bool(res)
 

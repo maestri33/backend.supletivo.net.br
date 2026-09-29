@@ -233,11 +233,6 @@ class SubmissionOut(Schema):
     status: str
 
 
-class PromoterPixIn(Schema):
-    pix_key: str
-    key_type: str | None = None
-
-
 class PromoterPixOut(Schema):
     pix_key: str
     key_type: str | None = None

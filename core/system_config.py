@@ -19,24 +19,24 @@ logger = structlog.get_logger()
 
 # Config keys catalog
 PRICING_KEYS = {
-    "ENROLLMENT_PRICE_PIX": "5",
-    "ENROLLMENT_PRICE_CARD_CENTS": "100",
-    "ENROLLMENT_PROMO_PRICE_PIX": "5",
-    "ENROLLMENT_PROMO_PRICE_CARD_CENTS": "100",
+    "ENROLLMENT_PRICE_PIX": "999",
+    "ENROLLMENT_PRICE_CARD_CENTS": "118800",
+    "ENROLLMENT_PROMO_PRICE_PIX": "999",
+    "ENROLLMENT_PROMO_PRICE_CARD_CENTS": "118800",
     "ENROLLMENT_ANCHOR_FULL": "1615",
     "PROMOTER_STUDY_UNLOCK_THRESHOLD": "3",
     "PROMOTER_STUDY_COMPLETE_THRESHOLD": "10",
-    "ENROLLMENT_PRICE_PROMOTER_PIX": "5",
-    "ENROLLMENT_PRICE_PROMOTER_CARD_CENTS": "100",
+    "ENROLLMENT_PRICE_PROMOTER_PIX": "999",
+    "ENROLLMENT_PRICE_PROMOTER_CARD_CENTS": "118800",
     "CARD_INSTALLMENTS": "12",
-    "ENROLLMENT_DESCRIPTION": "Matrícula Supletivo",
+    "ENROLLMENT_DESCRIPTION": "Matrícula Supletivo Brasil",
 }
 
 COMMISSION_KEYS = {
-    "COMMISSION_DIRECT": "1",
-    "COMMISSION_BONUS_FLAT": "5",
-    "COMMISSION_BONUS_THRESHOLD": 3,
-    "COMMISSION_COORDINATOR": "1",
+    "COMMISSION_DIRECT": "100",
+    "COMMISSION_BONUS_FLAT": "500",
+    "COMMISSION_BONUS_THRESHOLD": 5,
+    "COMMISSION_COORDINATOR": "25",
     "COMMISSION_CLOSING_WEEKDAY": "4",
     "COMMISSION_CLOSING_HOUR": "18",
 }
@@ -180,8 +180,8 @@ def get_all_platform_config() -> dict:
         boss_pix = boss_pix or existing_boss.pix_key or ""
 
     # 2. Preços
-    price_pix = str(get_setting("ENROLLMENT_PRICE_PIX", getattr(settings, "ENROLLMENT_PRICE_PIX", "5")))
-    price_card_cents = int(get_setting("ENROLLMENT_PRICE_CARD_CENTS", getattr(settings, "ENROLLMENT_PRICE_CARD_CENTS", 100)))
+    price_pix = str(get_setting("ENROLLMENT_PRICE_PIX", getattr(settings, "ENROLLMENT_PRICE_PIX", "999")))
+    price_card_cents = int(get_setting("ENROLLMENT_PRICE_CARD_CENTS", getattr(settings, "ENROLLMENT_PRICE_CARD_CENTS", 118800)))
     promo_price_pix = str(get_setting("ENROLLMENT_PROMO_PRICE_PIX", getattr(settings, "ENROLLMENT_PROMO_PRICE_PIX", price_pix)))
     promo_price_card_cents = int(get_setting("ENROLLMENT_PROMO_PRICE_CARD_CENTS", getattr(settings, "ENROLLMENT_PROMO_PRICE_CARD_CENTS", price_card_cents)))
     promoter_study_unlock_threshold = int(get_setting("PROMOTER_STUDY_UNLOCK_THRESHOLD", getattr(settings, "PROMOTER_STUDY_UNLOCK_THRESHOLD", 3)))
@@ -190,12 +190,12 @@ def get_all_platform_config() -> dict:
     promoter_price_card_cents = int(get_setting("ENROLLMENT_PRICE_PROMOTER_CARD_CENTS", getattr(settings, "ENROLLMENT_PRICE_PROMOTER_CARD_CENTS", price_card_cents)))
     card_installments = int(get_setting("CARD_INSTALLMENTS", 12))
     anchor_full = str(get_setting("ENROLLMENT_ANCHOR_FULL", getattr(settings, "ENROLLMENT_ANCHOR_FULL", "1615")))
-    description = str(get_setting("ENROLLMENT_DESCRIPTION", getattr(settings, "ENROLLMENT_DESCRIPTION", "Matrícula Supletivo")))
+    description = str(get_setting("ENROLLMENT_DESCRIPTION", getattr(settings, "ENROLLMENT_DESCRIPTION", "Matrícula Supletivo Brasil")))
 
     # 3. Comissões
-    commission_direct = str(get_setting("COMMISSION_DIRECT", getattr(settings, "COMMISSION_DIRECT", "50")))
-    commission_bonus_flat = str(get_setting("COMMISSION_BONUS_FLAT", getattr(settings, "COMMISSION_BONUS_FLAT", "200")))
-    commission_bonus_threshold = int(get_setting("COMMISSION_BONUS_THRESHOLD", getattr(settings, "COMMISSION_BONUS_THRESHOLD", 3)))
+    commission_direct = str(get_setting("COMMISSION_DIRECT", getattr(settings, "COMMISSION_DIRECT", "100")))
+    commission_bonus_flat = str(get_setting("COMMISSION_BONUS_FLAT", getattr(settings, "COMMISSION_BONUS_FLAT", "500")))
+    commission_bonus_threshold = int(get_setting("COMMISSION_BONUS_THRESHOLD", getattr(settings, "COMMISSION_BONUS_THRESHOLD", 5)))
     commission_coordinator = str(get_setting("COMMISSION_COORDINATOR", getattr(settings, "COMMISSION_COORDINATOR", "25")))
     commission_closing_weekday = int(get_setting("COMMISSION_CLOSING_WEEKDAY", getattr(settings, "COMMISSION_CLOSING_WEEKDAY", 4)))
     commission_closing_hour = int(get_setting("COMMISSION_CLOSING_HOUR", getattr(settings, "COMMISSION_CLOSING_HOUR", 18)))

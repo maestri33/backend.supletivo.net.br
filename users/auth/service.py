@@ -349,17 +349,40 @@ def change_phone(*, user_external_id: str, new_phone: str) -> dict:
 # ── check / recover ──────────────────────────────────────────────────────
 
 
+def _safe_user_by_external_id(external_id: str | None):
+    if not external_id:
+        return None
+    import uuid
+
+    try:
+        valid_uuid = uuid.UUID(str(external_id).strip())
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return User.objects.filter(external_id=valid_uuid).first()
+
+
 def _find_user(
     *, cpf: str | None = None, phone: str | None = None, external_id: str | None = None
 ):
     if external_id:
-        return User.objects.filter(external_id=external_id).first()
+        user = _safe_user_by_external_id(external_id)
+        if user is not None:
+            return user
     if cpf:
-        p = profiles.find_by_cpf(cpf)
-        return p.user if p else None
+        digits_cpf = "".join(c for c in str(cpf) if c.isdigit())
+        p = profiles.find_by_cpf(digits_cpf) if digits_cpf else None
+        if p:
+            return p.user
     if phone:
-        p = profiles.find_by_phone(phone)
-        return p.user if p else None
+        digits_phone = "".join(c for c in str(phone) if c.isdigit())
+        if digits_phone:
+            p = profiles.find_by_phone(digits_phone)
+            if not p and not digits_phone.startswith("55"):
+                p = profiles.find_by_phone("55" + digits_phone)
+            elif not p and digits_phone.startswith("55") and len(digits_phone) > 2:
+                p = profiles.find_by_phone(digits_phone[2:])
+            if p:
+                return p.user
     return None
 
 
@@ -1013,20 +1036,21 @@ def issue_tokens_for_user(user: User) -> dict:
 
 def login(*, external_id: str, role: str, otp: str) -> dict:
     """Confere role ativa → valida OTP → emite JWT com TODAS as roles ativas (passwordless)."""
-    user = User.objects.filter(external_id=external_id).first()
+    user = _safe_user_by_external_id(external_id)
     if user is None:
         raise NotFound("Usuário não encontrado.", code="USER_NOT_FOUND")
 
+    canonical_ext_id = str(user.external_id)
     active = roles.active_roles(user)
     if role not in active:
         logger.warning(
-            "auth.login_role_denied", external_id=external_id, requested=role
+            "auth.login_role_denied", external_id=canonical_ext_id, requested=role
         )
         raise Forbidden(f"Usuário não possui a role '{role}'.", code="ROLE_NOT_HELD")
 
     verify_otp_for_user(user=user, otp=otp)
-    tokens = jwt_service.issue(external_id, active)
-    logger.info("auth.login_ok", external_id=external_id, role=role)
+    tokens = jwt_service.issue(canonical_ext_id, active)
+    logger.info("auth.login_ok", external_id=canonical_ext_id, role=role)
     return tokens
 
 
@@ -1119,18 +1143,18 @@ def login_staff(*, external_id: str, otp: str) -> dict:
     Não-superuser → 403 `NOT_STAFF`. As roles do JWT são as ativas do user (pode ser vazio); o
     gate de staff (`require_superuser`) confere is_superuser no banco, não nos claims.
     """
-    user = User.objects.filter(external_id=external_id).first()
+    user = _safe_user_by_external_id(external_id)
     if user is None:
         raise NotFound("Usuário não encontrado.", code="USER_NOT_FOUND")
     if not _is_staff_user(user):
-        logger.warning("auth.login_staff_denied", external_id=external_id)
+        logger.warning("auth.login_staff_denied", external_id=str(user.external_id))
         raise Forbidden("Acesso restrito ao staff.", code="NOT_STAFF")
 
     verify_otp_for_user(user=user, otp=otp)
 
     active = roles.active_roles(user)
-    tokens = jwt_service.issue(external_id, active)
-    logger.info("auth.login_staff_ok", external_id=external_id)
+    tokens = jwt_service.issue(str(user.external_id), active)
+    logger.info("auth.login_staff_ok", external_id=str(user.external_id))
     return tokens
 
 
@@ -1158,9 +1182,9 @@ def login_staff_password(*, identifier: str, password: str) -> dict:
             p = profiles.find_by_phone(digits) or (profiles.find_by_phone("55" + digits) if not digits.startswith("55") else None)
             user = p.user if p else None
 
-    # Fallback: external_id direto
+    # Fallback: external_id direto (validando formato UUID)
     if user is None:
-        user = User.objects.filter(external_id=clean_id).first()
+        user = _safe_user_by_external_id(clean_id)
 
     if user is None:
         _jitter()

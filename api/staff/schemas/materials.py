@@ -58,6 +58,12 @@ class TrainingSubmissionOut(Schema):
     created_at: str
 
 
+class TrainingOverrideIn(Schema):
+    grade: str | None = "10.0"
+    approve: bool = True
+    justification: str | None = ""
+
+
 class TrainingOverrideOut(Schema):
     detail: str
     status: str

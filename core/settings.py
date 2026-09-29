@@ -652,19 +652,19 @@ ROLE_RULES = env.json(
 
 # finance (app finance) — motor de comissão/payout. Valores em REAIS (string→Decimal no finance.config,
 # nunca float; só o infinitepay usa centavos). Padrão alvo MVP Beta: 50/200/25/threshold 3 (§8/§10).
-COMMISSION_DIRECT = env("COMMISSION_DIRECT", default="1")
-COMMISSION_BONUS_FLAT = env("COMMISSION_BONUS_FLAT", default="5")
-COMMISSION_COORDINATOR = env("COMMISSION_COORDINATOR", default="1")
-COMMISSION_BONUS_THRESHOLD = env.int("COMMISSION_BONUS_THRESHOLD", default=3)
+COMMISSION_DIRECT = env("COMMISSION_DIRECT", default="100")
+COMMISSION_BONUS_FLAT = env("COMMISSION_BONUS_FLAT", default="500")
+COMMISSION_COORDINATOR = env("COMMISSION_COORDINATOR", default="25")
+COMMISSION_BONUS_THRESHOLD = env.int("COMMISSION_BONUS_THRESHOLD", default=5)
 # fechamento: dia (0=seg..4=sex) e hora em America/Sao_Paulo. O Schedule é WEEKLY (sem croniter).
 COMMISSION_CLOSING_WEEKDAY = env.int("COMMISSION_CLOSING_WEEKDAY", default=4)
 COMMISSION_CLOSING_HOUR = env.int("COMMISSION_CLOSING_HOUR", default=18)
 
 # matrícula (funil do aluno, §4 itens 11/13) — preço por gateway. Victor 2026-06-07: o COBRADO é o MESMO
 # EXIBIDO na vitrine (GET /clients/pricing), uma fonte só. PIX em REAIS (valor cheio); CARTÃO em CENTAVOS
-# (total; o front mostra 12x). DEV: PIX R$5 / cartão R$1 (=100 centavos). PROD = pedir ao Victor (§8).
-ENROLLMENT_PRICE_CARD_CENTS = env.int("ENROLLMENT_PRICE_CARD_CENTS", default=100)
-ENROLLMENT_PRICE_PIX = env("ENROLLMENT_PRICE_PIX", default="5")
+# (total; o front mostra 12x de R$ 99). Padrão canônico: PIX R$ 999 / cartão R$ 1.188 (=118800 centavos).
+ENROLLMENT_PRICE_CARD_CENTS = env.int("ENROLLMENT_PRICE_CARD_CENTS", default=118800)
+ENROLLMENT_PRICE_PIX = env("ENROLLMENT_PRICE_PIX", default="999")
 # Preço PROMOCIONAL da matrícula (PIX e Cartão)
 ENROLLMENT_PROMO_PRICE_PIX = env("ENROLLMENT_PROMO_PRICE_PIX", default=ENROLLMENT_PRICE_PIX)
 ENROLLMENT_PROMO_PRICE_CARD_CENTS = env.int(
@@ -683,7 +683,7 @@ ENROLLMENT_PRICE_PROMOTER_CARD_CENTS = env.int(
 ENROLLMENT_PRICE_PROMOTER_PIX = env(
     "ENROLLMENT_PRICE_PROMOTER_PIX", default=ENROLLMENT_PRICE_PIX
 )
-ENROLLMENT_DESCRIPTION = env("ENROLLMENT_DESCRIPTION", default="Matrícula Supletivo")
+ENROLLMENT_DESCRIPTION = env("ENROLLMENT_DESCRIPTION", default="Matrícula Supletivo Brasil")
 
 # treino (LMS do funil do colaborador, §4 item 7) — nota de corte (0–10) p/ aprovar uma submissão da IA.
 # Default 6 (palavra do dono). PROD = pedir ao Victor se mudar.

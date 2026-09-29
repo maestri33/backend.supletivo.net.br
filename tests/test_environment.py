@@ -46,6 +46,17 @@ def test_preview_habilita_test_mode_com_wildcard():
     assert result.test_mode is True
 
 
+def test_staging_respeita_test_mode_desabilitado():
+    result = resolve_environment(
+        app_env="staging",
+        legacy_test_mode=False,
+        hostname="backend-web",
+        allowed_test_hosts=["backend-web"],
+    )
+    assert result.app_env == "staging"
+    assert result.test_mode is False
+
+
 def test_prod_nunca_aceita_adaptadores_externos_sinteticos():
     with pytest.raises(ImproperlyConfigured):
         resolve_external_fakes(app_env="prod", requested=True)

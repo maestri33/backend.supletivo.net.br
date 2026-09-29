@@ -36,8 +36,10 @@ def resolve_environment(
             f"APP_ENV={app_env!r} inválido; use um de: {allowed}."
         )
 
-    test_mode = normalized != "prod"
-    if legacy_test_mode and not test_mode:
+    test_mode = normalized in {"test", "preview"} or (
+        normalized == "staging" and legacy_test_mode
+    )
+    if legacy_test_mode and normalized == "prod":
         raise ImproperlyConfigured(
             "TEST_MODE=1 é incompatível com APP_ENV=prod. Use APP_ENV=test, preview ou staging."
         )

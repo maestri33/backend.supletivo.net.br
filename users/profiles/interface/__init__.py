@@ -14,24 +14,37 @@ def exists_cpf(cpf: str) -> bool:
 
 
 def phone_variants(phone: str) -> list[str]:
-    """Canônico + a outra forma do 9º dígito (BR), na ordem: o que veio primeiro.
+    """Canônico + a outra forma do 9º dígito (BR), com ou sem DDI 55.
 
     O número é GRAVADO como o WhatsApp o resolve (`resolve_br_number`), e para boa parte
     dos DDDs isso é a forma CURTA (`554299384069`); mas o usuário digita a forma que ele
-    conhece, com o 9 (`5542999384069`). Comparar cru trancava o dono da conta do lado de
-    fora: o `check` não achava, o `register` achava e estourava `PHONE_EXISTS`, e o app só
-    sabia dizer "problema no nosso servidor" (E2E 2026-07-28 — aconteceu com uma matrícula
-    JÁ PAGA). Só celular: fixo (8 dígitos que não começam com 9) não tem essa dualidade.
+    conhece, com o 9 (`5542999384069`) ou sem o 55 (`42999384069`). Comparar cru trancava
+    o dono da conta do lado de fora.
     """
-    digits = "".join(c for c in phone if c.isdigit())
-    if not digits.startswith("55") or len(digits) not in (12, 13):
-        return [digits]
-    ddd, local = digits[2:4], digits[4:]
-    if len(local) == 9 and local.startswith("9"):
-        return [digits, f"55{ddd}{local[1:]}"]
-    if len(local) == 8 and local[0] in "6789":
-        return [digits, f"55{ddd}9{local}"]
-    return [digits]
+    raw_digits = "".join(c for c in phone if c.isdigit())
+    if not raw_digits:
+        return []
+    variants = [raw_digits]
+
+    digits = raw_digits
+    if not digits.startswith("55") and len(digits) in (10, 11):
+        digits = "55" + digits
+        variants.append(digits)
+    elif digits.startswith("55") and len(digits) in (12, 13):
+        variants.append(digits[2:])
+
+    if digits.startswith("55") and len(digits) in (12, 13):
+        ddd, local = digits[2:4], digits[4:]
+        if len(local) == 9 and local.startswith("9"):
+            short_55 = f"55{ddd}{local[1:]}"
+            short_local = f"{ddd}{local[1:]}"
+            variants.extend([short_55, short_local])
+        elif len(local) == 8 and local[0] in "6789":
+            long_55 = f"55{ddd}9{local}"
+            long_local = f"{ddd}9{local}"
+            variants.extend([long_55, long_local])
+
+    return list(dict.fromkeys(variants))
 
 
 def exists_phone(phone: str) -> bool:

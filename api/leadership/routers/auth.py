@@ -47,13 +47,17 @@ def check(request, payload: CheckIn):
 @router.post("/login", response=TokenOut, auth=None, summary="Login do coordenador")
 def login(request, payload: LoginIn):
     """Login passwordless (OTP) do coordenador."""
-    user = User.objects.filter(external_id=payload.external_id, is_active=True).first()
-    if user is None:
+    user = auth_iface._find_user(
+        external_id=payload.external_id,
+        phone=getattr(payload, "phone", None),
+        cpf=getattr(payload, "cpf", None),
+    )
+    if user is None or not user.is_active:
         raise NotFound("Usuário não encontrado.", code="USER_NOT_FOUND")
     if hub_iface.coordinated_by(user) is None:
         raise Forbidden(NOT_COORDINATOR_DETAIL, code="NOT_HUB_COORDINATOR")
     return auth_iface.login(
-        external_id=payload.external_id, role="coordinator", otp=payload.otp
+        external_id=str(user.external_id), role="coordinator", otp=payload.otp
     )
 
 

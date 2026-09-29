@@ -230,8 +230,8 @@ def get_user_dossier(request, user_external_id: str):
             "number": getattr(doc, "number", None),
             "state": getattr(doc, "state", None),
             "validation_status": getattr(doc, "validation_status", None),
-            "validation_reason": getattr(doc, "validation_reason", None),
-            "extracted_data": getattr(doc, "extracted_data", None) or {},
+            "validation_reason": validation_reason,
+            "extracted_data": extracted_data,
         },
         "biometrics": {
             "selfie_status": getattr(enr, "selfie_status", None) or getattr(cand, "selfie_status", None),
@@ -264,25 +264,42 @@ def decide_document_staff(request, user_external_id: str, payload: DocumentDecid
     reason = payload.reason or ("Aprovado pelo Staff Admin" if approve else "Reprovado pelo Staff Admin")
 
     if payload.kind == "rg":
-        rg = RG.objects.filter(user=user).first()
-        cnh = CNH.objects.filter(user=user).first()
+        rg = RG.objects.filter(document__user=user).first()
+        cnh = CNH.objects.filter(document__user=user).first()
         doc = rg or cnh
         if doc:
             doc.validation_status = "approved" if approve else "rejected"
             doc.validation_reason = reason
-            doc.save(update_fields=["validation_status", "validation_reason", "updated_at"])
+            res = dict(doc.validation_result or {})
+            res["reason"] = reason
+            doc.validation_result = res
+            doc.save(update_fields=["validation_status", "validation_result"])
+
+    elif payload.kind == "address_proof":
+        proof = AddressProof.objects.filter(document__user=user).first()
+        if proof:
+            proof.validation_status = "approved" if approve else "rejected"
+            proof.validation_reason = reason
+            res = dict(proof.validation_result or {})
+            res["reason"] = reason
+            proof.validation_result = res
+            proof.save(update_fields=["validation_status", "validation_result"])
 
     elif payload.kind == "selfie":
         enr = Enrollment.objects.filter(user=user).first()
         if enr:
             enr.selfie_status = "approved" if approve else "rejected"
+            enr.selfie_verified = bool(approve)
+            enr.selfie_description = reason
             enr.selfie_reason = reason
-            enr.save(update_fields=["selfie_status", "selfie_reason", "updated_at"])
+            enr.save(update_fields=["selfie_status", "selfie_verified", "selfie_description", "updated_at"])
         cand = Candidate.objects.filter(user=user).first()
         if cand:
             cand.selfie_status = "approved" if approve else "rejected"
+            cand.selfie_verified = bool(approve)
+            cand.selfie_description = reason
             cand.selfie_reason = reason
-            cand.save(update_fields=["selfie_status", "selfie_reason", "updated_at"])
+            cand.save(update_fields=["selfie_status", "selfie_verified", "selfie_description", "updated_at"])
 
         p = profiles.get(user)
         if p and approve:
@@ -294,6 +311,9 @@ def decide_document_staff(request, user_external_id: str, payload: DocumentDecid
         if sdoc:
             sdoc.validation_status = "approved" if approve else "rejected"
             sdoc.validation_reason = reason
-            sdoc.save(update_fields=["validation_status", "validation_reason", "updated_at"])
+            res = dict(sdoc.validation_result or {})
+            res["reason"] = reason
+            sdoc.validation_result = res
+            sdoc.save(update_fields=["validation_status", "validation_result", "updated_at"])
 
     return {"detail": "Decisão registrada com sucesso.", "status": "approved" if approve else "rejected"}

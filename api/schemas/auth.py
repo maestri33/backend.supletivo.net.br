@@ -64,8 +64,16 @@ class CheckOut(Schema):
 class LoginIn(Schema):
     """Body do `POST /auth/login` — compartilhado pelos grupos do funil (dedup)."""
 
-    external_id: str = Field(description="external_id do USER (veio do /auth/check)")
+    external_id: str = Field(
+        default="", description="external_id do USER (veio do /auth/check)"
+    )
     otp: str
+    phone: str | None = Field(
+        default=None, description="Fallback opcional de telefone caso external_id esteja ausente"
+    )
+    cpf: str | None = Field(
+        default=None, description="Fallback opcional de CPF caso external_id esteja ausente"
+    )
 
 
 class RefreshIn(Schema):

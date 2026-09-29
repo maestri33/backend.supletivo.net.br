@@ -33,7 +33,7 @@ def test_staff_document_reviews_and_dossier():
         document=doc_root,
         number="12345678",
         validation_status="review",
-        validation_result={"reason": "Foto com reflexo"},
+        validation_result={"reason": "Foto com reflexo", "extracted_data": {"cpf": "12345678901"}},
     )
     enr = Enrollment.objects.create(
         user=student_user,
@@ -43,7 +43,9 @@ def test_staff_document_reviews_and_dossier():
         selfie_status="review",
     )
 
-    from api.staff.routers.documents import get_user_dossier, list_global_document_reviews
+    from api.staff.routers.documents import decide_document_staff, get_user_dossier, list_global_document_reviews
+    from api.staff.schemas import DocumentDecideIn
+    from users.documents.models import AddressProof
 
     class DummyRequest:
         auth = staff_user
@@ -57,6 +59,23 @@ def test_staff_document_reviews_and_dossier():
     assert dossier["profile"]["name"] == "Aluno Dossiê"
     assert dossier["document_data"]["number"] == "12345678"
     assert dossier["document_data"]["validation_status"] == "review"
+    assert dossier["document_data"]["validation_reason"] == "Foto com reflexo"
+    assert dossier["document_data"]["extracted_data"] == {"cpf": "12345678901"}
+
+    addr = AddressProof.objects.create(
+        document=doc_root,
+        validation_status="review",
+        validation_result={"reason": "Comprovante ilegível"},
+    )
+    res_addr = decide_document_staff(
+        req,
+        str(student_user.external_id),
+        DocumentDecideIn(kind="address_proof", approve=True, reason="Validado manualmente"),
+    )
+    assert res_addr["status"] == "approved"
+    addr.refresh_from_db()
+    assert addr.validation_status == "approved"
+    assert addr.validation_result["reason"] == "Validado manualmente"
 
 
 def test_staff_network_tree():

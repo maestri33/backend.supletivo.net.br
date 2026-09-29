@@ -6,6 +6,7 @@ from ninja.errors import HttpError
 
 from api.auth import require_superuser
 from api.staff.schemas import (
+    TrainingOverrideIn,
     TrainingOverrideOut,
     TrainingSubmissionFilterSchema,
     TrainingSubmissionOut,
@@ -58,7 +59,14 @@ def list_training_submissions(
 
 
 @router.post("/training/submissions/{external_id}/override", response=TrainingOverrideOut, summary="Aprovar/reprovar submissão manualmente")
-def override_submission_grade(request, external_id: str, grade: str, approve: bool, justification: str | None = None):
+def override_submission_grade(
+    request,
+    external_id: str,
+    payload: TrainingOverrideIn | None = None,
+    grade: str | None = None,
+    approve: bool | None = None,
+    justification: str | None = None,
+):
     """Staff substitui a nota/decisão da IA."""
     require_superuser(request.auth)
 
@@ -66,12 +74,16 @@ def override_submission_grade(request, external_id: str, grade: str, approve: bo
     if sub is None:
         raise NotFound("Submissão não encontrada.", code="SUBMISSION_NOT_FOUND")
 
-    sub.grade = Decimal(grade)
-    sub.status = Submission.Status.APPROVED if approve else Submission.Status.REJECTED
-    sub.justification = justification or ("Aprovado manualmente pelo Staff" if approve else "Reprovado manualmente pelo Staff")
+    resolved_grade = payload.grade if payload is not None else (grade or "10.0")
+    resolved_approve = payload.approve if payload is not None else bool(approve)
+    resolved_just = payload.justification if payload is not None else justification
+
+    sub.grade = Decimal(resolved_grade)
+    sub.status = Submission.Status.APPROVED if resolved_approve else Submission.Status.REJECTED
+    sub.justification = resolved_just or ("Aprovado manualmente pelo Staff" if resolved_approve else "Reprovado manualmente pelo Staff")
     sub.save(update_fields=["grade", "status", "justification", "updated_at"])
 
-    if approve:
+    if resolved_approve:
         assignment = MaterialAssignment.objects.filter(user=sub.user, material=sub.material).first()
         if assignment:
             assignment.status = MaterialAssignment.Status.APPROVED
