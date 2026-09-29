@@ -136,6 +136,52 @@ def test_infinitepay_create_link_fallback_if_edge_unconfigured(settings):
     assert payload["webhook_url"] == expected_webhook
 
 
+def test_infinitepay_create_link_full_contract_parameters(settings):
+    """create_checkout deve enviar rigorosamente nome, contato, email, cpf, webhook personalizado e redirect_url do app."""
+    from unittest.mock import patch
+    from integrations.bank.infinitepay.checkout import create_checkout
+
+    settings.INFINITEPAY_HANDLE = "v7m"
+    settings.FRONTEND_URL = "https://app.supletivo.net.br"
+    settings.INFINITEPAY_WEBHOOK_URL = "https://webhooks.v7m.live/bank/infinitepay"
+
+    customer_input = {
+        "name": "Victor Maestri",
+        "email": "v7maestri@gmail.com",
+        "phone_number": "+5543996648750",
+        "cpf": "52998224725",
+    }
+
+    with patch("integrations.bank.infinitepay.checkout._create_link") as mock_create:
+        mock_create.return_value = {
+            "url": "https://checkout.infinitepay.io/v7m?lenc=test",
+            "slug": "slug-test-123",
+        }
+        checkout = create_checkout(
+            amount_cents=100,
+            description="Matrícula Supletivo",
+            customer=customer_input,
+            redirect_url="https://app.supletivo.net.br/student/lead",
+        )
+
+    payload = checkout.request_payload
+    nsu = str(checkout.external_id)
+
+    # 1. Nome, Contato, Email, CPF
+    assert payload["customer"]["name"] == "Victor Maestri"
+    assert payload["customer"]["phone_number"] == "+5543996648750"
+    assert payload["customer"]["email"] == "v7maestri@gmail.com"
+    assert payload["customer"]["cpf"] == "52998224725"
+
+    # 2. Webhook personalizado com order_nsu
+    assert payload["webhook_url"] == f"https://webhooks.v7m.live/bank/infinitepay?order_nsu={nsu}"
+
+    # 3. Link para retorno no app
+    assert payload["redirect_url"] == f"https://app.supletivo.net.br/student/lead?from=infinitepay&order_nsu={nsu}"
+    assert payload["order_nsu"] == nsu
+    assert payload["handle"] == "v7m"
+
+
 def test_asaas_onboarding_target_webhook_url_routes_to_edge_gateway(settings):
     """target_webhook_url do Asaas deve apontar para o edge gateway webhooks.v7m.live."""
     from integrations.bank.asaas.onboarding import target_webhook_url

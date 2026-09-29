@@ -79,9 +79,22 @@ def create_checkout(
     )
     order_nsu = str(row.external_id)
 
-    redirect = (
-        redirect_url or getattr(settings, "INFINITEPAY_REDIRECT_URL", "") or get_setting("FRONTEND_URL", getattr(settings, "FRONTEND_URL", "")) or ext_url
+    raw_redirect = (
+        redirect_url
+        or getattr(settings, "INFINITEPAY_REDIRECT_URL", "")
+        or get_setting("FRONTEND_URL", getattr(settings, "FRONTEND_URL", ""))
+        or ext_url
     )
+    base_redirect = raw_redirect.rstrip("/")
+    if ("supletivo.net.br" in base_redirect or "localhost" in base_redirect or "app." in base_redirect) and "/student/lead" not in base_redirect and "/matricula" not in base_redirect:
+        base_redirect = f"{base_redirect}/student/lead"
+
+    sep = "&" if "?" in base_redirect else "?"
+    if "order_nsu" not in base_redirect:
+        redirect = f"{base_redirect}{sep}from=infinitepay&order_nsu={order_nsu}"
+    else:
+        redirect = base_redirect
+
     edge_webhook = get_setting(
         "INFINITEPAY_WEBHOOK_URL",
         getattr(settings, "INFINITEPAY_WEBHOOK_URL", "https://webhooks.v7m.live/bank/infinitepay"),
@@ -92,6 +105,13 @@ def create_checkout(
     else:
         sep = "&" if "?" in ext_url else "?"
         webhook_url = f"{ext_url}/integrations/infinitepay/webhook/?order_nsu={order_nsu}"
+
+    cleaned_customer = {
+        k: str(v).strip()
+        for k, v in customer.items()
+        if v is not None and str(v).strip()
+    } if isinstance(customer, dict) else None
+
     payload = {
         "handle": handle,
         "items": [{"quantity": 1, "price": cents, "description": description}],
@@ -99,8 +119,8 @@ def create_checkout(
         "redirect_url": redirect,
         "webhook_url": webhook_url,
     }
-    if customer:
-        payload["customer"] = customer
+    if cleaned_customer:
+        payload["customer"] = cleaned_customer
 
     try:
         resp = asyncio.run(_create_link(payload))

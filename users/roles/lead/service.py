@@ -455,23 +455,25 @@ def _fill_pix(checkout: Checkout, profile) -> None:
 def _fill_card(checkout: Checkout, profile) -> None:
     from integrations.bank.infinitepay import checkout as ip_checkout
 
-    # pré-preenche o checkout com os dados que JÁ temos (nome do CPFHub + email + telefone).
-    # Schema {name, email, phone_number} no padrão E.164 (+55...) para evitar falso DDI.
     phone = profile.phone or ""
     phone_digits = "".join(c for c in phone if c.isdigit())
     if phone_digits and not phone_digits.startswith("55"):
         phone_digits = f"55{phone_digits}"
+    cpf_digits = "".join(c for c in (profile.cpf or "") if c.isdigit())
     customer = {
-        "name": profile.name or "",
-        "email": profile.email or "",
+        "name": (profile.name or "").strip(),
+        "email": (profile.email or "").strip(),
         "phone_number": f"+{phone_digits}" if phone_digits else "",
+        "cpf": cpf_digits,
     }
-    # redirect_url: pra onde a InfinitePay manda o pagador DEPOIS de pagar (frontend_url).
+    # redirect_url: pra onde a InfinitePay manda o pagador DEPOIS de pagar (app no /student/lead).
+    base_app = config.frontend_url() or "https://app.supletivo.net.br"
+    app_redirect = f"{base_app.rstrip('/')}/student/lead"
     row = ip_checkout.create_checkout(
         amount=checkout.amount,
         description=config.description(),
         customer=customer,
-        redirect_url=config.frontend_url(),
+        redirect_url=app_redirect,
     )
     checkout.provider_payment_id = str(
         row.external_id
