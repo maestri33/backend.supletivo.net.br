@@ -1,0 +1,59 @@
+# ==============================================================================
+# Cloudflare Tunnel Configuration — supletivo-prod
+# Caminho de Deploy: /etc/cloudflared/config.yml
+# ==============================================================================
+
+tunnel: ${CLOUDFLARE_TUNNEL_ID}
+credentials-file: /etc/cloudflared/${CLOUDFLARE_TUNNEL_ID}.json
+
+# Protocolo de transporte moderno: QUIC (UDP 7844) com fallback HTTP/2 (TCP 443)
+transport: quic
+
+# Métricas locais para Prometheus / monitoramento
+metrics: 127.0.0.1:2000
+
+# Conexões com serviços locais
+originRequest:
+  connectTimeout: 15s
+  tlsTimeout: 10s
+  tcpKeepAlive: 30s
+  keepAliveConnections: 128
+  keepAliveTimeout: 90s
+  noTLSVerify: false
+  disableChunkedEncoding: false
+
+ingress:
+  # 1. Backend Core da Plataforma Supletivo (Django 5.2 Ninja via Nginx CT 30101)
+  - hostname: backend.supletivo.net.br
+    service: http://10.1.30.101:80
+    originRequest:
+      connectTimeout: 30s
+      noHappyEyeballs: false
+      proxyAddress: 0.0.0.0
+
+  # 2. Infisical Secret Manager (CT 61)
+  - hostname: infisical.v7m.live
+    service: http://10.0.1.61:8080
+    originRequest:
+      connectTimeout: 15s
+
+  # 3. Hindsight Biomimetic Memory (CT 99)
+  - hostname: hindsight.v7m.live
+    service: http://10.0.1.99:8888
+    originRequest:
+      connectTimeout: 20s
+
+  # 4. OpenViking Context Studio (CT 99)
+  - hostname: openviking.v7m.live
+    service: http://10.0.1.99:1933
+    originRequest:
+      connectTimeout: 20s
+
+  # 5. Hub Geral de Ferramentas Técnicas (*.v7m.live)
+  - hostname: tools.v7m.live
+    service: http://10.0.1.99:8080
+    originRequest:
+      connectTimeout: 15s
+
+  # 6. Fallback Catch-All Mandatório (bloqueia qualquer requisição não mapeada)
+  - service: http_status:404

@@ -171,6 +171,8 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    # Edge cache, ETag determinístico e validação HTTP 304 (Cloudflare-ready)
+    "core.edge_cache.EdgeCacheMiddleware",
     # ponytail: logging estruturado (request_id + method/path/status/duration) — após Common.
     "core.logging_middleware.RequestLoggingMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
