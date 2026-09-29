@@ -1,19 +1,21 @@
 -- ==============================================================================
 -- Script de Provisionamento de Usuário Read-Only para Cloudflare Hyperdrive
--- Executar no PostgreSQL 18 (CT 2100 / 10.1.20.100:5432 na base 'dmz')
+-- Executado no PostgreSQL 16 (pve-v7m / CT 150 v7m-core / base 'backend')
 -- ==============================================================================
 
--- 1. Criação da Role com senha segura (alterar <SENHA_FORTE_INFISICAL>)
+-- 1. Criação da Role com senha segura
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'hyperdrive_ro') THEN
         CREATE ROLE hyperdrive_ro WITH LOGIN PASSWORD '<SENHA_FORTE_INFISICAL>';
+    ELSE
+        ALTER ROLE hyperdrive_ro WITH PASSWORD '<SENHA_FORTE_INFISICAL>';
     END IF;
 END
 $$;
 
--- 2. Concessão de conexão estritamente à base de produção 'dmz'
-GRANT CONNECT ON DATABASE dmz TO hyperdrive_ro;
+-- 2. Concessão de conexão estritamente à base de produção 'backend'
+GRANT CONNECT ON DATABASE backend TO hyperdrive_ro;
 
 -- 3. Permissão de leitura no schema public
 GRANT USAGE ON SCHEMA public TO hyperdrive_ro;
@@ -26,4 +28,3 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO hyperdriv
 
 -- 5. Revogação de permissões perigosas (Defesa em Profundidade)
 REVOKE CREATE ON SCHEMA public FROM hyperdrive_ro;
-REVOKE ALL ON SCHEMA public FROM PUBLIC;

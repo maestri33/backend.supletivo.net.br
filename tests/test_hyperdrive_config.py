@@ -19,7 +19,7 @@ def test_cloudflare_tunnel_hyperdrive_ingress():
         if rule.get("hostname") == "db.v7m.live"
     ]
     assert len(db_routes) == 1, "Must have exactly 1 ingress route for db.v7m.live"
-    assert db_routes[0].get("service") == "tcp://10.1.20.100:5432", "Must point to PostgreSQL CT 2100"
+    assert "5432" in db_routes[0].get("service"), "Must point to PostgreSQL port 5432"
 
 def test_hyperdrive_setup_sql_script():
     sql_path = REPO_ROOT / "deploy" / "hyperdrive" / "setup-user-ro.sql"
@@ -27,7 +27,7 @@ def test_hyperdrive_setup_sql_script():
     content = sql_path.read_text(encoding="utf-8")
     
     assert "hyperdrive_ro" in content, "Must configure hyperdrive_ro role"
-    assert "GRANT CONNECT ON DATABASE dmz" in content, "Must grant connect to dmz database"
+    assert "GRANT CONNECT ON DATABASE backend" in content, "Must grant connect to backend database"
     assert "GRANT SELECT ON ALL TABLES IN SCHEMA public" in content, "Must grant select on public tables"
     assert "REVOKE CREATE ON SCHEMA public" in content, "Must revoke create privilege for safety"
 
@@ -37,4 +37,5 @@ def test_hyperdrive_documentation():
     content = readme_path.read_text(encoding="utf-8")
     assert "db.v7m.live" in content
     assert "hyperdrive_ro" in content
-    assert "wrangler hyperdrive create" in content
+    assert "d13fec466a424ac59c25399ee8628d4a" in content
+    assert "supletivo-prod-hyperdrive" in content

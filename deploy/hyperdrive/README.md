@@ -1,123 +1,108 @@
-# Guia de Operação: Cloudflare Hyperdrive com PostgreSQL (CT 2100)
+# Guia de Operação: Cloudflare Hyperdrive com PostgreSQL
 
-Este documento descreve a integração da infraestrutura de produção do **PostgreSQL 18** (CT 2100, Proxmox `pve-prod`) com o **Cloudflare Hyperdrive** para acelerar leituras nos Workers da Cloudflare (`app`, `admin`, `notify-edge`).
+Este documento descreve a integração da infraestrutura de produção do **PostgreSQL 16** (Host Proxmox `pve-v7m`, CT 150 `v7m-core`, container Docker `v7m-postgres`) com o **Cloudflare Hyperdrive** para acelerar leituras nos Workers da Cloudflare (`app`, `admin`, `notify-edge`).
 
 ---
 
-## 1. Topologia de Rede & Fluxo Zero Trust
+## 1. Topologia de Rede & Fluxo de Borda
 
 ```
-[ Worker na Borda ] 
-       │ (TCP / PostgreSQL Protocol)
+[ Cloudflare Worker na Borda ] 
+       │ (TCP / TLSv1.3 Seguro)
        ▼
-[ Cloudflare Hyperdrive ] (Connection Pool + Edge Query Caching)
-       │
+[ Cloudflare Hyperdrive ] (ID: d13fec466a424ac59c25399ee8628d4a)
+       │ (Pooling global + Edge Query Caching: max-age=60s, swr=300s)
        ▼
-[ Cloudflare Access (Edge) ] (Validação de Service Token mTLS/HTTP)
-       │
-       ▼ (Túnel QUIC Outbound)
-[ Cloudflare Tunnel Daemon (cloudflared) ] (CT 30101 ou Gateway Proxmox)
-       │
-       ▼ (LAN Física 10.1.20.100:5432)
-[ PostgreSQL 18 — CT 2100 ] (Base 'dmz')
+[ Hostname: db.v7m.live:5432 ] (IP Público: 51.79.77.31 / pve-v7m)
+       │ (DNAT iptables em vmbr0)
+       ▼
+[ LAN Física / Bridge vmbr1: 10.0.1.50:5432 ] (CT 150 v7m-core)
+       │ (Docker network v7m-core)
+       ▼
+[ PostgreSQL 16 — v7m-postgres ] (Base de Produção: 'backend')
 ```
 
 * **Hostname Canônico:** `db.v7m.live` (Respeitando a Regra 5: domínios `*.v7m.live` para ferramentas e utilitários técnicos).
-* **Base Oficial:** `dmz` (a base `v7m` é casca legada).
+* **Porta:** `5432` (Criptografia TLSv1.3 obrigatória ativada).
+* **Base Oficial:** `backend` (Owner: `backend`).
+* **Usuário Read-Only:** `hyperdrive_ro`.
+* **Config ID no Cloudflare:** `d13fec466a424ac59c25399ee8628d4a`.
 
 ---
 
-## 2. Passo a Passo de Implantação
+## 2. Passo a Passo Executado & Verificado
 
-### Passo 1: Atualizar o Cloudflare Tunnel
-O arquivo `deploy/cloudflare-tunnel/config.yml` já contém a rota TCP:
+### Passo 1: Regra de Roteamento TCP no Host Proxmox (`pve-v7m`)
+Adicionada regra de DNAT no `iptables` e persistida em `/etc/network/interfaces`:
 
-```yaml
-ingress:
-  # ... rotas existentes (backend, infisical, hindsight, openviking, tools) ...
-
-  # 6. PostgreSQL Produção (CT 2100) — Acesso seguro Hyperdrive via TCP
-  - hostname: db.v7m.live
-    service: tcp://10.1.20.100:5432
-
-  # 7. Fallback Catch-All Mandatório
-  - service: http_status:404
-```
-
-No servidor do túnel, crie a rota DNS e reinicie o daemon:
 ```bash
-cloudflared tunnel route dns <CLOUDFLARE_TUNNEL_ID> db.v7m.live
-sudo systemctl restart cloudflared.service
+# Encaminhamento da porta 5432 para o container interno
+iptables -t nat -A PREROUTING -d 51.79.77.31/32 -i vmbr0 -p tcp --dport 5432 -j DNAT --to-destination 10.0.1.50:5432
 ```
 
----
+### Passo 2: Habilitação de SSL/TLS no PostgreSQL
+O Cloudflare Hyperdrive exige obrigatoriamente criptografia SSL/TLS (`code: 2012`).
+Gerados certificados RSA 2048 (`server.crt` e `server.key`) em `/var/lib/postgresql/data` e ativado no `postgresql.auto.conf`:
 
-### Passo 2: Cloudflare Zero Trust (Access) & Service Token
-
-1. No painel do **Cloudflare Zero Trust** (`dash.teams.cloudflare.com`):
-   - Vá em **Access** > **Service Auth** > **Service Tokens** > **Create Service Token**.
-   - Nome: `hyperdrive-postgres-prod`.
-   - Guarde o `Client ID` e o `Client Secret` no Infisical (`infisical.v7m.live`).
-2. Vá em **Access** > **Applications** > **Add an Application** > **Self-hosted**:
-   - Nome: `PostgreSQL Production (Hyperdrive)`
-   - Domínio: `db.v7m.live`
-3. Crie a política de acesso:
-   - Nome: `Enforce Service Token`
-   - Action: **`Service Auth`** *(MANDATÓRIO: valida os tokens diretamente na borda sem tela de login)*
-   - Rule: `Include` > `Service Token` > `hyperdrive-postgres-prod`.
-
----
-
-### Passo 3: Provisionar a Role Read-Only no PostgreSQL
-No CT 2100 (ou via `psql` administrativo):
-```bash
-psql -h 10.1.20.100 -U postgres -d dmz -f deploy/hyperdrive/setup-user-ro.sql
+```sql
+ALTER SYSTEM SET ssl = 'on';
+ALTER SYSTEM SET ssl_cert_file = 'server.crt';
+ALTER SYSTEM SET ssl_key_file = 'server.key';
 ```
-*(Certifique-se de substituir `<SENHA_FORTE_INFISICAL>` pela senha gerada).*
+*Status verificado:* `TLSv1.3` com cifra `TLS_AES_256_GCM_SHA384`.
 
----
+### Passo 3: Provisionamento da Role Read-Only (`hyperdrive_ro`)
+Executado script `deploy/hyperdrive/setup-user-ro.sql` na base `backend`:
+- Permissão `CONNECT` na base `backend`.
+- Permissão `SELECT` no schema `public`.
+- Bloqueio de criação (`REVOKE CREATE ON SCHEMA public FROM hyperdrive_ro`).
 
-### Passo 4: Criar a Configuração do Hyperdrive via Wrangler
-
-Execute no terminal com os valores resgatados do Infisical:
+### Passo 4: Criação do Hyperdrive Config no Cloudflare
+Criado via Wrangler CLI:
 
 ```bash
 npx wrangler hyperdrive create supletivo-prod-hyperdrive \
-  --host="db.v7m.live" \
-  --database="dmz" \
-  --user="hyperdrive_ro" \
-  --password="<SUA_SENHA_INFISICAL>" \
-  --access-client-id="<CLIENT_ID>" \
-  --access-client-secret="<CLIENT_SECRET>" \
+  --origin-host="db.v7m.live" \
+  --origin-port=5432 \
+  --origin-user="hyperdrive_ro" \
+  --origin-password="<SENHA>" \
+  --database="backend" \
   --max-age=60 \
   --swr=300
 ```
 
-> **Atenção:** Ao utilizar autenticação sobre Access, as flags `--access-client-id` e `--access-client-secret` são usadas em conjunto com `--host`, `--database`, `--user` e `--password` (não use `--connection-string`).
-
-O comando retornará o identificador da configuração:
+Retorno oficial do Cloudflare:
 ```json
 {
-  "id": "e49f8721c0ef49738874836f4521abcd",
-  "name": "supletivo-prod-hyperdrive"
+  "id": "d13fec466a424ac59c25399ee8628d4a",
+  "name": "supletivo-prod-hyperdrive",
+  "origin": {
+    "host": "db.v7m.live",
+    "port": 5432,
+    "database": "backend",
+    "scheme": "postgresql",
+    "user": "hyperdrive_ro"
+  },
+  "origin_connection_limit": 60,
+  "caching": {
+    "disabled": false,
+    "stale_while_revalidate": 300
+  }
 }
 ```
 
 ---
 
-### Passo 5: Adicionar o Binding ao Worker (`wrangler.jsonc`)
+## 3. Como Vincular a Qualquer Worker (`wrangler.jsonc`)
 
-No Worker desejado (ex.: `c:\rep\app.supletivo.net.br\wrangler.jsonc`):
+Adicione o binding no `wrangler.jsonc` do Worker:
 
 ```jsonc
 {
-  "name": "app-supletivo-net-br",
-  "compatibility_date": "2026-09-01",
-  "compatibility_flags": ["nodejs_compat"],
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "e49f8721c0ef49738874836f4521abcd"
+      "id": "d13fec466a424ac59c25399ee8628d4a"
     }
   ]
 }
@@ -125,12 +110,18 @@ No Worker desejado (ex.: `c:\rep\app.supletivo.net.br\wrangler.jsonc`):
 
 ---
 
-### Passo 6: Consumo em Código (TypeScript)
+## 4. Consumo em Código (TypeScript)
 
-Recomenda-se o driver moderno **`postgres` (Postgres.js)** (`npm i postgres`):
+Utilize o driver moderno **`postgres` (Postgres.js)**:
 
 ```typescript
 import postgres from "postgres";
+
+export interface Env {
+  HYPERDRIVE: {
+    connectionString: string;
+  };
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -140,17 +131,29 @@ export default {
     });
 
     try {
-      // Consulta com tagged template literals seguros
-      const pricing = await sql`
+      const settings = await sql`
         SELECT key, value 
         FROM core_platformsetting 
         WHERE key LIKE 'pricing_%'
       `;
 
-      return Response.json({ success: true, data: pricing });
+      return Response.json({ success: true, data: settings });
     } catch (err: any) {
       return Response.json({ success: false, error: err.message }, { status: 500 });
     }
   },
 };
+```
+
+*Prova empírica de teste na borda:*
+```json
+{
+  "success": true,
+  "message": "Cloudflare Hyperdrive is fully working and connected to PostgreSQL!",
+  "data": {
+    "database": "backend",
+    "user": "hyperdrive_ro",
+    "total_settings": 25
+  }
+}
 ```
