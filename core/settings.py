@@ -286,15 +286,20 @@ MAX_UPLOAD_MB = env.int("MAX_UPLOAD_MB", default=10)
 
 # Cloudflare R2 (Object Storage / Zero Egress Fees) — CONVENTION AGENTS.md § Cloudflare-First
 R2_ENABLED = env.bool("R2_ENABLED", default=False)
-R2_ACCOUNT_ID = env("R2_ACCOUNT_ID", default="")
+R2_ACCOUNT_ID = env("R2_ACCOUNT_ID", default="e0814c592e43284a2f6f9984bef32631")
 R2_ACCESS_KEY_ID = env("R2_ACCESS_KEY_ID", default="")
 R2_SECRET_ACCESS_KEY = env("R2_SECRET_ACCESS_KEY", default="")
-R2_BUCKET_NAME = env("R2_BUCKET_NAME", default="")
-R2_PUBLIC_URL = env("R2_PUBLIC_URL", default="https://media.supletivo.net.br")
+R2_BUCKET_NAME = env("R2_BUCKET_NAME", default="supletivo-media")
+R2_PUBLIC_URL = env("R2_PUBLIC_URL", default="https://pub-6d6b676d8923485da3732e5eb4fe90fb.r2.dev")
 
-# Cloudflare Workers AI (Whisper STT, Serverless Inference) — CONVENTION AGENTS.md § Cloudflare-First
+# Cloudflare Workers AI & AI Gateway — CONVENTION AGENTS.md § Cloudflare-First
 CLOUDFLARE_API_TOKEN = env("CLOUDFLARE_API_TOKEN", default="")
 CLOUDFLARE_ACCOUNT_ID = env("CLOUDFLARE_ACCOUNT_ID", default=R2_ACCOUNT_ID)
+CLOUDFLARE_AI_GATEWAY_URL = env(
+    "CLOUDFLARE_AI_GATEWAY_URL",
+    default=f"https://gateway.ai.cloudflare.com/v1/{CLOUDFLARE_ACCOUNT_ID}/default" if CLOUDFLARE_ACCOUNT_ID else "",
+)
+CLOUDFLARE_AI_GATEWAY_ENABLED = env.bool("CLOUDFLARE_AI_GATEWAY_ENABLED", default=False)
 
 # PostHog Telemetry (Server-side Funnel & Business Analytics)
 POSTHOG_ENABLED = env.bool("POSTHOG_ENABLED", default=False)
