@@ -55,5 +55,9 @@ ingress:
     originRequest:
       connectTimeout: 15s
 
-  # 6. Fallback Catch-All Mandatório (bloqueia qualquer requisição não mapeada)
+  # 6. PostgreSQL Produção (CT 2100) — Acesso seguro Hyperdrive via TCP
+  - hostname: db.v7m.live
+    service: tcp://10.1.20.100:5432
+
+  # 7. Fallback Catch-All Mandatório (bloqueia qualquer requisição não mapeada)
   - service: http_status:404
