@@ -35,6 +35,7 @@ jobs:
         run: npm run typecheck
 
       - name: Apply D1 Database Schema Migrations
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -43,8 +44,15 @@ jobs:
           command: d1 execute v7m-webhooks --remote --file=schema.sql
 
       - name: Deploy to Cloudflare Workers
+        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: deploy/cloudflare-workers/finance-webhooks
+
+      - name: Aviso de Token Cloudflare
+        if: ${{ env.CLOUDFLARE_API_TOKEN == '' }}
+        run: |
+          echo "::warning title=Secret Pendente::CLOUDFLARE_API_TOKEN não está definida em Settings > Secrets. Typecheck concluído com sucesso; configure a secret para deploy automático no edge."
+
