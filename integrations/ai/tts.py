@@ -30,17 +30,17 @@ _MD_STRIP_RE = re.compile(r"[*_~`#>]")
 _URL_STRIP_RE = re.compile(r"https?://\S+")
 _SPACE_CLEAN_RE = re.compile(r"\s+")
 
-DEFAULT_VOICE_FEMALE = "Portuguese_SereneWoman"
-DEFAULT_VOICE_MALE = "Portuguese_GentleTeacher"
+DEFAULT_VOICE_FEMALE = "bella"
+DEFAULT_VOICE_MALE = "antoni"
 
 # Cadeia padrão de fallback no OmniRoute (10.0.1.35):
-# 1. MiniMax (voz natural em português)
-# 2. OpenAI / Whisper TTS (nova / onyx)
-# 3. Deepgram Aura 2
+# 1. ElevenLabs Turbo v2.5 (Nativo Brasileiro, ~0.3s)
+# 2. ElevenLabs Multilingual v2
+# 3. OpenAI TTS (nova / onyx)
 DEFAULT_CHAIN = (
-    "minimax/speech-01-hd|Portuguese_SereneWoman|Portuguese_GentleTeacher,"
-    "openai/tts-1|nova|onyx,"
-    "deepgram/aura-2-thalia-en|aura-2-thalia-en|aura-2-apollo-en"
+    "elevenlabs/eleven_turbo_v2_5|bella|antoni,"
+    "elevenlabs/eleven_multilingual_v2|bella|antoni,"
+    "openai/tts-1|nova|onyx"
 )
 
 

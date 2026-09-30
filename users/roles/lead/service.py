@@ -134,11 +134,18 @@ def _notify_captured(lead: Lead) -> None:
     p = profiles.get(lead.user)
     if p is None:
         return
+    idemp = (
+        f"lead_captured_{lead.external_id}_email"
+        if (p and p.email)
+        else f"lead_captured_{lead.external_id}"
+    )
     try:
         send_event(
             "lead.captured",
             profile=p,
-            idempotency_key=f"lead_captured_{lead.external_id}",
+            gender=p.gender,
+            is_tts_override=True,
+            idempotency_key=idemp,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
@@ -185,6 +192,11 @@ def _notify_promoter_new_lead(lead: Lead) -> None:
     fmt_phone = _format_phone_br(raw_phone)
     wa_url = _whatsapp_url(raw_phone)
     lead_name = (lead_p.name if lead_p and lead_p.name else None) or f"Contato {fmt_phone}"
+    idemp = (
+        f"lead_new_promoter_{lead.external_id}_named"
+        if (lead_p and lead_p.name)
+        else f"lead_new_promoter_{lead.external_id}"
+    )
     try:
         send_event(
             "lead.captured.promoter",
@@ -197,7 +209,7 @@ def _notify_promoter_new_lead(lead: Lead) -> None:
                 "lead_whatsapp_url": wa_url,
                 "lead_email": (lead_p.email if lead_p else None) or "-",
             },
-            idempotency_key=f"lead_new_promoter_{lead.external_id}",
+            idempotency_key=idemp,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
@@ -538,6 +550,7 @@ def check_or_capture(
     *,
     cpf: str | None = None,
     phone: str | None = None,
+    email: str | None = None,
     external_id: str | None = None,
     send_otp: bool = True,
     preferred_channel: str | None = None,
@@ -567,13 +580,58 @@ def check_or_capture(
         preferred_channel=preferred_channel,
     )
     if result["found"] or not phone or not send_otp:
-        if result.get("found") and attribution and result.get("external_id"):
+        user = None
+        if result.get("external_id"):
+            user = User.objects.filter(external_id=result["external_id"]).first()
+        if user and hasattr(user, "lead") and attribution and not hasattr(user.lead, "attribution"):
             try:
-                user = User.objects.filter(external_id=result["external_id"]).first()
-                if user and hasattr(user, "lead") and not hasattr(user.lead, "attribution"):
-                    _save_attribution_safely(user.lead, attribution, fallback_ref=ref)
+                _save_attribution_safely(user.lead, attribution, fallback_ref=ref)
             except Exception as exc:
                 logger.warning("lead.attribution_backfill_failed", error=str(exc))
+
+        # Enriquecimento progressivo de CPF / Nome / E-mail no funil Omnibar:
+        if user:
+            prof = profiles.get(user)
+            if prof:
+                updated_fields = []
+                if cpf and not prof.cpf:
+                    from users.auth import validation
+                    from users.auth.service import _lookup_cpf
+
+                    try:
+                        clean_cpf = validation.validate_cpf_strict(cpf)
+                        existing = profiles.find_by_cpf(clean_cpf)
+                        if existing and existing.user_id != user.id:
+                            logger.warning("lead.cpf_conflict_on_check", user=user.id, cpf=clean_cpf)
+                        else:
+                            prof.cpf = clean_cpf
+                            updated_fields.append("cpf")
+                            try:
+                                identity = _lookup_cpf(clean_cpf)
+                                if identity and identity.name:
+                                    prof.name = identity.name
+                                    prof.gender = identity.gender
+                                    prof.birth_date = identity.birth_date
+                                    updated_fields.extend(["name", "gender", "birth_date"])
+                            except Exception as ident_err:
+                                logger.warning("lead.cpf_lookup_failed", error=str(ident_err))
+                    except Exception as cpf_err:
+                        logger.warning("lead.cpf_validation_failed", error=str(cpf_err))
+
+                if email and not prof.email:
+                    prof.email = email.strip().lower()
+                    updated_fields.append("email")
+
+                if updated_fields:
+                    prof.save(update_fields=list(set(updated_fields)))
+                    logger.info("lead.profile_enriched", user=user.id, fields=updated_fields)
+                    if hasattr(user, "lead"):
+                        if "name" in updated_fields:
+                            _notify_promoter_new_lead(user.lead)
+                        if "email" in updated_fields:
+                            _notify_captured(user.lead)
+                if prof.name:
+                    result["name"] = prof.name
         return {**result, "created": False}
     if result.get("whatsapp") is not True:
         return {**result, "created": False}
@@ -584,8 +642,8 @@ def check_or_capture(
     try:
         promoter = _resolve_promoter(ref)
         reg = auth_iface.register(
-            role="lead", phone=phone
-        )  # cpf/e-mail entram nos passos 3/5
+            role="lead", phone=phone, cpf=cpf, email=email
+        )  # cpf/e-mail entram nos passos 3/5 ou no Omnibar
         user = User.objects.get(external_id=reg["external_id"])
         lead = Lead.objects.create(
             user=user, promoter=promoter, status=Lead.Status.PENDING
@@ -600,8 +658,11 @@ def check_or_capture(
         external_id=str(lead.external_id),
         promoter=str(promoter.external_id),
     )
-    _notify_captured(lead)
-    _notify_promoter_new_lead(lead)
+    user_prof = profiles.get(user)
+    if user_prof and user_prof.email:
+        _notify_captured(lead)
+    if user_prof and user_prof.name:
+        _notify_promoter_new_lead(lead)
     _enqueue_avatar_fetch(
         user
     )  # foto do zap pro pergaminho (tela 3-4) — async, enfeite
@@ -609,6 +670,7 @@ def check_or_capture(
         "found": False,
         "created": True,
         "external_id": reg["external_id"],
+        "name": user_prof.name if user_prof else None,
         "otp_sent": reg["otp_sent"],
         "otp_wait": None,
         "whatsapp": True,

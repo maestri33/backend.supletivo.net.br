@@ -95,6 +95,7 @@ def check(request, payload: CheckIn):
     res = lead_iface.check_or_capture(
         cpf=payload.cpf,
         phone=payload.phone,
+        email=payload.email,
         external_id=payload.external_id,
         send_otp=payload.send_otp,
         preferred_channel=payload.preferred_channel,

@@ -384,8 +384,8 @@ Parabéns, {name}! Você agora é COORDENADOR(A) do polo {polo_nome}. {name}, ac
 
 [event:lead.captured]
 channels: whatsapp,email
-title: Bem-vindo(a) ao Supletivo Brasil!
-subject: Supletivo Brasil — Seu cadastro foi iniciado! Falta só um passo
+title: Bem-vindo ao Supletivo Brasil!
+subject: Supletivo Brasil — Parabéns! O primeiro passo para o seu diploma está dado
 media_url: 
 media_type: 
 mail_template: supletivo
@@ -393,8 +393,13 @@ fires_on:
 source: users.roles.lead
 delay_minutes: 0
 active: true
+is_tts: true
 ~~~
-Olá, {name}! Que bom ter você com a gente. Seu cadastro está pronto, {name} — falta só um passo pra garantir sua vaga: concluir o pagamento. Em instantes envio o link. Bora juntos nessa jornada!
+Olá, {name}! Dar esse primeiro passo exige muita coragem, e hoje você decidiu mudar a sua história.
+Você está a um passo de realizar o sonho de concluir os seus estudos. Daqui a pouco, é o seu nome que estará impresso com orgulho no certificado do ensino médio.
+Esse diploma vai destravar tudo o que estava parado há anos na sua vida: a faculdade dos seus sonhos, a conquista de um concurso público, aquela promoção no trabalho e o orgulho de quem você ama e o seu.
+Nós já estamos preparando tudo com muito carinho para que a sua jornada seja rápida, segura e direto pelo celular.
+Você não está mais só nessa caminhada. Seja muito {bem_vindo} à sua virada de chave!
 ~~~
 
 [event:lead.captured.promoter]

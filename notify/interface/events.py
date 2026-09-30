@@ -77,6 +77,9 @@ def send_event(
 
     # 2. Busca e renderiza o Template do banco local
     tpl = _tpl_iface.get(event)
+    effective_gender = gender or p_gender
+    eff_gen_upper = (effective_gender or "").upper()
+
     if body_md_override is not None:
         body = body_md_override
         channels = list(channels_override) if channels_override is not None else (
@@ -93,6 +96,9 @@ def send_event(
             "nome": nome or "Olá",
             "nome_completo": nome_completo or nome or "Olá",
             "name": nome or "Olá",
+            "artigo": "a" if eff_gen_upper == "F" else "o",
+            "bem_vindo": "bem-vinda" if eff_gen_upper == "F" else "bem-vindo",
+            "sozinho": "sozinha" if eff_gen_upper == "F" else "sozinho",
         }
         if ctx:
             render_ctx.update(ctx)
@@ -118,20 +124,53 @@ def send_event(
         logger.warning("notify.event_no_active_channel", event_key=event)
         return None
 
-    # Síntese de TTS realizada 100% no backend (com regra cruzada de gênero)
+    # Síntese de TTS realizada via Cloudflare Workers AI + R2 (Diretivas Canônicas 3, 4, 5)
+    effective_gender = gender or p_gender
     if t_is_tts and not t_media_url and want_whatsapp:
-        from integrations.ai import tts as _tts_module
+        from integrations.cloudflare import tts as _cf_tts
+        from notify.interface.admin import notify_admin_alert
+
+        # Se não receber sexo, usa voz masculina e notifica admin
+        if not effective_gender:
+            logger.warning("notify.tts_missing_gender", event_key=event, caller=f"event:{event}")
+            try:
+                notify_admin_alert(
+                    title="TTS chamado sem sexo do usuário",
+                    message=(
+                        f"Aviso: O evento '{event}' solicitou TTS sem informar o sexo do usuário. "
+                        "O sistema usou voz masculina como fallback. "
+                        "Favor corrigir a função chamadora para sempre buscar e enviar o sexo."
+                    ),
+                    caller=f"event:{event}",
+                )
+            except Exception as alert_err:
+                logger.warning("notify.admin_alert_failed", error=str(alert_err))
+
         try:
-            audio_url = _tts_module.synthesize_voice_note(
+            audio_url = _cf_tts.synthesize_speech(
                 body,
-                gender=gender or p_gender,
+                gender=effective_gender,
                 caller=f"event:{event}",
             )
             if audio_url:
                 t_media_url = audio_url
                 t_media_type = "audio"
         except Exception as exc:
-            logger.warning("notify.backend_tts_error", event_key=event, error=str(exc))
+            # Se der erro ao gerar TTS, degrada para texto puro no WhatsApp e alerta o admin
+            logger.error("notify.tts_generation_error", event_key=event, error=str(exc))
+            t_media_url = None
+            t_media_type = None
+            try:
+                notify_admin_alert(
+                    title="Falha na geração de TTS",
+                    message=(
+                        f"Erro ao gerar áudio TTS para o evento '{event}': {str(exc)[:300]}. "
+                        "A notificação de WhatsApp foi degradada para texto puro."
+                    ),
+                    caller=f"event:{event}",
+                )
+            except Exception as alert_err:
+                logger.warning("notify.admin_alert_failed", error=str(alert_err))
 
     return _send_iface.send(
         text=body,
