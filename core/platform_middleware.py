@@ -10,6 +10,6 @@ class PlatformVersionMiddleware:
     def __call__(self, request):
         response = self.get_response(request)
         response["X-Platform-Version"] = getattr(
-            settings, "APP_VERSION", "0.0.0-sandbox.20"
+            settings, "APP_VERSION", "0.0.0-sandbox.56"
         )
         return response

@@ -40,30 +40,37 @@ class LeadError(DomainError):
 def _save_attribution_safely(lead: Lead, attribution: dict, fallback_ref: str | None = None) -> None:
     """Grava LeadAttribution em savepoint com try/except (doutrina de resiliência).
 
-    Falha de escrita de atribuição NUNCA pode quebrar a captação nem o fluxo do usuário.
+    Anti-poaching: NUNCA sobrescreve ref_raw se já existir uma atribuição no lead (First-touch imutável).
     """
-    if not attribution:
+    if not attribution and not fallback_ref:
         return
     try:
         with transaction.atomic():
-            ref_val = attribution.get("ref") or fallback_ref or ""
+            ref_val = (attribution.get("ref") if attribution else None) or fallback_ref or ""
+            existing = LeadAttribution.objects.filter(lead=lead).first()
+            if existing and existing.ref_raw:
+                ref_to_save = existing.ref_raw
+            else:
+                ref_to_save = str(ref_val)[:64]
+
+            defaults = {
+                "ref_raw": ref_to_save,
+                "utm_source": str(attribution.get("utm_source") or "")[:128] if attribution else "",
+                "utm_medium": str(attribution.get("utm_medium") or "")[:128] if attribution else "",
+                "utm_campaign": str(attribution.get("utm_campaign") or "")[:128] if attribution else "",
+                "utm_term": str(attribution.get("utm_term") or "")[:128] if attribution else "",
+                "utm_content": str(attribution.get("utm_content") or "")[:128] if attribution else "",
+                "gclid": str(attribution.get("gclid") or "")[:255] if attribution else "",
+                "fbclid": str(attribution.get("fbclid") or "")[:255] if attribution else "",
+                "fbp": str(attribution.get("fbp") or "")[:64] if attribution else "",
+                "fbc": str(attribution.get("fbc") or "")[:255] if attribution else "",
+                "client_ip": attribution.get("client_ip") if attribution else None,
+                "user_agent": str(attribution.get("user_agent") or "")[:400] if attribution else "",
+                "landing_url": str(attribution.get("landing_url") or "")[:500] if attribution else "",
+            }
             LeadAttribution.objects.update_or_create(
                 lead=lead,
-                defaults={
-                    "ref_raw": str(ref_val)[:64],
-                    "utm_source": str(attribution.get("utm_source") or "")[:128],
-                    "utm_medium": str(attribution.get("utm_medium") or "")[:128],
-                    "utm_campaign": str(attribution.get("utm_campaign") or "")[:128],
-                    "utm_term": str(attribution.get("utm_term") or "")[:128],
-                    "utm_content": str(attribution.get("utm_content") or "")[:128],
-                    "gclid": str(attribution.get("gclid") or "")[:255],
-                    "fbclid": str(attribution.get("fbclid") or "")[:255],
-                    "fbp": str(attribution.get("fbp") or "")[:64],
-                    "fbc": str(attribution.get("fbc") or "")[:255],
-                    "client_ip": attribution.get("client_ip") or None,
-                    "user_agent": str(attribution.get("user_agent") or "")[:400],
-                    "landing_url": str(attribution.get("landing_url") or "")[:500],
-                },
+                defaults=defaults,
             )
     except Exception as exc:
         logger.warning(
@@ -71,6 +78,26 @@ def _save_attribution_safely(lead: Lead, attribution: dict, fallback_ref: str | 
             lead=str(lead.external_id),
             error=str(exc),
         )
+
+
+def _create_lead_with_locked_pricing(
+    *,
+    user: User,
+    promoter: User,
+    ref: str | None = None,
+    status: str = Lead.Status.PENDING,
+    self_study: bool = False,
+) -> Lead:
+    """Cria Lead travando o snapshot de precificação (imutável contra troca de promoção/afiliado)."""
+    lead = Lead(
+        user=user,
+        promoter=promoter,
+        status=status,
+        self_study=self_study,
+    )
+    lead.lock_pricing(ref=ref)
+    lead.save()
+    return lead
 
 
 def create_lead(
@@ -93,7 +120,7 @@ def create_lead(
     reg = auth_iface.register(role="lead", phone=phone, cpf=cpf, email=email)
     user = User.objects.get(external_id=reg["external_id"])
 
-    lead = Lead.objects.create(user=user, promoter=promoter, status=Lead.Status.PENDING)
+    lead = _create_lead_with_locked_pricing(user=user, promoter=promoter, ref=ref, status=Lead.Status.PENDING)
     if attribution:
         _save_attribution_safely(lead, attribution, fallback_ref=ref)
     # Checkout LOCAL (sem rede): o link curto nasce JÁ; o gateway é resolvido em task async com retry
@@ -341,14 +368,16 @@ def _create_checkout_row(lead: Lead, method: str) -> Checkout:
 
     Os campos do gateway (URL/QR/payment_id) ficam nulos até `fill_checkout_from_provider` —
     chamado pela task async (com retry) ou pelo clique no link curto (lazy)."""
-    self_study = lead.self_study  # auto-matrícula de promotor → preço PRÓPRIO
+    from decimal import Decimal
+
+    pricing = lead.get_pricing_dict()
     if method == "pix":
         provider = Checkout.Provider.ASAAS
-        amount = config.promoter_price_pix() if self_study else config.price_pix()
+        amount = Decimal(str(pricing["pix"]))
         pay_method = Checkout.Method.PIX
     else:
         provider = Checkout.Provider.INFINITEPAY
-        amount = config.promoter_price_card() if self_study else config.price_card()
+        amount = Decimal(str(pricing["card"]["total"]))
         pay_method = Checkout.Method.CREDIT_CARD
     return Checkout.objects.create(
         lead=lead,
@@ -645,8 +674,8 @@ def check_or_capture(
             role="lead", phone=phone, cpf=cpf, email=email
         )  # cpf/e-mail entram nos passos 3/5 ou no Omnibar
         user = User.objects.get(external_id=reg["external_id"])
-        lead = Lead.objects.create(
-            user=user, promoter=promoter, status=Lead.Status.PENDING
+        lead = _create_lead_with_locked_pricing(
+            user=user, promoter=promoter, ref=ref, status=Lead.Status.PENDING
         )
         if attribution:
             _save_attribution_safely(lead, attribution, fallback_ref=ref)
@@ -839,9 +868,10 @@ def capture_lead(
             profiles.attach_address(profile, address_iface.create_empty())
             documents_iface.create_empty(user)
             roles.assign(user, "lead")
-            lead = Lead.objects.create(
+            lead = _create_lead_with_locked_pricing(
                 user=user,
                 promoter=promoter,
+                ref=ref,
                 status=Lead.Status.PENDING,
             )
             if attribution:
@@ -898,9 +928,10 @@ def capture_lead(
         if prof and not prof.name:
             prof.name = name
             prof.save(update_fields=["name"])
-    lead = Lead.objects.create(
+    lead = _create_lead_with_locked_pricing(
         user=user,
         promoter=promoter,
+        ref=ref,
         status=Lead.Status.PENDING,
     )
 
@@ -1073,6 +1104,7 @@ def lead_self_dict(lead: Lead) -> dict:
             "name": promoter.name if promoter else None,
         },
         "checkout": checkout,
+        "pricing": lead.get_pricing_dict(),
     }
 
 
@@ -1158,7 +1190,7 @@ def create_self_study_lead(*, user, payment_method=None) -> dict:
     if Lead.objects.filter(user=user).exists():
         raise LeadError("lead_already_exists")
 
-    lead = Lead.objects.create(
+    lead = _create_lead_with_locked_pricing(
         user=user, promoter=user, self_study=True, status=Lead.Status.PENDING
     )
     checkout = _create_checkout_row(lead, method)

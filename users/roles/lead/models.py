@@ -49,6 +49,31 @@ class Lead(ExternalIdModel):
     # auto-matrícula do PROMOTOR que quis estudar (Victor 2026-06-16): preço próprio, SEM comissão a
     # ninguém. `promoter` aponta pro próprio user (FK não-nulável); a comissão é barrada por este flag.
     self_study = models.BooleanField(default=False, db_index=True)
+
+    # ── Snapshot imutável de precificação na captura (Anti-poaching / Proteção de Proposta) ──
+    pix_price = models.DecimalField(
+        "preço PIX travado", max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    card_price = models.DecimalField(
+        "preço cartão travado", max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    card_installments = models.PositiveSmallIntegerField(
+        "parcelas cartão", default=12
+    )
+    card_installment = models.DecimalField(
+        "valor da parcela cartão", max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    anchor_price = models.DecimalField(
+        "preço âncora travado", max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    has_discount = models.BooleanField("desconto promocional aplicado", default=False)
+    promoter_name = models.CharField(
+        "nome do promotor na captura", max_length=150, blank=True, default=""
+    )
+    pricing_snapshot = models.JSONField(
+        "snapshot completo dos valores na captura", default=dict, blank=True
+    )
+
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 
@@ -60,6 +85,96 @@ class Lead(ExternalIdModel):
 
     def __str__(self) -> str:
         return f"lead<{self.external_id}:{self.status}>"
+
+    def lock_pricing(self, ref: str | None = None) -> None:
+        """Calcula e trava as condições de preço do lead no momento da criação/captura."""
+        from decimal import Decimal
+        from finance import config as fin_config
+        from users.roles.lead import config
+        from users.roles.lead import service as lead_svc
+
+        if self.pix_price and self.card_price and self.pricing_snapshot:
+            return  # já travado, imutável
+
+        installments = 12
+        anchor = config.anchor_full()
+        anchor_inst = (anchor / installments).quantize(Decimal("0.01"))
+
+        if self.self_study:
+            pix = config.promoter_price_pix()
+            card = config.promoter_price_card()
+            has_disc = True
+            p_name = None
+        else:
+            resolved_ref = ref
+            if not resolved_ref and hasattr(self, "attribution") and self.attribution:
+                resolved_ref = self.attribution.ref_raw
+
+            name = lead_svc.referral_name(resolved_ref) if resolved_ref else None
+            if name:
+                has_disc = True
+                p_name = name
+                pix = config.promo_price_pix()
+                card = config.promo_price_card()
+            else:
+                has_disc = False
+                p_name = None
+                pix = config.price_pix()
+                card = config.price_card()
+
+        card_inst = (card / installments).quantize(Decimal("0.01"))
+
+        self.pix_price = pix
+        self.card_price = card
+        self.card_installments = installments
+        self.card_installment = card_inst
+        self.anchor_price = anchor
+        self.has_discount = has_disc
+        self.promoter_name = p_name or ""
+
+        self.pricing_snapshot = {
+            "pix": f"{pix:.2f}",
+            "card": {
+                "installments": installments,
+                "installment": f"{card_inst:.2f}",
+                "total": f"{card:.2f}",
+            },
+            "promo_pix": f"{config.promo_price_pix():.2f}" if has_disc else None,
+            "promo_card": {
+                "installments": installments,
+                "installment": f"{(config.promo_price_card() / installments).quantize(Decimal('0.01')):.2f}",
+                "total": f"{config.promo_price_card():.2f}",
+            } if has_disc else None,
+            "has_discount": has_disc,
+            "promoter_name": p_name,
+            "anchor_full": f"{anchor:.2f}",
+            "commission_direct": f"{fin_config.direct_amount():.2f}",
+            "commission_bonus_flat": f"{fin_config.bonus_amount():.2f}",
+            "commission_bonus_threshold": fin_config.bonus_threshold(),
+            "commission_coordinator": f"{fin_config.coordinator_amount():.2f}",
+        }
+
+    def get_pricing_dict(self) -> dict:
+        """Devolve o snapshot de preços travado do lead."""
+        if not self.pix_price or not self.pricing_snapshot:
+            self.lock_pricing()
+            if self.pk:
+                Lead.objects.filter(pk=self.pk).update(
+                    pix_price=self.pix_price,
+                    card_price=self.card_price,
+                    card_installments=self.card_installments,
+                    card_installment=self.card_installment,
+                    anchor_price=self.anchor_price,
+                    has_discount=self.has_discount,
+                    promoter_name=self.promoter_name,
+                    pricing_snapshot=self.pricing_snapshot,
+                )
+        return self.pricing_snapshot
+
+    def save(self, *args, **kwargs):
+        if not self.pix_price or not self.pricing_snapshot:
+            self.lock_pricing()
+        super().save(*args, **kwargs)
 
 
 class Checkout(models.Model):

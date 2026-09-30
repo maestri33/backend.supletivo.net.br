@@ -148,6 +148,7 @@ class LeadMeOut(Schema):
     customer: LeadCustomerOut
     promoter: LeadPromoterOut
     checkout: LeadSelfCheckoutOut | None = None
+    pricing: PricingOut | None = None
 
 
 class AddressProofSectionOut(Schema):
