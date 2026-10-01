@@ -487,6 +487,7 @@ fires_on:
 source: users.roles.lead
 delay_minutes: 0
 active: true
+is_tts: true
 ~~~
 {name}, uma nova matrícula entrou no polo {polo_nome}!
 
@@ -506,6 +507,7 @@ fires_on:
 source: users.roles.lead
 delay_minutes: 0
 active: true
+is_tts: true
 ~~~
 {name}, seu indicado {aluno_nome} • {aluno_telefone} pagou a matrícula! ✅
 
@@ -750,6 +752,7 @@ fires_on:
 source: users.roles.training
 delay_minutes: 0
 active: true
+is_tts: true
 ~~~
 Parabéns, {name}! 🎉 Você foi aprovado e agora é PROMOTOR. {name}, seu link de captação já está ativo — comece a indicar e a ganhar!
 ~~~
@@ -780,6 +783,7 @@ fires_on:
 source: users.roles.training
 delay_minutes: 0
 active: true
+is_tts: true
 ~~~
 Parabéns, {name}! Você foi aprovado e agora é PROMOTOR. Antes de liberar seu painel, {name}, conclua o treinamento obrigatório no aplicativo — assim que terminar, tudo é liberado.
 ~~~
