@@ -4,6 +4,7 @@ import structlog
 from django.conf import settings
 from django.db import transaction
 
+from core.system_config import get_setting
 from hub import interface as hub_iface
 from users.auth import service as auth_iface
 from users.auth.models import User
@@ -18,6 +19,150 @@ from users.roles.candidate.common import (
     logger,
     get_for_user_external_id,
 )
+
+
+def _format_phone_br(phone: str | None) -> str:
+    """Formata telefone brasileiro no padrão legível: (DD) 9XXXX-XXXX."""
+    if not phone:
+        return "-"
+    d = "".join(c for c in phone if c.isdigit())
+    if d.startswith("55") and len(d) in (12, 13):
+        d = d[2:]
+    if len(d) == 11:
+        return f"({d[:2]}) {d[2:7]}-{d[7:]}"
+    if len(d) == 10:
+        return f"({d[:2]}) {d[2:6]}-{d[6:]}"
+    return phone
+
+
+def _whatsapp_url(phone: str | None) -> str:
+    """Retorna URL direta wa.me no formato internacional (55...)."""
+    if not phone:
+        return ""
+    digits = "".join(c for c in phone if c.isdigit())
+    if not digits.startswith("55") and len(digits) in (10, 11):
+        digits = "55" + digits
+    return f"https://wa.me/{digits}"
+
+
+def _coordinator_panel_url() -> str:
+    """Retorna a URL do painel administrativo do coordenador."""
+    base = str(
+        get_setting("ADMIN_URL", getattr(settings, "ADMIN_URL", "https://admin.supletivo.net.br"))
+        or "https://admin.supletivo.net.br"
+    ).rstrip("/")
+    return f"{base}/coordenador"
+
+
+def _candidate_app_url() -> str:
+    """Retorna a URL do aplicativo para continuidade do cadastro do candidato."""
+    base = str(
+        get_setting("FRONTEND_URL", getattr(settings, "FRONTEND_URL", "https://app.supletivo.net.br"))
+        or "https://app.supletivo.net.br"
+    ).rstrip("/")
+    return f"{base}/colaborador"
+
+
+def _notify_candidate_captured(candidate: Candidate) -> None:
+    """Dispara notificação com áudio TTS para o candidato recém-capturado (best-effort, §12)."""
+    cand_profile = profiles.get(candidate.user)
+    if not cand_profile:
+        logger.warning(
+            "candidate.notify_skipped_no_profile",
+            candidate_id=str(candidate.external_id),
+        )
+        return
+
+    hub = candidate.hub
+    hub_name = (getattr(hub, "brand", None) if hub else None) or "Polo Central"
+    if str(hub_name).strip().lower() in ("standard", "default"):
+        hub_name = "Polo Central"
+
+    cand_name = (cand_profile.name if cand_profile and cand_profile.name else None) or "Candidato"
+    link_app = _candidate_app_url()
+
+    try:
+        from notify.interface.events import send_event
+
+        send_event(
+            "candidate.captured",
+            profile=cand_profile,
+            gender=cand_profile.gender,
+            is_tts_override=True,
+            ctx={
+                "polo_nome": hub_name,
+                "candidato_nome": cand_name,
+                "link_app": link_app,
+            },
+            idempotency_key=f"candidate_captured_{candidate.external_id}",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "candidate.notify_candidate_failed",
+            candidate_id=str(candidate.external_id),
+            error=str(exc),
+        )
+
+
+def _notify_coordinator_new_candidate(candidate: Candidate) -> None:
+    """Notifica o coordenador do polo sobre o novo candidato (best-effort, §12).
+
+    Resiliente: se o polo não possuir coordenador vinculado, registra log informativo
+    e encerra sem propagar erro.
+    """
+    hub = candidate.hub
+    if not hub or not hub.coordinator:
+        logger.info(
+            "candidate.coordinator_notify_skipped_no_coordinator",
+            candidate_id=str(candidate.external_id),
+            hub_id=str(hub.external_id) if hub else None,
+        )
+        return
+
+    coord = hub.coordinator
+    coord_profile = profiles.get(coord)
+    if not coord_profile:
+        logger.warning(
+            "candidate.coordinator_notify_skipped_no_profile",
+            coordinator_id=str(coord.external_id),
+        )
+        return
+
+    cand_profile = profiles.get(candidate.user)
+    raw_phone = cand_profile.phone if cand_profile else None
+    fmt_phone = _format_phone_br(raw_phone)
+    wa_url = _whatsapp_url(raw_phone)
+    cand_name = (cand_profile.name if cand_profile and cand_profile.name else None) or f"Candidato {fmt_phone}"
+
+    hub_name = (getattr(hub, "brand", None) if hub else None) or "Polo Central"
+    if str(hub_name).strip().lower() in ("standard", "default"):
+        hub_name = "Polo Central"
+
+    link_painel = _coordinator_panel_url()
+
+    try:
+        from notify.interface.events import send_event
+
+        send_event(
+            "candidate.captured.coordinator",
+            profile=coord_profile,
+            gender=coord_profile.gender,
+            ctx={
+                "candidato_nome": cand_name,
+                "candidato_telefone": fmt_phone,
+                "candidato_whatsapp_url": wa_url,
+                "polo_nome": hub_name,
+                "link_painel": link_painel,
+            },
+            idempotency_key=f"candidate_captured_coord_{candidate.external_id}",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "candidate.notify_coordinator_failed",
+            candidate_id=str(candidate.external_id),
+            coordinator_id=str(coord.external_id),
+            error=str(exc),
+        )
 
 def _resolve_capture_hub(hub):
     hub_obj, ref_reason = hub_iface.resolve_capture_hub(hub)
@@ -79,6 +224,8 @@ def check_or_capture(
         candidate = Candidate.objects.create(
             user=user, hub=hub_obj, status=_S.STARTED
         )
+        _notify_candidate_captured(candidate)
+        _notify_coordinator_new_candidate(candidate)
     except DomainError as exc:
         logger.warning("candidate.capture_on_check_failed", code=exc.code, error=exc.detail)
         return {**result, "created": False}
@@ -112,6 +259,8 @@ def create_candidate(*, cpf: str, phone: str, email: str, hub=None) -> dict:
     reg = auth_iface.register(role="candidate", phone=phone, cpf=cpf, email=email)
     user = User.objects.get(external_id=reg["external_id"])
     candidate = Candidate.objects.create(user=user, hub=hub_obj, status=_S.STARTED)
+    _notify_candidate_captured(candidate)
+    _notify_coordinator_new_candidate(candidate)
     logger.info(
         "candidate.created",
         external_id=str(candidate.external_id),
@@ -159,6 +308,8 @@ def check_or_capture_candidate(
         reg = auth_iface.register(role="candidate", phone=phone, cpf=cpf, email=email)
         user = User.objects.get(external_id=reg["external_id"])
         candidate = Candidate.objects.create(user=user, hub=hub_obj, status=_S.STARTED)
+        _notify_candidate_captured(candidate)
+        _notify_coordinator_new_candidate(candidate)
         logger.info(
             "candidate.capture_on_check",
             external_id=str(candidate.external_id),
@@ -206,11 +357,16 @@ def _ensure_candidate_inner(user, hub) -> None:
 
         hub_obj, ref_reason = _resolve_capture_hub(hub)
         candidate = Candidate.objects.filter(user=user).first()
+        created = False
         if candidate is None:
             candidate = Candidate.objects.create(
                 user=user, hub=hub_obj, status=_S.STARTED
             )
+            created = True
         roles.assign(user, "candidate")
+        if created:
+            _notify_candidate_captured(candidate)
+            _notify_coordinator_new_candidate(candidate)
         logger.info(
             "candidate.joined_existing_user",
             external_id=str(candidate.external_id),
@@ -221,6 +377,8 @@ def _ensure_candidate_inner(user, hub) -> None:
     elif "candidate" in active and not Candidate.objects.filter(user=user).exists():
         hub_obj, ref_reason = _resolve_capture_hub(hub)
         candidate = Candidate.objects.create(user=user, hub=hub_obj, status=_S.STARTED)
+        _notify_candidate_captured(candidate)
+        _notify_coordinator_new_candidate(candidate)
         logger.warning(
             "candidate.repaired_missing_row",
             external_id=str(candidate.external_id),

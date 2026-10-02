@@ -2,6 +2,49 @@
 # Formato: [event:<slug>] + cabeçalho 'chave: valor' + body Markdown cercado por '~~~'.
 # Placeholders: {nome} (1º nome), {nome-completo} (nome todo), {valor}, {link}, ...
 
+[event:candidate.captured]
+channels: whatsapp,email
+title: Bem-vindo à equipe do Supletivo Brasil!
+subject: Supletivo Brasil — Bem-vindo(a) à equipe de promotores!
+media_url: 
+media_type: 
+mail_template: supletivo
+fires_on: Após novo candidato iniciar cadastro no polo
+source: users.roles.candidate
+delay_minutes: 0
+active: true
+is_tts: true
+~~~
+Olá, {name}! Ficamos muito felizes com a sua decisão de fazer parte da nossa equipe no polo {polo_nome}.
+
+Você deu o primeiro passo para se tornar um promotor oficial do Supletivo Brasil e transformar a sua história e a de muitos estudantes.
+
+Conclua o seu cadastro pelo aplicativo para liberar o seu acesso completo:
+{link_app}
+~~~
+
+[event:candidate.captured.coordinator]
+channels: whatsapp,email
+title: Novo candidato a promotor no seu polo!
+subject: Supletivo Brasil — Novo candidato a promotor no polo {polo_nome} ({candidato_nome})
+media_url: 
+media_type: 
+mail_template: supletivo
+fires_on: Após novo candidato iniciar cadastro no polo
+source: users.roles.candidate
+delay_minutes: 0
+active: true
+~~~
+{name}, temos um novo candidato a promotor cadastrado no polo {polo_nome}!
+
+👤 Candidato: {candidato_nome} • {candidato_telefone}
+📱 Chame no WhatsApp:
+{candidato_whatsapp_url}
+
+Acompanhe o cadastro e a validação de documentos pelo painel:
+{link_painel}
+~~~
+
 [event:candidate.awaiting_approval]
 channels: whatsapp,email
 title: Novo candidato aguardando aprovação

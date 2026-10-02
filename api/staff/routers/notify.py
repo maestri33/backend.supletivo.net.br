@@ -69,6 +69,8 @@ DEFAULT_EVENTS_CATALOG = [
     {"event": "enrollment.concluded_referral", "label": "Matrícula: Indicação concluiu e virou aluno", "category": "enrollment"},
 
     # ── Candidatos a Promotores ──
+    {"event": "candidate.captured", "label": "Candidato: Cadastro iniciado no polo (Boas-vindas)", "category": "candidate"},
+    {"event": "candidate.captured.coordinator", "label": "Candidato: Notificação de novo candidato ao coordenador", "category": "candidate"},
     {"event": "candidate.awaiting_approval", "label": "Candidato: Cadastro aguardando aprovação", "category": "candidate"},
     {"event": "candidate.doc_type_reset", "label": "Candidato: Reenvio de documento liberado", "category": "candidate"},
     {"event": "candidate.document_in_review", "label": "Candidato: Documento em análise", "category": "candidate"},
