@@ -115,3 +115,9 @@ def enrollment_docs_url() -> str:
         return ""
     return base + getattr(settings, "ENROLLMENT_RESUME_PATH", "/matricula")
 
+
+def coordinator_panel_url() -> str:
+    """URL do painel administrativo do coordenador de polo."""
+    base = str(get_setting("ADMIN_URL", getattr(settings, "ADMIN_URL", "https://admin.supletivo.net.br")) or "https://admin.supletivo.net.br").rstrip("/")
+    return f"{base}/coordenador"
+

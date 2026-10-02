@@ -30,8 +30,13 @@ from integrations.cloudflare.r2 import is_r2_configured, upload_to_r2, get_r2_pu
 
 logger = structlog.get_logger()
 
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\([^\)]+\)")
+_COLON_URL_RE = re.compile(r":\s*\n?\s*(?:https?://\S+|www\.\S+|wa\.me/\S+)")
+_URL_STRIP_RE = re.compile(r"https?://\S+|www\.\S+|wa\.me/\S+")
+_RAW_VAR_RE = re.compile(r"\{[a-zA-Z0-9_-]+\}")
+_BULLET_RE = re.compile(r"[•●▪▫◦★☆]")
+_EMOJI_RE = re.compile(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]")
 _MD_STRIP_RE = re.compile(r"[*_~`#>]")
-_URL_STRIP_RE = re.compile(r"https?://\S+")
 _SPACE_CLEAN_RE = re.compile(r"\s+")
 
 # Fallback token do Wrangler caso não esteja no settings/env
@@ -47,11 +52,27 @@ class CloudflareTtsError(Exception):
 
 
 def clean_text_for_speech(text: str) -> str:
-    """Prepara o texto de notificação para síntese de voz (TTS)."""
+    """Prepara o texto de notificação para síntese de voz (TTS).
+
+    - Converte links Markdown [texto](url) para 'texto'.
+    - Transforma comandos com links finais (ex: 'pelo painel:\\nhttps://...') em encerramento natural ('.').
+    - Substitui URLs restantes por 'pelo link' para que links e domínios não sejam soletrados no áudio.
+    - Remove variáveis de template cruas ({link_painel}, etc.) que possam ter sobrado.
+    - Remove emojis e caracteres especiais como bullets ('•').
+    - Remove marcações markdown (*, _, ~, `, #, >).
+    - Normaliza espaçamentos e pontuação para fluidez na fala.
+    """
     if not text:
         return ""
-    t = _URL_STRIP_RE.sub("pelo link", text)
+    t = _MD_LINK_RE.sub(r"\1", text)
+    t = _COLON_URL_RE.sub(".", t)
+    t = _URL_STRIP_RE.sub("pelo link", t)
+    t = _RAW_VAR_RE.sub("", t)
+    t = _BULLET_RE.sub(", ", t)
+    t = _EMOJI_RE.sub("", t)
     t = _MD_STRIP_RE.sub("", t)
+    t = re.sub(r"\s*([.,;:])\s*\1+", r"\1", t)
+    t = re.sub(r"\s*:\s*\.", ".", t)
     return _SPACE_CLEAN_RE.sub(" ", t).strip()
 
 

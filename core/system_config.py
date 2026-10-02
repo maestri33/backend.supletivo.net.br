@@ -69,6 +69,7 @@ INTEGRATION_KEYS = {
     "INFISICAL_TOKEN": True,
     "EXTERNAL_URL": False,
     "FRONTEND_URL": False,
+    "ADMIN_URL": False,
     "ASTRO_REBUILD_WEBHOOK_URL": False,
 }
 

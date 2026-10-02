@@ -232,6 +232,14 @@ def test_tts_chain_fallback(monkeypatch):
         return SimpleResp(200, content=b"OggS-fallback-audio-bytes")
 
     monkeypatch.setattr(httpx.Client, "post", mock_post)
+    monkeypatch.setattr(
+        tts,
+        "get_tts_chain",
+        lambda: [
+            tts.TtsOption(model="minimax/speech-01-hd", voice_female="bella", voice_male="antoni"),
+            tts.TtsOption(model="openai/tts-1", voice_female="nova", voice_male="onyx"),
+        ],
+    )
     monkeypatch.setattr(tts, "_get_omniroute_base_url", lambda: "http://omnirouter.internal")
 
     import uuid

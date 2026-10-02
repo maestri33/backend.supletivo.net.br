@@ -1380,17 +1380,23 @@ def _notify_paid(lead: Lead, hub, checkout: Checkout | None = None) -> None:
     coord = hub.coordinator if hub else None
     if coord is not None:
         coord_profile = profiles.get(coord)
-        lead_name = (profile.name if profile else None) or "Novo aluno"
-        lead_phone = (profile.phone if profile else None) or "-"
-        hub_name = getattr(hub, "brand", None) or "Polo"
+        lead_name = (profile.name if profile and profile.name else None) or "Novo aluno"
+        raw_phone = profile.phone if profile else None
+        lead_phone = _format_phone_br(raw_phone) if raw_phone else "-"
+        hub_name = (getattr(hub, "brand", None) if hub else None) or "Polo Central"
+        if str(hub_name).strip().lower() == "standard":
+            hub_name = "Polo Central"
+        link_painel = config.coordinator_panel_url()
         _safe(
             "coordinator",
             "lead.paid.coordinator",
             profile=coord_profile,
+            gender=coord_profile.gender if coord_profile else None,
             ctx={
                 "aluno_nome": lead_name,
                 "aluno_telefone": lead_phone,
                 "polo_nome": hub_name,
+                "link_painel": link_painel,
             },
             idempotency_key=f"lead_paid_coord_{base}",
         )
@@ -1402,9 +1408,9 @@ def _notify_paid(lead: Lead, hub, checkout: Checkout | None = None) -> None:
         promoter_profile = profiles.get(lead.promoter)
         # Calcula progressão semanal do bônus
         bonus_ctx = _weekly_bonus_context(lead.promoter)
-        lead_name = (profile.name if profile else None) or "Um aluno"
+        lead_name = (profile.name if profile and profile.name else None) or "Novo aluno"
         raw_phone = profile.phone if profile else None
-        fmt_phone = _format_phone_br(raw_phone)
+        fmt_phone = _format_phone_br(raw_phone) if raw_phone else "-"
         wa_url = _whatsapp_url(raw_phone)
         ctx = {
             "aluno_nome": lead_name,
@@ -1416,6 +1422,7 @@ def _notify_paid(lead: Lead, hub, checkout: Checkout | None = None) -> None:
             "promoter",
             "lead.paid.promoter",
             profile=promoter_profile,
+            gender=promoter_profile.gender if promoter_profile else None,
             ctx=ctx,
             idempotency_key=f"lead_paid_promoter_{base}",
         )
@@ -1425,10 +1432,13 @@ def _weekly_bonus_context(promoter_user) -> dict:
     """Calcula o contexto de bônus semanal para a notificação do promotor (Issue #165).
 
     Retorna dict com: comissao_direta, leads_semana, meta_bonus, falta_para_bonus.
-    Best-effort — se falhar, retorna dict vazio (não trava a notify).
+    Best-effort — sincronizado com finance/config.py para garantir integridade e ausência de variáveis vazias.
     """
+    from finance import config as fin_config
+
+    comissao_direta = fin_config.direct_amount()
+    meta_bonus = fin_config.bonus_threshold()
     try:
-        from finance import config as fin_config
         from finance.interface.commissions import week_window
         from finance.models import Commission
 
@@ -1439,8 +1449,6 @@ def _weekly_bonus_context(promoter_user) -> dict:
             created_at__gte=week_start,
             created_at__lt=week_end,
         ).count()
-        comissao_direta = fin_config.direct_amount()
-        meta_bonus = fin_config.bonus_threshold()
         falta = max(0, meta_bonus - leads_semana)
         return {
             "comissao_direta": f"R${comissao_direta}",
@@ -1450,7 +1458,12 @@ def _weekly_bonus_context(promoter_user) -> dict:
         }
     except Exception as exc:
         logger.warning("lead.bonus_context_failed", error=str(exc))
-        return {}
+        return {
+            "comissao_direta": f"R${comissao_direta}",
+            "leads_semana": "1",
+            "meta_bonus": str(meta_bonus),
+            "falta_para_bonus": str(max(0, meta_bonus - 1)),
+        }
 
 
 def list_leads(*, hub=None, status=None, created_after=None, limit=None) -> list[Lead]:

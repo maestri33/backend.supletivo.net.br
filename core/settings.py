@@ -365,6 +365,7 @@ LANDING_BASE_URL = env("LANDING_BASE_URL", default="")
 # URL do front pra onde o gateway redireciona APÓS o pagamento (cartão/PIX). Vazio => cai no EXTERNAL_URL.
 # «PENDÊNCIA»: Victor define a URL real do front.
 FRONTEND_URL = env("FRONTEND_URL", default="")
+ADMIN_URL = env("ADMIN_URL", default="https://admin.supletivo.net.br")
 # Path do wizard de matrícula no front — vira o deep-link dos notifies de resolução (proposta API #11:
 # o coordenador decide → o aluno recebe o link e volta direto pro passo certo). Sem FRONTEND_URL → sem link.
 ENROLLMENT_RESUME_PATH = env("ENROLLMENT_RESUME_PATH", default="/matricula")
