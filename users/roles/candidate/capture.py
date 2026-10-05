@@ -78,7 +78,15 @@ def _notify_candidate_captured(candidate: Candidate) -> None:
     if str(hub_name).strip().lower() in ("standard", "default"):
         hub_name = "Polo Central"
 
-    cand_name = (cand_profile.name if cand_profile and cand_profile.name else None) or "Candidato"
+    raw_name = (cand_profile.name if cand_profile and cand_profile.name else "").strip()
+    cand_gender = (cand_profile.gender if cand_profile and cand_profile.gender else "").upper() or "M"
+    if raw_name:
+        cand_name = raw_name
+        first_name = raw_name.split()[0]
+    else:
+        first_name = "futura parceira" if cand_gender == "F" else "futuro parceiro"
+        cand_name = first_name
+
     link_app = _candidate_app_url()
 
     try:
@@ -87,11 +95,12 @@ def _notify_candidate_captured(candidate: Candidate) -> None:
         send_event(
             "candidate.captured",
             profile=cand_profile,
-            gender=cand_profile.gender,
+            gender=cand_gender,
             is_tts_override=True,
             ctx={
                 "polo_nome": hub_name,
                 "candidato_nome": cand_name,
+                "name": first_name,
                 "link_app": link_app,
             },
             idempotency_key=f"candidate_captured_{candidate.external_id}",

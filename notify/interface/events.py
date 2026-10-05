@@ -93,9 +93,9 @@ def send_event(
         t_is_tts = is_tts_override if is_tts_override is not None else (tpl.is_tts if tpl is not None else False)
     elif tpl is not None:
         render_ctx = {
-            "nome": nome or "Olá",
-            "nome_completo": nome_completo or nome or "Olá",
-            "name": nome or "Olá",
+            "nome": nome or ("futura parceira" if eff_gen_upper == "F" else "futuro parceiro"),
+            "nome_completo": nome_completo or nome or ("futura parceira" if eff_gen_upper == "F" else "futuro parceiro"),
+            "name": nome or ("futura parceira" if eff_gen_upper == "F" else "futuro parceiro"),
             "artigo": "a" if eff_gen_upper == "F" else "o",
             "bem_vindo": "bem-vinda" if eff_gen_upper == "F" else "bem-vindo",
             "sozinho": "sozinha" if eff_gen_upper == "F" else "sozinho",
@@ -130,21 +130,22 @@ def send_event(
         from integrations.cloudflare import tts as _cf_tts
         from notify.interface.admin import notify_admin_alert
 
-        # Se não receber sexo, usa voz masculina e notifica admin
+        # Se não receber sexo, usa voz masculina e notifica admin (exceto eventos de pré-captura de candidatos)
         if not effective_gender:
             logger.warning("notify.tts_missing_gender", event_key=event, caller=f"event:{event}")
-            try:
-                notify_admin_alert(
-                    title="TTS chamado sem sexo do usuário",
-                    message=(
-                        f"Aviso: O evento '{event}' solicitou TTS sem informar o sexo do usuário. "
-                        "O sistema usou voz masculina como fallback. "
-                        "Favor corrigir a função chamadora para sempre buscar e enviar o sexo."
-                    ),
-                    caller=f"event:{event}",
-                )
-            except Exception as alert_err:
-                logger.warning("notify.admin_alert_failed", error=str(alert_err))
+            if not event.startswith("candidate."):
+                try:
+                    notify_admin_alert(
+                        title="TTS chamado sem sexo do usuário",
+                        message=(
+                            f"Aviso: O evento '{event}' solicitou TTS sem informar o sexo do usuário. "
+                            "O sistema usou voz masculina como fallback. "
+                            "Favor corrigir a função chamadora para sempre buscar e enviar o sexo."
+                        ),
+                        caller=f"event:{event}",
+                    )
+                except Exception as alert_err:
+                    logger.warning("notify.admin_alert_failed", error=str(alert_err))
 
         try:
             audio_url = _cf_tts.synthesize_speech(
