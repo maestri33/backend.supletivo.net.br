@@ -23,7 +23,7 @@ RUN uv sync --frozen --extra dev --no-install-project
 
 # psycopg NÃO está no pyproject/uv.lock (o LXC de prod instala por fora) — sem ele
 # o DATABASE_URL postgres não sobe. Camada própria até entrar no lock.
-RUN uv pip install "psycopg[binary]>=3.2"
+RUN uv pip install "psycopg[binary]>=3.2" "edge-tts>=6.1.19"
 
 COPY . .
 
