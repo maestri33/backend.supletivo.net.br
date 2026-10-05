@@ -196,6 +196,8 @@ def check_or_capture(
     cpf: str | None = None,
     phone: str | None = None,
     email: str | None = None,
+    name: str | None = None,
+    gender: str | None = None,
     external_id: str | None = None,
     send_otp: bool = True,
     preferred_channel: str | None = None,
@@ -230,6 +232,17 @@ def check_or_capture(
             role="candidate", phone=phone, cpf=cpf, email=email
         )
         user = User.objects.get(external_id=reg["external_id"])
+        cand_prof = profiles.get(user)
+        if cand_prof:
+            dirty = False
+            if name and not cand_prof.name:
+                cand_prof.name = name
+                dirty = True
+            if gender and not cand_prof.gender:
+                cand_prof.gender = gender
+                dirty = True
+            if dirty:
+                cand_prof.save()
         candidate = Candidate.objects.create(
             user=user, hub=hub_obj, status=_S.STARTED
         )

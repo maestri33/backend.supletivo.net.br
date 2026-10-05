@@ -46,6 +46,8 @@ def check(request, payload: CheckIn):
         cpf=payload.cpf,
         phone=payload.phone,
         email=payload.email,
+        name=payload.name,
+        gender=payload.gender,
         external_id=payload.external_id,
         send_otp=payload.send_otp,
         preferred_channel=payload.preferred_channel,
