@@ -42,12 +42,20 @@ def _generate_rsa_key_pair(key_size: int = 2048) -> tuple[str, str]:
 
 
 def read_or_create_pair(priv_path, pub_path) -> tuple[str, str]:
-    """Lê o par PEM (gera se faltar) a partir de paths EXPLÍCITOS — sem depender de `settings`.
+    """Lê o par PEM (gera se faltar) a partir de paths EXPLÍCITOS ou env vars.
 
-    Path-based de propósito: o `core/settings.py` chama isto no load pra alimentar o
-    `NINJA_JWT['SIGNING_KEY'/'VERIFYING_KEY']` (config do django-ninja-jwt) — e ali o objeto
-    `settings` ainda está sendo montado, então não dá pra ler `settings.JWT_*` por dentro.
+    Prioriza variáveis de ambiente JWT_PRIVATE_KEY_PEM e JWT_PUBLIC_KEY_PEM para
+    garantir operação stateless e imutável em contêineres efêmeros (Azure/Docker).
     """
+    import os
+
+    env_priv = os.environ.get("JWT_PRIVATE_KEY_PEM")
+    env_pub = os.environ.get("JWT_PUBLIC_KEY_PEM")
+    if env_priv and env_pub:
+        clean_priv = env_priv.replace("\\n", "\n").strip() + "\n"
+        clean_pub = env_pub.replace("\\n", "\n").strip() + "\n"
+        return clean_priv, clean_pub
+
     priv_path, pub_path = Path(priv_path), Path(pub_path)
     if not (priv_path.exists() and pub_path.exists()):
         priv_path.parent.mkdir(parents=True, exist_ok=True)

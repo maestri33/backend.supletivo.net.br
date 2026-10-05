@@ -193,3 +193,116 @@ def delete_from_r2(key: str, timeout: float = 10.0) -> bool:
     except Exception as exc:  # noqa: BLE001
         logger.warning("r2.delete_failed", key=clean_key, error=str(exc)[:160])
         return False
+
+
+def get_r2_presigned_url(key: str, expires_in: int = 300) -> str | None:
+    """Gera URL pré-assinada (GET) para download temporário direto do Cloudflare R2 com SigV4."""
+    if not is_r2_configured():
+        return None
+
+    account_id = settings.R2_ACCOUNT_ID
+    access_key = settings.R2_ACCESS_KEY_ID
+    secret_key = settings.R2_SECRET_ACCESS_KEY
+    bucket_name = settings.R2_BUCKET_NAME
+    region = "auto"
+    service = "s3"
+
+    host = f"{account_id}.r2.cloudflarestorage.com"
+    clean_key = key.lstrip("/")
+    canonical_uri = f"/{bucket_name}/{quote(clean_key)}"
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    amz_date = now.strftime("%Y%m%dT%H%M%SZ")
+    date_stamp = now.strftime("%Y%m%d")
+
+    credential_scope = f"{date_stamp}/{region}/{service}/aws4_request"
+    algorithm = "AWS4-HMAC-SHA256"
+
+    query_params = {
+        "X-Amz-Algorithm": algorithm,
+        "X-Amz-Credential": f"{access_key}/{credential_scope}",
+        "X-Amz-Date": amz_date,
+        "X-Amz-Expires": str(expires_in),
+        "X-Amz-SignedHeaders": "host",
+    }
+    canonical_query_string = "&".join(
+        f"{quote(k, safe='')}={quote(v, safe='')}" for k, v in sorted(query_params.items())
+    )
+
+    canonical_headers = f"host:{host}\n"
+    signed_headers = "host"
+    canonical_request = (
+        f"GET\n{canonical_uri}\n{canonical_query_string}\n{canonical_headers}\n{signed_headers}\nUNSIGNED-PAYLOAD"
+    )
+
+    string_to_sign = (
+        f"{algorithm}\n{amz_date}\n{credential_scope}\n"
+        f"{hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()}"
+    )
+
+    signing_key = _get_signature_key(secret_key, date_stamp, region, service)
+    signature = hmac.new(signing_key, string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    return f"https://{host}{canonical_uri}?{canonical_query_string}&X-Amz-Signature={signature}"
+
+
+def download_from_r2(key: str, timeout: float = 15.0) -> tuple[bytes, str] | None:
+    """Baixa um arquivo diretamente do Cloudflare R2 via SigV4."""
+    if not is_r2_configured():
+        return None
+
+    account_id = settings.R2_ACCOUNT_ID
+    access_key = settings.R2_ACCESS_KEY_ID
+    secret_key = settings.R2_SECRET_ACCESS_KEY
+    bucket_name = settings.R2_BUCKET_NAME
+    region = "auto"
+    service = "s3"
+
+    host = f"{account_id}.r2.cloudflarestorage.com"
+    clean_key = key.lstrip("/")
+    canonical_uri = f"/{bucket_name}/{quote(clean_key)}"
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    amz_date = now.strftime("%Y%m%dT%H%M%SZ")
+    date_stamp = now.strftime("%Y%m%d")
+
+    payload_hash = hashlib.sha256(b"").hexdigest()
+    canonical_headers = (
+        f"host:{host}\n"
+        f"x-amz-content-sha256:{payload_hash}\n"
+        f"x-amz-date:{amz_date}\n"
+    )
+    signed_headers = "host;x-amz-content-sha256;x-amz-date"
+    canonical_request = (
+        f"GET\n{canonical_uri}\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
+    )
+
+    algorithm = "AWS4-HMAC-SHA256"
+    credential_scope = f"{date_stamp}/{region}/{service}/aws4_request"
+    string_to_sign = (
+        f"{algorithm}\n{amz_date}\n{credential_scope}\n"
+        f"{hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()}"
+    )
+
+    signing_key = _get_signature_key(secret_key, date_stamp, region, service)
+    signature = hmac.new(signing_key, string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    headers = {
+        "x-amz-date": amz_date,
+        "x-amz-content-sha256": payload_hash,
+        "Authorization": (
+            f"{algorithm} Credential={access_key}/{credential_scope}, "
+            f"SignedHeaders={signed_headers}, Signature={signature}"
+        ),
+    }
+
+    url = f"https://{host}{canonical_uri}"
+    try:
+        resp = httpx.get(url, headers=headers, timeout=timeout)
+        if resp.status_code == 200:
+            content_type = resp.headers.get("content-type", "application/octet-stream")
+            return resp.content, content_type
+        return None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("r2.download_failed", key=clean_key, error=str(exc)[:160])
+        return None

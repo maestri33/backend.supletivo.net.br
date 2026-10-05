@@ -118,4 +118,17 @@ def media_serve(request: HttpRequest, path: str) -> HttpResponse:
         external_id, roles = principal
         if not _authorized_for_private(external_id, roles, norm):
             return JsonResponse({"detail": "Acesso negado."}, status=403)
+    from pathlib import Path
+    local_path = Path(settings.MEDIA_ROOT) / norm
+    if local_path.exists():
+        return _static_serve(request, norm, document_root=settings.MEDIA_ROOT)
+
+    from integrations.cloudflare.r2 import download_from_r2, is_r2_configured
+
+    if is_r2_configured():
+        res = download_from_r2(norm)
+        if res is not None:
+            content, content_type = res
+            return HttpResponse(content, content_type=content_type)
+
     return _static_serve(request, norm, document_root=settings.MEDIA_ROOT)

@@ -252,6 +252,33 @@ def synthesize_speech(
         except Exception as exc:
             failures.append(f"cf/aura-2-es: {exc}")
 
+    # 5. Tentativa 4: Edge-TTS Neural (pt-BR-AntonioNeural / pt-BR-FranciscaNeural)
+    if not audio_bytes:
+        try:
+            import asyncio
+            import edge_tts
+
+            edge_voice = (
+                "pt-BR-FranciscaNeural"
+                if str(gender or "").upper() == "M"
+                else "pt-BR-AntonioNeural"
+            )
+
+            async def _run_edge():
+                comm = edge_tts.Communicate(spoken_text, edge_voice)
+                data = bytearray()
+                async for chunk in comm.stream():
+                    if chunk["type"] == "audio":
+                        data.extend(chunk["data"])
+                return bytes(data)
+
+            audio_bytes = asyncio.run(_run_edge())
+            if audio_bytes:
+                logger.info("tts.edge_tts_success", voice=edge_voice)
+        except Exception as exc:
+            failures.append(f"edge-tts: {exc}")
+            logger.warning("tts.edge_tts_failed", error=str(exc))
+
     if not audio_bytes:
         error_msg = f"Nenhum provedor de TTS entregou áudio. Falhas: {' · '.join(failures)}"
         logger.error("tts.all_providers_failed", failures=failures, caller=caller)
