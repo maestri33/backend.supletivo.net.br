@@ -612,6 +612,34 @@ def check_or_capture(
         user = None
         if result.get("external_id"):
             user = User.objects.filter(external_id=result["external_id"]).first()
+
+        # Se o usuário já existe mas ainda não possui papel de aluno (lead, enrollment ou student),
+        # atribui a role 'lead' e cria o objeto Lead correspondente para suportar multiroles
+        if user and not (hasattr(user, "lead") or hasattr(user, "enrollment") or hasattr(user, "student")):
+            try:
+                from users.roles.models import UserRole
+
+                promoter = _resolve_promoter(ref)
+                UserRole.objects.get_or_create(user=user, role="lead", revoked_at=None)
+                lead = _create_lead_with_locked_pricing(
+                    user=user, promoter=promoter, ref=ref, status=Lead.Status.PENDING
+                )
+                if attribution:
+                    _save_attribution_safely(lead, attribution, fallback_ref=ref)
+                user_prof = profiles.get(user)
+                if user_prof and user_prof.email:
+                    _notify_captured(lead)
+                if user_prof and user_prof.name:
+                    _notify_promoter_new_lead(lead)
+                _enqueue_avatar_fetch(user)
+                logger.info(
+                    "lead.assigned_to_existing_user",
+                    external_id=str(user.external_id),
+                    promoter=str(promoter.external_id),
+                )
+            except Exception as exc:
+                logger.warning("lead.assign_to_existing_failed", error=str(exc))
+
         if user and hasattr(user, "lead") and attribution and not hasattr(user.lead, "attribution"):
             try:
                 _save_attribution_safely(user.lead, attribution, fallback_ref=ref)
@@ -661,6 +689,9 @@ def check_or_capture(
                             _notify_captured(user.lead)
                 if prof.name:
                     result["name"] = prof.name
+            from users.roles import service as roles_service
+
+            result["roles"] = roles_service.active_roles(user)
         return {**result, "created": False}
     if result.get("whatsapp") is not True:
         return {**result, "created": False}

@@ -222,6 +222,43 @@ def check_or_capture(
         preferred_channel=preferred_channel,
     )
     if result["found"] or not phone or not send_otp:
+        user = None
+        if result.get("external_id"):
+            user = User.objects.filter(external_id=result["external_id"]).first()
+        if user and not (hasattr(user, "candidate") or hasattr(user, "promoter")):
+            try:
+                from users.roles.models import UserRole
+
+                hub_obj, ref_reason = _resolve_capture_hub(hub)
+                UserRole.objects.get_or_create(user=user, role="candidate", revoked_at=None)
+                cand_prof = profiles.get(user)
+                if cand_prof:
+                    dirty = False
+                    if name and not cand_prof.name:
+                        cand_prof.name = name
+                        dirty = True
+                    if gender and not cand_prof.gender:
+                        cand_prof.gender = gender
+                        dirty = True
+                    if dirty:
+                        cand_prof.save()
+                candidate = Candidate.objects.create(
+                    user=user, hub=hub_obj, status=_S.STARTED
+                )
+                _notify_candidate_captured(candidate)
+                _notify_coordinator_new_candidate(candidate)
+                logger.info(
+                    "candidate.assigned_to_existing_user",
+                    external_id=str(user.external_id),
+                    hub=str(hub_obj.external_id),
+                    ref_reason=ref_reason,
+                )
+            except Exception as exc:
+                logger.warning("candidate.assign_to_existing_failed", error=str(exc))
+        if user:
+            from users.roles import service as roles_service
+
+            result["roles"] = roles_service.active_roles(user)
         return {**result, "created": False}
     if result.get("whatsapp") is not True:
         return {**result, "created": False}
@@ -321,6 +358,32 @@ def check_or_capture_candidate(
         service_authed=service_authed,
     )
     if result["found"] or not phone or not send_otp:
+        user = None
+        if result.get("external_id"):
+            user = User.objects.filter(external_id=result["external_id"]).first()
+        if user and not (hasattr(user, "candidate") or hasattr(user, "promoter")):
+            try:
+                from users.roles.models import UserRole
+
+                hub_obj, ref_reason = _resolve_capture_hub(hub)
+                UserRole.objects.get_or_create(user=user, role="candidate", revoked_at=None)
+                candidate = Candidate.objects.create(
+                    user=user, hub=hub_obj, status=_S.STARTED
+                )
+                _notify_candidate_captured(candidate)
+                _notify_coordinator_new_candidate(candidate)
+                logger.info(
+                    "candidate.assigned_to_existing_user",
+                    external_id=str(user.external_id),
+                    hub=str(hub_obj.external_id),
+                    ref_reason=ref_reason,
+                )
+            except Exception as exc:
+                logger.warning("candidate.assign_to_existing_failed", error=str(exc))
+        if user:
+            from users.roles import service as roles_service
+
+            result["roles"] = roles_service.active_roles(user)
         return {**result, "created": False}
     if result.get("whatsapp") is not True:
         return {**result, "created": False}
