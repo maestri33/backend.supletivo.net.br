@@ -1414,9 +1414,10 @@ def _notify_paid(lead: Lead, hub, checkout: Checkout | None = None) -> None:
         lead_name = (profile.name if profile and profile.name else None) or "Novo aluno"
         raw_phone = profile.phone if profile else None
         lead_phone = _format_phone_br(raw_phone) if raw_phone else "-"
-        hub_name = (getattr(hub, "brand", None) if hub else None) or "Polo Central"
-        if str(hub_name).strip().lower() == "standard":
-            hub_name = "Polo Central"
+        raw_brand = (getattr(hub, "brand", None) if hub else None) or "Central"
+        hub_name = "Central" if str(raw_brand).strip().lower() in ("standard", "default", "") else str(raw_brand).strip()
+        if hub_name.lower().startswith("polo "):
+            hub_name = hub_name[5:].strip() or "Central"
         link_painel = config.coordinator_panel_url()
         _safe(
             "coordinator",

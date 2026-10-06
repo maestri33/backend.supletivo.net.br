@@ -74,9 +74,10 @@ def _notify_candidate_captured(candidate: Candidate) -> None:
         return
 
     hub = candidate.hub
-    hub_name = (getattr(hub, "brand", None) if hub else None) or "Polo Central"
-    if str(hub_name).strip().lower() in ("standard", "default"):
-        hub_name = "Polo Central"
+    raw_brand = (getattr(hub, "brand", None) if hub else None) or "Central"
+    hub_name = "Central" if str(raw_brand).strip().lower() in ("standard", "default", "") else str(raw_brand).strip()
+    if hub_name.lower().startswith("polo "):
+        hub_name = hub_name[5:].strip() or "Central"
 
     raw_name = (cand_profile.name if cand_profile and cand_profile.name else "").strip()
     cand_gender = (cand_profile.gender if cand_profile and cand_profile.gender else "").upper() or "M"
@@ -143,9 +144,10 @@ def _notify_coordinator_new_candidate(candidate: Candidate) -> None:
     wa_url = _whatsapp_url(raw_phone)
     cand_name = (cand_profile.name if cand_profile and cand_profile.name else None) or f"Candidato {fmt_phone}"
 
-    hub_name = (getattr(hub, "brand", None) if hub else None) or "Polo Central"
-    if str(hub_name).strip().lower() in ("standard", "default"):
-        hub_name = "Polo Central"
+    raw_brand = (getattr(hub, "brand", None) if hub else None) or "Central"
+    hub_name = "Central" if str(raw_brand).strip().lower() in ("standard", "default", "") else str(raw_brand).strip()
+    if hub_name.lower().startswith("polo "):
+        hub_name = hub_name[5:].strip() or "Central"
 
     link_painel = _coordinator_panel_url()
 

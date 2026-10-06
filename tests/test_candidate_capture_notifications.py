@@ -60,7 +60,7 @@ def test_candidate_capture_triggers_both_notifications():
         assert cand_call.kwargs["gender"] == "F"
         assert cand_call.kwargs["is_tts_override"] is True
         assert cand_call.kwargs["ctx"]["candidato_nome"] == "Diandra Candidata"
-        assert cand_call.kwargs["ctx"]["polo_nome"] == "Polo Central"  # normalizado de standard
+        assert cand_call.kwargs["ctx"]["polo_nome"] == "Central"  # normalizado sem prefixo duplicado
         assert "colaborador" in cand_call.kwargs["ctx"]["link_app"]
         assert cand_call.kwargs["idempotency_key"] == f"candidate_captured_{candidate.external_id}"
 
@@ -72,7 +72,7 @@ def test_candidate_capture_triggers_both_notifications():
         assert coord_call.kwargs["ctx"]["candidato_nome"] == "Diandra Candidata"
         assert coord_call.kwargs["ctx"]["candidato_telefone"] == "(42) 9817-1770"
         assert coord_call.kwargs["ctx"]["candidato_whatsapp_url"] == "https://wa.me/554298171770"
-        assert coord_call.kwargs["ctx"]["polo_nome"] == "Polo Central"
+        assert coord_call.kwargs["ctx"]["polo_nome"] == "Central"
         assert "admin" in coord_call.kwargs["ctx"]["link_painel"]
         assert coord_call.kwargs["idempotency_key"] == f"candidate_captured_coord_{candidate.external_id}"
 
