@@ -47,6 +47,7 @@ def build_checkout(checkout_pk: int, attempt: int = 1) -> str:
                 error=str(exc),
             )
             return "exhausted"
+        from django_q.models import Schedule
         from core.tasks import schedule
 
         schedule(
