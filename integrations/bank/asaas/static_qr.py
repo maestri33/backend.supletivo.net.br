@@ -190,9 +190,8 @@ def create_pix_qr(
     logger.info(
         "static_pix_qr_created",
         payment_id=pid,
-        asaas_qr_id=created.get("id"),
+        asaas_qr_id=asaas_id,
         amount=str(amt),
-        pix_key=pix_key,
     )
     return row
 
