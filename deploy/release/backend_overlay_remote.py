@@ -177,8 +177,10 @@ def main() -> None:
             result = subprocess.run(["docker", "exec", "v7m-postgres", "sh", "-c", 'pg_dump -U "$POSTGRES_USER" -d supletivo_backend -Fc'], stdout=output, stderr=subprocess.PIPE, timeout=120)
         if result.returncode or backup.stat().st_size < 1000:
             raise RuntimeError("Database backup failed; migration was not started")
-        run([*compose("compose.override.json"), "run", "--rm", "--no-deps", "backend-web", "python", "manage.py", "migrate", "users", "0043", "--noinput"], timeout=120)
-        record = {"backup_file": backup.name, "backup_bytes": backup.stat().st_size, "backup_sha256": digest(backup.read_bytes()), "migration": "users.0043_checkout_paid_at", "applied_at": datetime.now(timezone.utc).isoformat(), "restore_tested": False}
+        targets = manifest.get("migration_targets", [["users", "0043"]])
+        for app, number in targets:
+            run([*compose("compose.override.json"), "run", "--rm", "--no-deps", "backend-web", "python", "manage.py", "migrate", app, number, "--noinput"], timeout=120)
+        record = {"backup_file": backup.name, "backup_bytes": backup.stat().st_size, "backup_sha256": digest(backup.read_bytes()), "migrations": targets, "applied_at": datetime.now(timezone.utc).isoformat(), "restore_tested": False}
         (STAGE / "migration-result.json").write_text(json.dumps(record, indent=2) + "\n")
         print(json.dumps(record))
         return

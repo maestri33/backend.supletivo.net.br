@@ -51,6 +51,23 @@ def test_lead_creation_without_ref_locks_anchor_pricing(default_coordinator):
     assert lead.pricing_snapshot["has_discount"] is False
     assert Decimal(lead.pricing_snapshot["pix"]) == lead.pix_price
 
+
+def test_public_pricing_uses_full_card_table_and_referral_discount(default_coordinator, affiliate_promoter, client):
+    """A vitrine pública segue a tabela comercial sem confundir Pix com cartão."""
+    full = client.get("/api/v1/clients/pricing")
+    assert full.status_code == 200
+    full_data = full.json()
+    assert full_data["pix"] == "1615.00"
+    assert full_data["card"] == {"installments": 12, "installment": "159.90", "total": "1918.80"}
+    assert full_data["has_discount"] is False
+
+    referred = client.get(f"/api/v1/clients/pricing?ref={affiliate_promoter.external_id}")
+    assert referred.status_code == 200
+    referred_data = referred.json()
+    assert referred_data["promo_pix"] == "999.00"
+    assert referred_data["promo_card"] == {"installments": 12, "installment": "99.00", "total": "1188.00"}
+    assert referred_data["has_discount"] is True
+
 def test_lead_creation_with_ref_locks_promotional_pricing(default_coordinator, affiliate_promoter):
     """Lead criado com ref trava preço promocional com desconto e nome do promotor."""
     user = User.objects.create_user(external_id=uuid.uuid4())

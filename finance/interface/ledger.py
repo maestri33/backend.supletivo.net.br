@@ -31,6 +31,7 @@ SP_TZ = ZoneInfo("America/Sao_Paulo")
 
 # Códigos padrão do plano de contas contábil
 ACCOUNT_ASSET_ASAAS = "ASSET_ASAAS"
+ACCOUNT_ASSET_PROMOTER_RECOVERY = "ASSET_PROMOTER_RECOVERY"
 ACCOUNT_LIABILITY_PROMOTER = "LIABILITY_PROMOTER_PAYABLE"
 ACCOUNT_LIABILITY_FEES = "LIABILITY_FEES_PAYABLE"
 ACCOUNT_EQUITY_CAPITAL = "EQUITY_CAPITAL"
@@ -43,6 +44,7 @@ ACCOUNT_EXPENSE_OPERATIONAL = "EXPENSE_OPERATIONAL"
 
 _DEFAULT_ACCOUNTS = [
     (ACCOUNT_ASSET_ASAAS, "Conta Corrente / Gateway Asaas", FinancialAccount.Category.ASSET),
+    (ACCOUNT_ASSET_PROMOTER_RECOVERY, "Comissões a recuperar em próximos repasses", FinancialAccount.Category.ASSET),
     (ACCOUNT_LIABILITY_PROMOTER, "Comissões de Promotores a Pagar", FinancialAccount.Category.LIABILITY),
     (ACCOUNT_LIABILITY_FEES, "Taxas Institucionais a Pagar", FinancialAccount.Category.LIABILITY),
     (ACCOUNT_EQUITY_CAPITAL, "Capital Social / Ajustes de Patrimônio", FinancialAccount.Category.EQUITY),
@@ -77,6 +79,7 @@ def record_transaction(
     description: str | None = None,
     entries: list[dict[str, Any]],
     settled: bool = True,
+    canary_run_id: uuid.UUID | str | None = None,
 ) -> FinancialTransaction:
     """Registra atomicamente uma transação financeira com partidas dobradas (Double-Entry).
 
@@ -135,6 +138,7 @@ def record_transaction(
                 source_external_id=source_uuid,
                 idempotency_key=idempotency_key,
                 settled_at=timezone.now() if settled else None,
+                canary_run_id=canary_run_id,
             )
         except IntegrityError:
             # Tratamento de corrida de idempotência concorrente
@@ -322,6 +326,7 @@ def create_unexpected_expense(
     return ue, pr
 
 
+@transaction.atomic
 def resolve_dispute(
     *,
     actor,
@@ -339,6 +344,10 @@ def resolve_dispute(
     ).first()
     if not dispute:
         raise ValueError("dispute_not_found")
+    if dispute.resolved_at:
+        if dispute.resolution == resolution:
+            return dispute
+        raise ValueError("dispute_already_resolved")
 
     snapshot_before = {
         "status": dispute.status,
@@ -362,24 +371,27 @@ def resolve_dispute(
                 ],
             )
         elif resolution == DisputeRecord.Resolution.DEBIT_PROMOTER:
+            from finance.interface.reversals import reverse_commission
+            comm = Commission.objects.filter(external_id=correlated_commission_id).first() if correlated_commission_id else None
+            if comm is None:
+                raise ValueError("correlated_commission_required")
+            affected = reverse_commission(comm)
+            recovered_amount = sum((item.amount for item in affected), Decimal("0.00"))
+            entries = []
+            for item in affected:
+                paid = (item.payment_request_id and item.payment_request.status == PaymentRequest.Status.PAID) or Commission.objects.filter(source_type=Commission.Source.REVERSAL, source_external_id=item.external_id).exists()
+                entries.append({"account_code": ACCOUNT_ASSET_PROMOTER_RECOVERY if paid else ACCOUNT_LIABILITY_PROMOTER, "entry_type": LedgerEntry.EntryType.DEBIT, "amount": item.amount})
+            entries.append({"account_code": ACCOUNT_EXPENSE_COMMISSION, "entry_type": LedgerEntry.EntryType.CREDIT, "amount": recovered_amount})
             dispute.status = DisputeRecord.Status.RESOLVED_DEBITED
-            # Se houver comissão relacionada pendente, cancela-a
-            if correlated_commission_id:
-                comm = Commission.objects.filter(external_id=correlated_commission_id).first()
-                if comm and comm.status == Commission.Status.PENDING:
-                    comm.status = Commission.Status.CANCELLED
-                    comm.save(update_fields=["status", "updated_at"])
-            # Lança cancelamento no passivo de comissões
+            # Only recover earned commissions; the student's principal is a
+            # platform loss, not a debt imposed on the recipient.
             record_transaction(
                 kind=FinancialTransaction.Kind.CHARGEBACK,
-                amount=dispute.amount,
+                amount=recovered_amount,
                 source_type=FinancialTransaction.SourceType.DISPUTE,
                 idempotency_key=f"dispute_debit_{dispute.external_dispute_id}",
                 description=f"Chargeback estornado do promotor {dispute.external_dispute_id}",
-                entries=[
-                    {"account_code": ACCOUNT_LIABILITY_PROMOTER, "entry_type": LedgerEntry.EntryType.DEBIT, "amount": dispute.amount},
-                    {"account_code": ACCOUNT_ASSET_ASAAS, "entry_type": LedgerEntry.EntryType.CREDIT, "amount": dispute.amount},
-                ],
+                entries=entries,
             )
         elif resolution == DisputeRecord.Resolution.CONTEST_GATEWAY:
             dispute.status = DisputeRecord.Status.RESOLVED_CONTESTED

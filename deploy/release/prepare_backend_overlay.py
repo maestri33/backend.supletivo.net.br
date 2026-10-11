@@ -52,7 +52,13 @@ def main() -> None:
     parser.add_argument("--release", required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--files-json", required=True, type=Path, help="JSON array of explicit repository-relative files")
+    parser.add_argument("--migration-target", action="append", help="Explicit app:NNNN migration target; default users:0043")
     args = parser.parse_args()
+    migration_targets = []
+    for target in args.migration_target or ["users:0043"]:
+        if not re.fullmatch(r"[a-z_]+:[0-9]{4}", target):
+            parser.error("Migration target must be app:NNNN")
+        migration_targets.append(target.split(":"))
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,63}", args.release):
         parser.error("Release must be a lowercase hyphenated identifier")
     if not re.fullmatch(r"0\.0\.0-sandbox\.\d+", args.version):
@@ -91,6 +97,7 @@ def main() -> None:
     identity = {"base_image": web["image"], "version": args.version, "files": {name: entry["sha256"] for name, entry in files.items()}}
     artifact_sha = sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode())
     manifest = {"release": args.release, "version": args.version, "artifact_sha256": artifact_sha, "source_commit": source_commit, "source_dirty": dirty, "prepared_at": datetime.now(timezone.utc).isoformat(), "base_image": web["image"], "base_tag": base_tag, "base_source_reference": web["tag"], "baseline": baseline, "files": files, "migration_policy": "explicit operator step after backup; never automatic", "deployed": False}
+    manifest["migration_targets"] = migration_targets
     stage.mkdir(parents=True)
     for name, data in sources.items():
         target = stage / "overrides" / name

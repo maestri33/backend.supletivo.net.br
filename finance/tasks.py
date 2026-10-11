@@ -7,9 +7,11 @@ Nada de regra de negócio aqui — só delega pro `interface/`. Mantém os nomes
 from finance.interface import commissions, payout
 
 
-def weekly_closing():
+def weekly_closing(*, reference_date=None):
     """Schedule semanal (sexta 18h): fecha a semana e cria as solicitações de pagamento."""
-    return commissions.run_weekly_closing()
+    result = commissions.run_weekly_closing(reference_date=reference_date)
+    result["payouts"] = payout.process_payment_requests()
+    return result
 
 
 def process_payouts():

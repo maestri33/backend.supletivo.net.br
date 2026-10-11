@@ -153,6 +153,25 @@ class Lead(ExternalIdModel):
             "commission_bonus_threshold": fin_config.bonus_threshold(),
             "commission_coordinator": f"{fin_config.coordinator_amount():.2f}",
         }
+        from finance import canary
+        test_terms = canary.pricing_snapshot(self.user)
+        if test_terms:
+            if str(self.promoter.external_id) != test_terms["owner_external_id"] or self.self_study:
+                raise canary.CanaryError("canary_referral_mismatch")
+            self.pix_price = Decimal(test_terms["pix"])
+            self.card_price = Decimal(test_terms["card_total"])
+            self.card_installments = test_terms["card_installments"]
+            self.card_installment = self.card_price
+            self.anchor_price = self.pix_price
+            self.has_discount = False
+            self.pricing_snapshot.update({
+                "pix": test_terms["pix"],
+                "card": {"installments": self.card_installments, "installment": test_terms["card_total"], "total": test_terms["card_total"]},
+                "promo_pix": None, "promo_card": None, "has_discount": False,
+                "anchor_full": test_terms["pix"], "commission_direct": test_terms["direct"],
+                "commission_bonus_flat": test_terms["bonus"], "commission_bonus_threshold": test_terms["bonus_threshold"],
+                "commission_coordinator": test_terms["coordinator"], "canary": test_terms,
+            })
 
     def get_pricing_dict(self) -> dict:
         """Devolve o snapshot de preços travado do lead."""
