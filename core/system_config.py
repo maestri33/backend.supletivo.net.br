@@ -236,6 +236,7 @@ def get_all_platform_config() -> dict:
         }
 
     return {
+        "default_promoter_external_id": str(get_setting("DEFAULT_PROMOTER_USER_EXTERNAL_ID", "") or "") or None,
         "boss": {
             "name": boss_name,
             "cpf": boss_cpf,
@@ -277,6 +278,14 @@ def get_all_platform_config() -> dict:
 def save_platform_config(payload: dict) -> dict:
     """Atualiza configurações no banco de dados e sincroniza Boss/Hub se informado."""
     with transaction.atomic():
+        if "default_promoter_external_id" in payload:
+            from users.roles.promoter.service import validate_ref
+            from users.exceptions import ValidationError
+            selected = str(payload["default_promoter_external_id"] or "").strip()
+            promoter = validate_ref(selected) if selected else None
+            if selected and (promoter is None or not promoter.is_active):
+                raise ValidationError("Selecione um promotor apto a indicar.", code="INVALID_DEFAULT_PROMOTER")
+            set_setting("DEFAULT_PROMOTER_USER_EXTERNAL_ID", selected, "Promotor padrão para novas propostas sem indicação")
         # Preços
         if "pricing" in payload:
             p = payload["pricing"]

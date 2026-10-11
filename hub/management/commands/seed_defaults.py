@@ -63,10 +63,10 @@ class Command(BaseCommand):
         user, user_created = self._ensure_staff(
             cpf=cpf, phone=phone, name=name, email=email, password=password, identity=identity
         )
-        self._ensure_roles(user)
         self._ensure_pix(user)
         hub, hub_created = self._ensure_default_hub(brand=brand, coordinator=user)
-        promoter = promoter_iface.create_promoter(user=user, hub=hub)  # idempotente
+        self._ensure_roles(user, operational=hub.coordinator_id == user.pk)
+        promoter = promoter_iface.create_promoter(user=hub.coordinator, hub=hub) if hub.coordinator else None
 
         logger.info(
             "hub.seed_defaults",
@@ -74,13 +74,13 @@ class Command(BaseCommand):
             staff_created=user_created,
             hub_external_id=str(hub.external_id),
             hub_created=hub_created,
-            promoter_external_id=str(promoter.external_id),
+            promoter_external_id=str(promoter.external_id) if promoter else None,
         )
         self.stdout.write(
             self.style.SUCCESS(
                 f"staff external_id={user.external_id} (novo={user_created}); "
                 f"hub padrão external_id={hub.external_id} brand={hub.brand} (novo={hub_created}); "
-                f"promoter external_id={promoter.external_id} (ref de captação = staff external_id)"
+                f"promoter external_id={promoter.external_id if promoter else None}"
             )
         )
 
@@ -132,9 +132,9 @@ class Command(BaseCommand):
         documents_iface.create_empty(user)
         return user, True
 
-    def _ensure_roles(self, user):
-        """promoter + coordinator + staff DIRETO (bypass catálogo — seed de sistema). Idempotente."""
-        for role in ("promoter", "coordinator", "staff"):
+    def _ensure_roles(self, user, *, operational=True):
+        """Preserve an independently assigned coordinator instead of restoring staff overlays."""
+        for role in (("promoter", "coordinator", "staff") if operational else ("staff",)):
             UserRole.objects.get_or_create(user=user, role=role, revoked_at=None)
 
     def _ensure_pix(self, user):
@@ -187,7 +187,7 @@ class Command(BaseCommand):
         """Garante o hub padrão (coordenador = conta-mãe). Idempotente pelo flag is_default."""
         hub = Hub.objects.filter(is_default=True).first()
         if hub is not None:
-            if hub.coordinator_id != coordinator.id:
+            if hub.coordinator_id is None:
                 hub.coordinator = coordinator
                 hub.save(update_fields=["coordinator", "updated_at"])
             return hub, False

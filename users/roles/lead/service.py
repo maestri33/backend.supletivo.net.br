@@ -304,6 +304,16 @@ def _resolve_promoter(ref) -> User:
         # não pode se esconder em log info — é comissão trocando de dono sem ninguém ver.
         logger.warning("lead.ref_fallback_default", ref=str(ref))
 
+    # An administrator may select a default promoter independently of the hub coordinator.
+    from core.system_config import get_setting
+    selected = get_setting("DEFAULT_PROMOTER_USER_EXTERNAL_ID", "")
+    if selected:
+        from users.roles.promoter import service as promoter_iface
+        default_promoter = promoter_iface.validate_ref(selected)
+        if default_promoter is not None and default_promoter.is_active:
+            return default_promoter
+        raise LeadError("default_promoter_unavailable")
+
     # Fallback 1: coordenador do hub padrão (caminho normal)
     ext = hub_iface.default_coordinator_external_id()
     if ext:
