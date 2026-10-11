@@ -19,8 +19,8 @@ logger = structlog.get_logger()
 
 # Config keys catalog
 PRICING_KEYS = {
-    "ENROLLMENT_PRICE_PIX": "999",
-    "ENROLLMENT_PRICE_CARD_CENTS": "118800",
+    "ENROLLMENT_PRICE_PIX": "1615",
+    "ENROLLMENT_PRICE_CARD_CENTS": "191880",
     "ENROLLMENT_PROMO_PRICE_PIX": "999",
     "ENROLLMENT_PROMO_PRICE_CARD_CENTS": "118800",
     "ENROLLMENT_ANCHOR_FULL": "1615",
@@ -36,7 +36,7 @@ COMMISSION_KEYS = {
     "COMMISSION_DIRECT": "100",
     "COMMISSION_BONUS_FLAT": "500",
     "COMMISSION_BONUS_THRESHOLD": 5,
-    "COMMISSION_COORDINATOR": "25",
+    "COMMISSION_COORDINATOR": "50",
     "COMMISSION_CLOSING_WEEKDAY": "4",
     "COMMISSION_CLOSING_HOUR": "18",
 }
@@ -45,6 +45,8 @@ INTEGRATION_KEYS = {
     "ASAAS_API_KEY": True,  # is_secret
     "ASAAS_BASE_URL": False,
     "ASAAS_WEBHOOK_SECRET": True,
+    "ASAAS_TRANSFER_VALIDATION_SECRET": True,
+    "CRON_SERVICE_SECRET": True,
     "ASAAS_WEBHOOK_URL": False,
     "ASAAS_PIX_ADDRESS_KEY": False,
     "ASAAS_ENABLE_SANDBOX_TRANSFERS": False,
@@ -68,6 +70,7 @@ INTEGRATION_KEYS = {
     "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET": True,
     "INFISICAL_TOKEN": True,
     "EXTERNAL_URL": False,
+    "LANDING_BASE_URL": False,
     "FRONTEND_URL": False,
     "ADMIN_URL": False,
     "ASTRO_REBUILD_WEBHOOK_URL": False,
@@ -119,6 +122,26 @@ def get_setting(key: str, default: Any = None) -> Any:
     """Busca o valor da configuração no banco (PlatformSetting) ou faz fallback para settings."""
     global _CACHE_INITIALIZED, _CACHE_EXPIRES_AT
     now = time.monotonic()
+    if now < _CACHE_EXPIRES_AT and _SETTINGS_CACHE.get(key):
+        return _SETTINGS_CACHE[key]
+    # Synchronous configuration API is also used by async HTTP adapters. Django
+    # forbids ORM access on their event-loop thread. Read in a separate thread
+    # instead of silently falling back to an obsolete environment credential.
+    import asyncio
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        from django.db import connections
+        def read_setting():
+            try:
+                return get_setting(key, default)
+            finally:
+                connections.close_all()
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="platform-config") as pool:
+            return pool.submit(read_setting).result()
     if not _CACHE_INITIALIZED or now >= _CACHE_EXPIRES_AT:
         load_all_settings_into_cache()
     # Fast path: check in-memory cache first
@@ -181,9 +204,9 @@ def get_all_platform_config() -> dict:
         boss_pix = boss_pix or existing_boss.pix_key or ""
 
     # 2. Preços
-    price_pix = str(get_setting("ENROLLMENT_PRICE_PIX", getattr(settings, "ENROLLMENT_PRICE_PIX", "999")))
-    price_card_cents = int(get_setting("ENROLLMENT_PRICE_CARD_CENTS", getattr(settings, "ENROLLMENT_PRICE_CARD_CENTS", 118800)))
-    promo_price_pix = str(get_setting("ENROLLMENT_PROMO_PRICE_PIX", getattr(settings, "ENROLLMENT_PROMO_PRICE_PIX", price_pix)))
+    price_pix = str(get_setting("ENROLLMENT_PRICE_PIX", getattr(settings, "ENROLLMENT_PRICE_PIX", "1615")))
+    price_card_cents = int(get_setting("ENROLLMENT_PRICE_CARD_CENTS", getattr(settings, "ENROLLMENT_PRICE_CARD_CENTS", 191880)))
+    promo_price_pix = str(get_setting("ENROLLMENT_PROMO_PRICE_PIX", getattr(settings, "ENROLLMENT_PROMO_PRICE_PIX", "999")))
     promo_price_card_cents = int(get_setting("ENROLLMENT_PROMO_PRICE_CARD_CENTS", getattr(settings, "ENROLLMENT_PROMO_PRICE_CARD_CENTS", price_card_cents)))
     promoter_study_unlock_threshold = int(get_setting("PROMOTER_STUDY_UNLOCK_THRESHOLD", getattr(settings, "PROMOTER_STUDY_UNLOCK_THRESHOLD", 3)))
     promoter_study_complete_threshold = int(get_setting("PROMOTER_STUDY_COMPLETE_THRESHOLD", getattr(settings, "PROMOTER_STUDY_COMPLETE_THRESHOLD", 10)))
@@ -197,7 +220,7 @@ def get_all_platform_config() -> dict:
     commission_direct = str(get_setting("COMMISSION_DIRECT", getattr(settings, "COMMISSION_DIRECT", "100")))
     commission_bonus_flat = str(get_setting("COMMISSION_BONUS_FLAT", getattr(settings, "COMMISSION_BONUS_FLAT", "500")))
     commission_bonus_threshold = int(get_setting("COMMISSION_BONUS_THRESHOLD", getattr(settings, "COMMISSION_BONUS_THRESHOLD", 5)))
-    commission_coordinator = str(get_setting("COMMISSION_COORDINATOR", getattr(settings, "COMMISSION_COORDINATOR", "25")))
+    commission_coordinator = str(get_setting("COMMISSION_COORDINATOR", getattr(settings, "COMMISSION_COORDINATOR", "50")))
     commission_closing_weekday = int(get_setting("COMMISSION_CLOSING_WEEKDAY", getattr(settings, "COMMISSION_CLOSING_WEEKDAY", 4)))
     commission_closing_hour = int(get_setting("COMMISSION_CLOSING_HOUR", getattr(settings, "COMMISSION_CLOSING_HOUR", 18)))
 

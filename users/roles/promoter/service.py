@@ -141,8 +141,9 @@ def validate_ref(ref: str):
 
 
 def ref_url(user) -> str:
+    from core.system_config import get_setting
     base = (
-        getattr(settings, "LANDING_BASE_URL", "") or settings.EXTERNAL_URL or ""
+        get_setting("LANDING_BASE_URL", default=getattr(settings, "LANDING_BASE_URL", "") or settings.EXTERNAL_URL or "")
     ).rstrip("/")
     return f"{base}/?ref={user.external_id}"
 

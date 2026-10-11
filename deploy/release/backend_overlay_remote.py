@@ -8,6 +8,8 @@ import json
 import os
 import subprocess
 import time
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -87,6 +89,28 @@ def verify_running(manifest: dict, image: str) -> None:
             raise RuntimeError(f"Runtime configuration changed: {name}")
 
 
+def probe_health(origin_ip: str, manifest: dict, record: dict) -> dict:
+    """Probe the origin without starting another Python process in the container."""
+    request = urllib.request.Request(
+        f"http://{origin_ip}:8000/api/v1/health/healthz",
+        headers={"Host": "backend.supletivo.net.br"},
+    )
+    for attempt in range(10):
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                health = json.load(response)
+            if (health.get("db") is True and health.get("migrations_pending") == 0
+                    and health.get("sha") == manifest["artifact_sha256"]
+                    and health.get("version") == manifest["version"]
+                    and health.get("built_at") == record["built_at"]):
+                return health
+        except (RuntimeError, json.JSONDecodeError, urllib.error.URLError, TimeoutError):
+            pass
+        if attempt < 9:
+            time.sleep(3)
+    raise RuntimeError("Origin health did not identify the expected artifact")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("inspect", "build", "preflight", "migrate", "promote", "rollback"))
@@ -133,9 +157,12 @@ def main() -> None:
         raise RuntimeError("Built artifact changed")
     configuration_guard(manifest, image)
     if args.action == "preflight":
-        run([*compose("compose.override.json"), "run", "--rm", "--no-deps", "backend-web", "python", "manage.py", "check"], timeout=90)
-        plan = run([*compose("compose.override.json"), "run", "--rm", "--no-deps", "backend-web", "python", "manage.py", "migrate", "--plan"], timeout=90)
-        print(json.dumps({"release": manifest["release"], "check_passed": True, "migration_plan": plan, "migrations_applied": False}))
+        code = "import os,json,django; os.environ.setdefault('DJANGO_SETTINGS_MODULE','core.settings'); django.setup(); from django.core.management import call_command; call_command('check'); from django.db import connections; from django.db.migrations.executor import MigrationExecutor; e=MigrationExecutor(connections['default']); print(json.dumps({'check_passed':True,'migration_plan':[(m.app_label,m.name,backward) for m,backward in e.migration_plan(e.loader.graph.leaf_nodes())]}))"
+        output = run([*compose("compose.override.json"), "run", "--rm", "--no-deps", "backend-web", "python", "-c", code], timeout=120)
+        result = json.loads(output.splitlines()[-1])
+        result.update({"release": manifest["release"], "artifact_sha256": manifest["artifact_sha256"], "checked_at": datetime.now(timezone.utc).isoformat(), "migrations_applied": False})
+        (STAGE / "preflight-result.json").write_text(json.dumps(result, indent=2) + "\n")
+        print(json.dumps(result))
         return
     if args.action == "migrate":
         backup = STAGE / "database-before-migration.dump"
@@ -156,18 +183,9 @@ def main() -> None:
     try:
         run([*compose("compose.override.json"), "up", "-d", "--no-deps", "--no-build", "backend-web", "backend-qcluster"], timeout=120)
         verify_running(manifest, image)
-        health = None
-        probe = "import json,urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/healthz',timeout=5).read().decode())"
-        for attempt in range(10):
-            try:
-                health = json.loads(run(["docker", "exec", "v7m-backend-web", "python", "-c", probe], timeout=8))
-                if health.get("db") is True and health.get("migrations_pending") == 0 and health.get("sha") == manifest["artifact_sha256"] and health.get("version") == manifest["version"] and health.get("built_at") == record["built_at"]:
-                    break
-            except (RuntimeError, json.JSONDecodeError):
-                pass
-            time.sleep(3)
-        else:
-            raise RuntimeError("Origin health did not identify the expected artifact")
+        obj, _ = inspect("v7m-backend-web")
+        origin_ip = next(value["IPAddress"] for value in obj["NetworkSettings"]["Networks"].values() if value.get("IPAddress"))
+        health = probe_health(origin_ip, manifest, record)
         record.update({"deployed": True, "health": health, "promoted_at": datetime.now(timezone.utc).isoformat()})
         (STAGE / "build-result.json").write_text(json.dumps(record, indent=2) + "\n")
         print(json.dumps(record))

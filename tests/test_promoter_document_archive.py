@@ -13,6 +13,17 @@ from users.roles.promoter.models import Promoter
 pytestmark = pytest.mark.django_db
 
 
+def test_referral_url_uses_configured_public_landing(settings):
+    from types import SimpleNamespace
+    from core import system_config
+    from core.models import PlatformSetting
+    from users.roles.promoter.service import ref_url
+    settings.LANDING_BASE_URL = "http://localhost:3000"
+    PlatformSetting.objects.create(key="LANDING_BASE_URL", value="https://supletivo.net.br")
+    system_config.clear_settings_cache()
+    assert ref_url(SimpleNamespace(external_id="configured-ref")) == "https://supletivo.net.br/?ref=configured-ref"
+
+
 def _collaborator():
     user = User.objects.create_user()
     hub = Hub.objects.create(address=Address.objects.create(city="Londrina", state="PR"), brand="standard")

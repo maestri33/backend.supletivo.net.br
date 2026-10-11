@@ -1,5 +1,6 @@
 [
   "api/health/router.py",
+  "core/system_config.py",
   "api/clients/schemas.py",
   "api/collaborators/schemas.py",
   "api/collaborators/routers/promoter.py",
