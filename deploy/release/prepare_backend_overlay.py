@@ -82,19 +82,22 @@ def main() -> None:
         parser.error("Release directory/archive already exists; choose a fresh release ID")
     baseline = inspect_production(names)
     web = baseline["containers"]["v7m-backend-web"]
+    # A rollback may leave Config.Image as a local sha256 ID. Docker's FROM
+    # interprets that ID as a registry repository, so use a pinned local alias.
+    base_tag = "v7m-backend:overlay-base-" + web["image"].removeprefix("sha256:")[:16]
     source_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip())
     files = {name: {"sha256": sha256(data), "host_before_sha256": baseline["host_files"][name]} for name, data in sources.items()}
     identity = {"base_image": web["image"], "version": args.version, "files": {name: entry["sha256"] for name, entry in files.items()}}
     artifact_sha = sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode())
-    manifest = {"release": args.release, "version": args.version, "artifact_sha256": artifact_sha, "source_commit": source_commit, "source_dirty": dirty, "prepared_at": datetime.now(timezone.utc).isoformat(), "base_image": web["image"], "base_tag": web["tag"], "baseline": baseline, "files": files, "migration_policy": "explicit operator step after backup; never automatic", "deployed": False}
+    manifest = {"release": args.release, "version": args.version, "artifact_sha256": artifact_sha, "source_commit": source_commit, "source_dirty": dirty, "prepared_at": datetime.now(timezone.utc).isoformat(), "base_image": web["image"], "base_tag": base_tag, "base_source_reference": web["tag"], "baseline": baseline, "files": files, "migration_policy": "explicit operator step after backup; never automatic", "deployed": False}
     stage.mkdir(parents=True)
     for name, data in sources.items():
         target = stage / "overrides" / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
     (stage / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    dockerfile = f"""FROM {web['tag']}
+    dockerfile = f"""FROM {base_tag}
 ARG APP_VERSION
 ARG ARTIFACT_SHA
 ARG SOURCE_COMMIT

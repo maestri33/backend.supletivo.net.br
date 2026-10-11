@@ -139,6 +139,11 @@ def main() -> None:
         return
     baseline_guard(manifest)
     if args.action == "build":
+        if json.loads(run(["docker", "image", "inspect", manifest["base_image"]]))[0]["Id"] != manifest["base_image"]:
+            raise RuntimeError("Frozen base image is unavailable")
+        alias = subprocess.run(["docker", "image", "inspect", manifest["base_tag"]], text=True, capture_output=True, timeout=10)
+        if alias.returncode:
+            run(["docker", "image", "tag", manifest["base_image"], manifest["base_tag"]])
         if json.loads(run(["docker", "image", "inspect", manifest["base_tag"]]))[0]["Id"] != manifest["base_image"]:
             raise RuntimeError("Base image tag no longer matches frozen digest")
         built_at = datetime.now(timezone.utc).isoformat()
