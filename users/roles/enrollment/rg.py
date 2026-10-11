@@ -48,7 +48,7 @@ def _reconcile_stale_analyses(enr: Enrollment) -> None:
             enrollment=str(getattr(enr, "external_id", None)),
             kind="rg",
         )
-        _finish_rg(
+        service._finish_rg(
             enr,
             rg,
             _analysis.REVIEW,
@@ -166,7 +166,7 @@ def patch_rg_section(*, user_external_id: str, **fields) -> dict:
     from users.roles import _selfie
 
     if enr.status == _S.SELFIE and enr.selfie_status == _selfie.APPROVED:
-        _advance_to_release(enr)
+        service._advance_to_release(enr)
     return me_dict(
         enr
     )  # resposta canônica (proposta #3): o rg detalhado segue no GET da seção

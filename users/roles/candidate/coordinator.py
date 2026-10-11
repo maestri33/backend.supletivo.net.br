@@ -83,6 +83,7 @@ def _notify_doc_type_reset(cand: Candidate) -> None:
         logger.warning("candidate.notify_doc_type_reset_failed", error=str(exc))
 
 
+@transaction.atomic
 def approve_candidate(*, candidate_external_id: str, coordinator) -> Candidate:
     """Coordenador do polo APROVA o candidato manualmente → promove candidate→PROMOTOR (reusa
     `_promote_to_promoter`). Fallback do caminho de selfie em `review` (a selfie aprovada já
@@ -112,6 +113,7 @@ def approve_candidate(*, candidate_external_id: str, coordinator) -> Candidate:
     if cand.status != _S.SELFIE:
         _set_status(cand, _S.SELFIE)
     service._promote_to_promoter(cand)
+    cand.refresh_from_db()
     return cand
 
 

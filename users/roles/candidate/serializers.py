@@ -7,6 +7,7 @@ from users.exceptions import NotFound
 from users.profiles import interface as profiles
 from users.roles.candidate.models import Candidate
 from users.roles.candidate.common import _ADDRESS_FIELDS
+from users.roles.candidate.promotion import _activation_missing
 
 
 def _selfie_dict(cand: Candidate) -> dict:
@@ -14,6 +15,7 @@ def _selfie_dict(cand: Candidate) -> dict:
     return sd(cand)
 
 def to_dict(cand: Candidate) -> dict:
+    from users.roles.promoter.service import ref_url
     return {
         "external_id": str(cand.external_id),
         "status": cand.status,
@@ -21,6 +23,7 @@ def to_dict(cand: Candidate) -> dict:
         "pix_validated": cand.pix_validated,
         "selfie_verified": cand.selfie_verified,
         "selfie_status": cand.selfie_status,
+        "ref_url": ref_url(cand.user),
     }
 
 
@@ -88,5 +91,6 @@ def me_dict(cand: Candidate) -> dict:
         "documents": docs,
         "selfie": selfie,
         "blocks": [blocks.to_dict(b) for b in blocks.get_active_blocks(cand.user)],
+        "missing_requirements": _activation_missing(cand),
     }
 

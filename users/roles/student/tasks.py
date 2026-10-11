@@ -13,16 +13,19 @@ from users.roles.student import service
 logger = structlog.get_logger()
 
 
-def validate_document(student_document_id: int) -> None:
+def validate_document(student_document_id: int, expected_photo: str | None = None) -> None:
     """Valida 1 documento do aluno pela IA (2 estágios: visão + OCR+extração) e grava o veredito."""
     from users.roles.student.models import StudentDocument
 
     try:
         doc = StudentDocument.objects.filter(id=student_document_id).first()
-        if doc is None:
+        if doc is None or (expected_photo is not None and doc.photo != expected_photo):
             return
+        analyzed_photo = doc.photo
         status, payload = service._ai_validate(doc)
-        service.apply_validation(student_document_id, status=status, payload=payload)
+        service.apply_validation(
+            student_document_id, status=status, payload=payload, expected_photo=analyzed_photo
+        )
         logger.info(
             "student.task_validated", student_document_id=student_document_id, status=status
         )

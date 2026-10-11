@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 
 import httpx
@@ -77,8 +78,10 @@ def _pending_migrations() -> int:
 
 def _deploy_info() -> dict:
     build_file = settings.BASE_DIR / "build.txt"
-    sha = build_file.read_text().strip() if build_file.exists() else None
-    return {"sha": sha, "built_at": None}
+    sha = os.environ.get("RELEASE_ARTIFACT_SHA") or (
+        build_file.read_text().strip() if build_file.exists() else None
+    )
+    return {"sha": sha, "built_at": os.environ.get("RELEASE_BUILT_AT") or None}
 
 
 @health_api.get("/healthz", response=HealthzOut, summary="Health check público")

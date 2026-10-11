@@ -150,7 +150,10 @@ class AddressProofSectionOut(Schema):
     status: str | None = None
     reason: str | None = None
     needs_kinship: bool = False
+    kinship_kind: str | None = None
     kinship_relation: str | None = None
+    holder_name: str | None = None
+    needs_new_proof: bool = False
 
 
 class CandidateMeOut(Schema):
@@ -160,6 +163,8 @@ class CandidateMeOut(Schema):
     pix_validated: bool
     selfie_verified: bool
     selfie_status: str | None = None
+    ref_url: str
+    missing_requirements: list[str] = Field(default_factory=list)
     profile: CandidateProfileOut | None = None
     address: PublicAddressOut | None = None
     address_proof: AddressProofSectionOut | None = None
@@ -291,6 +296,20 @@ class PromoterCommissionOut(Schema):
     source: str
     status: str
     created_at: str
+
+
+class PromoterDocumentOut(Schema):
+    kind: str
+    name: str
+    path: str
+    status: str | None = None
+
+
+class PromoterDocumentArchiveOut(Schema):
+    documents: list[PromoterDocumentOut] = Field(default_factory=list)
+    contract_version: str | None = None
+    contract_hash: str | None = None
+    accepted_at: str | None = None
 
 
 class PromoterLifetimeOut(Schema):

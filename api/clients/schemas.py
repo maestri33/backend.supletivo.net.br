@@ -130,6 +130,7 @@ class LeadSelfCheckoutOut(Schema):
     provider: str
     amount: str
     is_paid: bool
+    paid_at: str | None = None
     checkout_url: str | None = None
     url: str | None = None
     receipt_url: str | None = None
@@ -177,6 +178,7 @@ class StudentDocumentOut(Schema):
     doc_type: str
     validation_status: str
     has_photo: bool
+    photo: str | None = None
     analysis_status: AnalysisStatus | None = Field(
         None,
         description="pending | approved | rejected | review",
@@ -211,6 +213,8 @@ class BlockOut(Schema):
 class StudentDiplomaOut(Schema):
     issued_at: str | None = None
     picked_up: bool
+    diploma_file: str | None = None
+    transcript_file: str | None = None
 
 
 class StudentMeOut(Schema):
@@ -224,6 +228,10 @@ class StudentMeOut(Schema):
     )
     hub_external_id: str
     blood_type: str | None = None
+    exam_available_at: str | None = None
+    exam_can_schedule: bool = False
+    exam_block_reason: str | None = None
+    exams: list[dict[str, Any]] = Field(default_factory=list)
     platform: StudentPlatformFields
     documents: list[StudentDocumentOut]
     pendencies: list[StudentPendencyOut]
@@ -469,6 +477,7 @@ class VeteranMeOut(Schema):
     status: str | None = None
     hub_external_id: str | None = None
     blood_type: str | None = None
+    exams: list[dict[str, Any]] = Field(default_factory=list)
     platform: StudentPlatformFields | None = None
     user: VeteranUserOut | None = None
     documents: list[VeteranDocumentItemOut] = Field(default_factory=list)

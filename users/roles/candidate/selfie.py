@@ -59,7 +59,7 @@ def set_selfie(
     from users.roles import _selfie
 
     cand = _require(user_external_id, _S.EDUCATION, _S.SELFIE)
-    cand.selfie_image = _save_selfie(cand, image_bytes, content_type)
+    cand.selfie_image = service._save_selfie(cand, image_bytes, content_type)
     cand.selfie_taken_at = timezone.now()
     cand.selfie_status = _selfie.SelfieStatus.PENDING
     cand.selfie_verified = False

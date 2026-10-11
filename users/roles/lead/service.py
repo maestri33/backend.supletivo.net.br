@@ -1119,6 +1119,7 @@ def lead_self_dict(lead: Lead) -> dict:
         checkout = _checkout_dict(c)
         checkout["url"] = checkout.pop("short_url")  # ✦ a URL única (checkout↔recibo)
         checkout["receipt_url"] = c.receipt_url
+        checkout["paid_at"] = c.paid_at.isoformat() if c.paid_at else None
     return {
         "external_id": str(lead.external_id),
         "status": lead.status,
@@ -1140,10 +1141,10 @@ def lead_self_dict(lead: Lead) -> dict:
 
 
 def pricing(ref: str | None = None) -> dict:
-    """Preço público de vitrine — É O MESMO que é cobrado (Victor 2026-06-07): PIX (valor cheio) + cartão 12x.
+    """Preço público de vitrine — É O MESMO que é cobrado: PIX + cartão parcelado.
 
     Regra Canônica:
-    - Sem Ref: O valor é o PREÇO ÂNCORA de tabela (anchor_full) em 12x fixas ou PIX.
+    - Sem Ref: PIX cheio e preço de cartão configurado para 12 parcelas.
     - Com Ref: Desbloqueia o valor promocional com desconto de indicação (promo_pix / promo_card em 12x).
     """
     from decimal import Decimal
@@ -1151,7 +1152,9 @@ def pricing(ref: str | None = None) -> dict:
 
     installments = 12
     anchor_full = config.anchor_full()
-    anchor_installment = (anchor_full / installments).quantize(Decimal("0.01"))
+    full_pix = config.price_pix()
+    full_card = config.price_card()
+    full_card_installment = (full_card / installments).quantize(Decimal("0.01"))
 
     promo_pix = config.promo_price_pix()
     promo_total = config.promo_price_card()
@@ -1161,11 +1164,11 @@ def pricing(ref: str | None = None) -> dict:
     has_discount = bool(name)
 
     return {
-        "pix": f"{anchor_full:.2f}",
+        "pix": f"{full_pix:.2f}",
         "card": {
             "installments": installments,
-            "installment": f"{anchor_installment:.2f}",
-            "total": f"{anchor_full:.2f}",
+            "installment": f"{full_card_installment:.2f}",
+            "total": f"{full_card:.2f}",
         },
         "promo_pix": f"{promo_pix:.2f}",
         "promo_card": {
@@ -1241,6 +1244,7 @@ def create_self_study_lead(*, user, payment_method=None) -> dict:
 # ── pagamento (chamado pelo hook do webhook, CONVENTION §7) ─────────────────
 
 
+@transaction.atomic
 def mark_paid(*, provider: str, provider_payment_id: str, receipt_url=None) -> bool:
     """Casa o Checkout do lead por (provider, provider_payment_id). Se for nosso → marca pago + efeitos.
 
@@ -1249,7 +1253,7 @@ def mark_paid(*, provider: str, provider_payment_id: str, receipt_url=None) -> b
     fallback rastreável — pode ser cobrança de `fees`, não nossa).
     """
     checkout = (
-        Checkout.objects.select_related("lead", "lead__user", "lead__promoter")
+        Checkout.objects.select_for_update(of=("self",)).select_related("lead", "lead__user", "lead__promoter")
         .filter(provider=provider, provider_payment_id=provider_payment_id)
         .first()
     )
@@ -1263,6 +1267,11 @@ def mark_paid(*, provider: str, provider_payment_id: str, receipt_url=None) -> b
     with transaction.atomic():
         fields = ["is_paid", "updated_at"]
         checkout.is_paid = True
+        if checkout.paid_at is None:
+            from django.utils import timezone
+
+            checkout.paid_at = timezone.now()
+            fields.append("paid_at")
         if receipt_url:
             checkout.receipt_url = receipt_url
             fields.insert(1, "receipt_url")
@@ -1515,7 +1524,7 @@ def list_leads(*, hub=None, status=None, created_after=None, limit=None) -> list
         qs = qs.filter(created_at__gte=created_after)
     if hub is not None:
         qs = qs.filter(
-            Q(promoter__promoter__hub=hub) | Q(user__enrollment__hub=hub)
+            Q(promoter__promoter__hub=hub) | Q(promoter__candidate__hub=hub) | Q(user__enrollment__hub=hub)
         ).distinct()
     if limit is not None:
         qs = qs[:limit]
@@ -1555,19 +1564,19 @@ def get_lead_for_hub(*, external_id: str, hub) -> Lead | None:
 
     return (
         Lead.objects.filter(external_id=external_id)
-        .filter(Q(promoter__promoter__hub=hub) | Q(user__enrollment__hub=hub))
+        .filter(Q(promoter__promoter__hub=hub) | Q(promoter__candidate__hub=hub) | Q(user__enrollment__hub=hub))
         .select_related("user", "promoter", "checkout")
         .distinct()
         .first()
     )
 
 
-def mark_refunded(*, provider: str, provider_payment_id: str) -> bool:
+def mark_refunded(*, provider: str, provider_payment_id: str, reason: str = "payment_refunded") -> bool:
     """Processa o estorno/cancelamento de um pagamento de lead.
     
     1. Localiza o Checkout pelo provider e provider_payment_id.
     2. Atualiza lead e checkout para status cancelado / estornado.
-    3. Cancela a Commission associada (se ainda PENDING).
+    3. Cancela valores pendentes e recupera comissões já pagas nos próximos repasses.
     """
     checkout = (
         Checkout.objects.select_related("lead", "lead__user", "lead__promoter")
@@ -1582,16 +1591,12 @@ def mark_refunded(*, provider: str, provider_payment_id: str) -> bool:
         checkout.is_paid = False
         checkout.save(update_fields=["is_paid", "updated_at"])
         lead.status = Lead.Status.FAILED
-        lead.failed_reason = "payment_refunded"
+        lead.failed_reason = reason
         lead.save(update_fields=["status", "failed_reason", "updated_at"])
 
-        from finance.models import Commission
+        from finance.interface.reversals import reverse_lead
 
-        Commission.objects.filter(
-            source_type=Commission.Source.LEAD,
-            source_external_id=lead.external_id,
-            status=Commission.Status.PENDING,
-        ).update(status=Commission.Status.CANCELLED)
+        reverse_lead(lead)
 
     logger.info("lead.refunded", external_id=str(lead.external_id), provider=provider)
     return True
@@ -1638,7 +1643,7 @@ def mark_payment_failed(*, provider: str, provider_payment_id: str, reason: str 
         return False
 
     lead = checkout.lead
-    if lead.status == Lead.Status.PAID:
+    if lead.status == Lead.Status.PAID or checkout.is_paid:
         return True
 
     with transaction.atomic():
@@ -1662,7 +1667,7 @@ def mark_payment_expired(*, provider: str, provider_payment_id: str, reason: str
         return False
 
     lead = checkout.lead
-    if lead.status == Lead.Status.PAID:
+    if lead.status == Lead.Status.PAID or checkout.is_paid:
         return True
 
     with transaction.atomic():

@@ -127,7 +127,7 @@ def list_selfie_reviews_for_hub(*, hub) -> list[dict]:
     Antes, varre PENDING órfão (worker morto) → review (`_sweep_stale_reviews`)."""
     from users.roles._selfie import SelfieStatus
 
-    _sweep_stale_reviews(hub)
+    service._sweep_stale_reviews(hub)
     out = []
     qs = (
         Candidate.objects.filter(hub=hub, selfie_status=SelfieStatus.REVIEW)

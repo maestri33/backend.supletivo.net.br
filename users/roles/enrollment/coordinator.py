@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from hub.models import Hub
 from users.documents import service as documents_iface
-from users.exceptions import Conflict, Forbidden
+from users.exceptions import Conflict, DomainError, Forbidden, NotFound
 from users.profiles import interface as profiles
 from users.roles import _document_ai, _selfie
 from users.roles.enrollment.models import Enrollment
@@ -20,7 +20,7 @@ from users.roles.enrollment.common import (
 )
 from users.roles.enrollment.serializers import me_dict
 from users.roles.enrollment import service
-from users.roles.enrollment.fees_events import batch_fee_facts
+from users.roles.enrollment.fees_events import batch_fee_facts, fee_facts
 
 def _enrollment_for_coordinator(
     enrollment_external_id: str, coordinator, *allowed_status
@@ -172,7 +172,7 @@ def _sweep_stale_reviews(hub) -> None:
         Enrollment.objects.filter(hub=hub).values_list("user_id", flat=True)
     )
     _analysis.sweep_stale_documents(
-        RG.objects.filter(document__user_id__in=user_ids), _rg_started_at
+        RG.objects.filter(document__user_id__in=user_ids), service._rg_started_at
     )
 
 
@@ -196,7 +196,12 @@ def list_reviews_for_hub(*, hub) -> dict:
         .select_related("user")
         .order_by("updated_at")
     )
-    all_users = [e.user for e in rg_qs] + [e.user for e in selfie_qs]
+    address_qs = list(
+        Enrollment.objects.filter(
+            hub=hub, user__document__address_proof__validation_status__in=["review", "needs_kinship"]
+        ).select_related("user").order_by("updated_at")
+    )
+    all_users = [e.user for e in rg_qs + selfie_qs + address_qs]
     pmap = profiles.get_map(all_users)
 
     def _item(enr: Enrollment) -> dict:
@@ -207,7 +212,11 @@ def list_reviews_for_hub(*, hub) -> dict:
             "since": enr.updated_at.isoformat(),
         }
 
-    return {"rg": [_item(e) for e in rg_qs], "selfie": [_item(e) for e in selfie_qs]}
+    return {
+        "rg": [_item(e) for e in rg_qs],
+        "selfie": [_item(e) for e in selfie_qs],
+        "address_proof": [_item(e) for e in address_qs],
+    }
 
 
 def _notify_released(enr: Enrollment) -> None:

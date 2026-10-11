@@ -39,7 +39,7 @@ def submit_address_proof_kinship(*, user_external_id: str, relation: str) -> dic
 
     enr = _require(user_external_id)  # sem gate de status
     _address_proof.submit_kinship(user_external_id, relation)
-    _advance_address(enr, user_external_id)
+    service._advance_address(enr, user_external_id)
     return me_dict(enr)
 
 
@@ -52,15 +52,15 @@ def decide_address_proof_kinship(
     (de preferência no nome dele) até um novo upload. O motivo fica interno."""
     from users.roles import _address_proof
 
-    enr = _enrollment_for_coordinator(enrollment_external_id, coordinator)
+    enr = service._enrollment_for_coordinator(enrollment_external_id, coordinator)
     status = _address_proof.decide_kinship(
         str(enr.user.external_id), approve=approve, reason=reason
     )
     if approve:
-        _advance_address(enr, str(enr.user.external_id))
-        _notify_resolution(enr, "enrollment.address_proof.approved")
+        service._advance_address(enr, str(enr.user.external_id))
+        service._notify_resolution(enr, "enrollment.address_proof.approved")
     else:
-        _notify_resolution(enr, "enrollment.address_proof.new_proof_needed")
+        service._notify_resolution(enr, "enrollment.address_proof.new_proof_needed")
     return {"external_id": enrollment_external_id, "status": status}
 
 
@@ -74,7 +74,7 @@ def run_address_proof_validation(enrollment_id: int) -> None:
     user_ext = str(enr.user.external_id)
     _address_proof.validate_and_store(user_ext, caller="enrollment.address_proof")
     enr.refresh_from_db(fields=["status"])
-    _advance_address(enr, user_ext)
+    service._advance_address(enr, user_ext)
 
 
 # ── seção DOCUMENTO (plan/13): GET rico · PATCH completa/corrige ─────────────

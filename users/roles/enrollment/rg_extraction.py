@@ -38,7 +38,7 @@ def _rg_extract_and_finish(enr: Enrollment, rg, result: dict, images: list) -> N
             enrollment=str(enr.external_id),
             error=str(exc)[:200],
         )
-        _finish_rg(
+        service._finish_rg(
             enr,
             rg,
             doc_ai.REVIEW,
@@ -56,7 +56,7 @@ def _rg_extract_and_finish(enr: Enrollment, rg, result: dict, images: list) -> N
     match = str(data.get("name_match") or "").strip().lower()
     name_reason = (data.get("name_reason") or "").strip()
     if match in ("nao", "não", "no"):
-        _finish_rg(
+        service._finish_rg(
             enr,
             rg,
             doc_ai.REJECTED,
@@ -65,7 +65,7 @@ def _rg_extract_and_finish(enr: Enrollment, rg, result: dict, images: list) -> N
         )
         return
     if match not in ("sim", "yes"):
-        _finish_rg(
+        service._finish_rg(
             enr,
             rg,
             doc_ai.REVIEW,
@@ -74,9 +74,9 @@ def _rg_extract_and_finish(enr: Enrollment, rg, result: dict, images: list) -> N
         )
         return
     _apply_rg_extracted(enr, rg, data)
-    _finish_rg(enr, rg, doc_ai.APPROVED, name_reason or "Documento validado.", result)
-    _notify_rg_approved(enr)  # notify também no aprovado automático (plan/13)
-    _rg_post_approval(enr, rg)
+    service._finish_rg(enr, rg, doc_ai.APPROVED, name_reason or "Documento validado.", result)
+    service._notify_rg_approved(enr)  # notify também no aprovado automático (plan/13)
+    service._rg_post_approval(enr, rg)
 
 
 def _apply_rg_extracted(enr: Enrollment, rg, data: dict) -> None:
@@ -140,10 +140,10 @@ def _finish_rg(
         "enrollment.rg_validated", enrollment=str(enr.external_id), status=status
     )
     if status == doc_ai.REJECTED:
-        _notify_rg_rejected(enr, reason)
+        service._notify_rg_rejected(enr, reason)
         # ponytail: signal post_save do RG cria o bloco automaticamente — não precisa criar aqui.
     elif status == doc_ai.REVIEW:
-        _notify_rg_review(enr, reason)
+        service._notify_rg_review(enr, reason)
 
 
 def _rg_post_approval(enr: Enrollment, rg) -> None:
@@ -153,7 +153,7 @@ def _rg_post_approval(enr: Enrollment, rg) -> None:
     Recorte (plan/13): InsightFace direto (já detecta/recorta); NÃO achou rosto → a visão
     localiza a região da foto do titular, o Pillow recorta e tenta de novo. Nunca trava o fluxo."""
     # o doc já está aprovado → avança rg→address ANTES de tocar na biometria.
-    _advance_rg(enr, str(enr.user.external_id))
+    service._advance_rg(enr, str(enr.user.external_id))
 
     from pathlib import Path
 
@@ -221,5 +221,5 @@ def run_rg_fill(enrollment_id: int) -> None:
     rg.validation_result = result
     rg.save(update_fields=["validation_result"])
     _apply_rg_extracted(enr, rg, data)
-    _advance_rg(enr, user_ext)
+    service._advance_rg(enr, user_ext)
 

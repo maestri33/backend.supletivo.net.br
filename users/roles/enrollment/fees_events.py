@@ -56,7 +56,7 @@ def fee_facts(enr: Enrollment) -> dict:
         "first_paid": bool(
             first is not None and first.status == fees.PaymentStatus.PAID
         ),
-        "second_scheduled": second is not None,
+        "second_scheduled": bool(second is not None and second.status in (fees.PaymentStatus.QUEUED, fees.PaymentStatus.SUBMITTED, fees.PaymentStatus.PAID)),
     }
 
 
@@ -104,7 +104,7 @@ def batch_fee_facts(enrollments: list[Enrollment]) -> dict[str, dict]:
             "first_paid": bool(
                 first is not None and first.status == fees.PaymentStatus.PAID
             ),
-            "second_scheduled": second is not None,
+            "second_scheduled": bool(second is not None and second.status in (fees.PaymentStatus.QUEUED, fees.PaymentStatus.SUBMITTED, fees.PaymentStatus.PAID)),
         }
     return out
 
@@ -117,7 +117,7 @@ def apply_fee_paid(enr: Enrollment, *, external_reference: str, amount=None) -> 
     # match por PREFIXO: re-tentativas pós-falha carregam sufixo `_rN` na mesma família de ref.
     if external_reference.startswith(_fee_now_ref(enr)):
         if enr.status == _S.AWAITING_RELEASE:
-            _set_status(enr, _S.FEE_PAID)
+            service._set_status(enr, _S.FEE_PAID)
         _notify_fee_event(enr, "enrollment.fee_paid", valor=valor)
         logger.info("enrollment.fee_paid", external_id=str(enr.external_id))
         return True

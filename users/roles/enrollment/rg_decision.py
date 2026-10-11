@@ -12,6 +12,7 @@ from users.roles.enrollment.models import Enrollment
 from users.roles.enrollment.common import (
     EnrollmentError,
     _S,
+    _RG_SLOT_FIELD,
     _require,
     logger,
 )
@@ -31,7 +32,7 @@ def decide_rg(
     (sem veto); reprovou → volta pro aluno refazer (com o motivo)."""
     from users.roles import _document_ai as doc_ai
 
-    enr = _enrollment_for_coordinator(enrollment_external_id, coordinator)
+    enr = service._enrollment_for_coordinator(enrollment_external_id, coordinator)
     rg = documents_iface.get_rg(str(enr.user.external_id))
     if rg is None or rg.validation_status != doc_ai.REVIEW:
         raise EnrollmentError(
@@ -49,7 +50,7 @@ def decide_rg(
         "by": str(coordinator.external_id),
     }
     if not approve:
-        _finish_rg(enr, rg, doc_ai.REJECTED, note, result)
+        service._finish_rg(enr, rg, doc_ai.REJECTED, note, result)
         return {
             "external_id": str(enr.external_id),
             "status": enr.status,
@@ -61,17 +62,17 @@ def decide_rg(
         if getattr(rg, field, None):
             photos[slot] = {"status": doc_ai.APPROVED, "reason": note}
     result["photos"] = photos
-    _finish_rg(enr, rg, doc_ai.APPROVED, note, result)
+    service._finish_rg(enr, rg, doc_ai.APPROVED, note, result)
     _notify_rg_approved(enr)
     if result.get("extracted"):
         # a revisão veio da dúvida de NOME — extração já existe, povoa agora
-        _apply_rg_extracted(enr, rg, result["extracted"])
+        service._apply_rg_extracted(enr, rg, result["extracted"])
     else:
         # a revisão veio da visão/IA fora do ar — extração roda best-effort em 2º plano
         from core.tasks import async_task
 
         async_task("users.roles.enrollment.tasks.fill_rg_data", enr.id)
-    _rg_post_approval(enr, rg)
+    service._rg_post_approval(enr, rg)
     return {
         "external_id": str(enr.external_id),
         "status": enr.status,

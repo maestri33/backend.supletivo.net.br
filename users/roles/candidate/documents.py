@@ -216,16 +216,25 @@ def _doc_section_dict(cand: Candidate) -> dict:
     # `analysis_status`/`analysis_reason` canônicos (espelha proposal #2 do front)
     section["analysis_status"] = sub.get("validation_status") or _analysis.PENDING
     section["analysis_reason"] = sub.get("validation_reason")
-    # extraídos pela IA (se houver) — fica no validation_result
-    result = (
-        sub.get("validation_result")
-        if isinstance(sub.get("validation_result"), dict)
-        else {}
-    )
+    # The public document serializer deliberately omits raw analysis internals.
+    # Read the stored analysis here so the candidate's next upload and OCR fields
+    # reflect the same persisted result used by the background task.
+    stored_doc = documents_iface.get_doc_sub(str(cand.user.external_id), doc_type)
+    stored_result = stored_doc.validation_result if stored_doc is not None else None
+    result = stored_result if isinstance(stored_result, dict) else {}
     extracted = (result.get("extracted") or {}) if isinstance(result, dict) else {}
     section["extracted"] = extracted
     # photos por slot individual (front precisa saber qual slot enviar)
     section["photos"] = (result.get("photos") or {}) if isinstance(result, dict) else {}
+    # The upload is persisted before its asynchronous verdict. Until that task
+    # records a photo result, keep an existing upload pending instead of asking
+    # the browser to send the same side again.
+    if stored_doc is not None and stored_doc.validation_status == _analysis.PENDING:
+        section["photos"] = dict(section["photos"])
+        for side in ("front", "back", "full"):
+            slot = f"{doc_type}_{side}"
+            if getattr(stored_doc, f"{side}_photo", None) and slot not in section["photos"]:
+                section["photos"][slot] = {"status": _analysis.PENDING}
     # next_slot: qual foto o front deve pedir AGORA
     section["next_slot"] = _analysis.next_document_slot(doc_type, section["photos"])
     # missing_fields: o que a IA não trouxe (extraídos vazios) E o usuário ainda não digitou

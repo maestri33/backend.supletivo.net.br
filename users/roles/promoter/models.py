@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.db import models
+from django.db.models.functions import Now
+from django.utils import timezone
 
 from core.models import ExternalIdModel
 
@@ -40,6 +42,7 @@ class Promoter(ExternalIdModel):
     # aos 3 leads pagos, entra sozinho no enrollment como BOLSISTA e a flag cai. Decidido no
     # `create_promoter` lendo `Profile.education_*` (F3).
     pre_matriculado = models.BooleanField("pré-matriculado (bolsa)", default=False)
+    activated_at = models.DateTimeField(default=timezone.now, db_default=Now(), db_index=True)
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 

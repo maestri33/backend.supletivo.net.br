@@ -210,6 +210,8 @@ class Checkout(models.Model):
     qrcode_image = models.URLField(max_length=500, null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
     is_paid = models.BooleanField(default=False, db_index=True)
+    # Immutable confirmation observed by the backend, independent of later metadata updates.
+    paid_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 

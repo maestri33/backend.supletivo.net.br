@@ -147,7 +147,7 @@ def decide_selfie(
     """Coordenador do hub decide a selfie em REVISÃO (sim/não). aprova→aguarda liberação; reprova→refazer."""
     from users.roles import _selfie
 
-    enr = _enrollment_for_coordinator(enrollment_external_id, coordinator)
+    enr = service._enrollment_for_coordinator(enrollment_external_id, coordinator)
     if enr.selfie_status != _selfie.REVIEW:
         raise EnrollmentError(
             "A selfie não está em revisão.",

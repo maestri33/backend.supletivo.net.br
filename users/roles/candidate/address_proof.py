@@ -3,7 +3,9 @@ from __future__ import annotations
 from users.documents import service as documents_iface
 from users.roles import _address_proof
 from users.roles.candidate.models import Candidate
-from users.roles.candidate.common import _require, logger
+from users.roles.candidate.common import _S, _require, logger
+from users.roles.candidate.profile_address import _advance_address
+from users.roles.candidate.promotion import _complete_candidate
 from users.roles.candidate.serializers import me_dict
 
 def upload_address_proof(*, user_external_id, upload) -> dict:

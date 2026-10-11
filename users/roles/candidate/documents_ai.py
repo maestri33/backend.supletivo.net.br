@@ -262,7 +262,7 @@ def _apply_doc_extracted(cand: Candidate, sub, data: dict) -> None:
     # DOCUMENTS→PIX. Guarded (só avança com doc aprovado + number), idempotente nos callsites de
     # validação que já chamam _advance_documents depois. Sem isso, o candidato ficava preso em
     # DOCUMENTS após a aprovação manual quando o número só veio pelo OCR.
-    _advance_documents(cand, str(cand.user.external_id))
+    service._advance_documents(cand, str(cand.user.external_id))
 
 
 def _finish_doc(
@@ -296,7 +296,7 @@ def _doc_post_approval(cand: Candidate, sub) -> None:
     """Aprovado → AVANÇA o wizard PRIMEIRO, biometria best-effort DEPOIS: um crash da biometria
     (InsightFace/onnxruntime pode matar o worker) NÃO pode perder o avanço do wizard (Victor 2026-06-16)."""
     # o doc já está aprovado + com número → avança documents→pix ANTES de tocar na biometria.
-    _advance_documents(cand, str(cand.user.external_id))
+    service._advance_documents(cand, str(cand.user.external_id))
     service._complete_candidate(cand)
 
     from pathlib import Path
