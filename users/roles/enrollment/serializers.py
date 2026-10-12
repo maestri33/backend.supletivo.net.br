@@ -124,15 +124,23 @@ def me_dict(enr: Enrollment) -> dict:
         }
 
     address = address_iface.get_by_external_id(user_ext)
+    address_proof = _address_proof.section_dict(user_ext)
+    from users.roles.enrollment.release_progress import release_dict
+
     return {
         **to_dict(enr),
         "profile": profile,
         "address_complete": address_iface.is_complete(address),
         "address": _address_dict(user_ext),
-        "address_proof": _address_proof.section_dict(user_ext),
+        "address_proof": address_proof,
         "selfie": _selfie_dict(enr),
         "rg": rg,
         "education": education,
+        "release": release_dict(
+            enr,
+            rg_status=rg_data.get("validation_status"),
+            address_proof_status=(address_proof or {}).get("status"),
+        ),
         # ponytail: lista de flags ativas — o front mostra modais p/ cada uma.
         "blocks": [blocks.to_dict(b) for b in blocks.get_active_blocks(enr.user)],
     }

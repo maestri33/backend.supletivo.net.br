@@ -415,6 +415,18 @@ class EducationOut(Schema):
     last_year_when: str | None = None
 
 
+class EnrollmentReleaseOut(Schema):
+    stage: Literal["document_review", "partner_setup", "access_preparation", "ready"]
+    next_action: str
+    hub_name: str
+    coordinator_name: str | None = None
+    contact_url: str | None = None
+    updated_at: str | None = None
+    payment_confirmed: bool = False
+    action_required: bool = False
+    action_route: str | None = None
+
+
 class EnrollmentMeOut(EnrollmentOut):
     profile: EnrollmentProfileOut | None = None
     address_complete: bool = False
@@ -424,6 +436,7 @@ class EnrollmentMeOut(EnrollmentOut):
     education: EducationOut | None = None
     selfie: SelfieOut | None = None
     blocks: list[dict[str, Any]] | None = None
+    release: EnrollmentReleaseOut | None = None
 
 
 class RgUploadAck(Schema):
