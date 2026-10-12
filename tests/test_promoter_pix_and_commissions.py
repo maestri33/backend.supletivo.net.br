@@ -1,9 +1,11 @@
 """Testes para validação de PIX do Promotor, Comissões Manuais, Antecipação e Auto-Teste do Staff."""
 
 from decimal import Decimal
+from datetime import timedelta
 import uuid
 import pytest
 from django.test import override_settings
+from django.utils import timezone
 
 from finance.interface import commissions as finance_closing
 from finance.models import Commission, PaymentRequest
@@ -28,6 +30,7 @@ def promoter_user(db):
     addr = address_iface.create_empty()
     hub = Hub.objects.create(brand="standard", coordinator=user, is_default=True, address=addr)
     promoter = promoter_iface.create_promoter(user=user, hub=hub)
+    type(promoter).objects.filter(pk=promoter.pk).update(activated_at=timezone.now()-timedelta(days=14))
     UserRole.objects.create(user=user, role="promoter")
     UserRole.objects.create(user=user, role="staff")
     return user, promoter, profile, hub

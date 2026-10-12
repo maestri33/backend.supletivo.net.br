@@ -128,12 +128,47 @@ def candidate_document_classify(request, file: UploadedFile = File(...)):
     )
 
 
+@router.get(
+    "/candidate/documents/address-proof",
+    response=AddressProofSectionOut,
+    summary="Consulta de status do comprovante de residência",
+)
+@router.get(
+    "/candidate/address/proof",
+    response=AddressProofSectionOut,
+    summary="Consulta de status do comprovante de residência (alias)",
+)
+def candidate_get_address_proof(request):
+    """Consulta direta de status e dados do comprovante de residência do candidato/promotor."""
+    ext = _guard(request, "candidate", "promoter")
+    return candidate_iface.get_address_proof(user_external_id=ext)
+
+
 @router.post(
     "/candidate/documents/address-proof", response=CandidateMeOut, summary="Upload do comprovante de residência"
 )
+@router.post(
+    "/candidate/address/proof", response=CandidateMeOut, summary="Upload do comprovante de residência (alias)"
+)
 def candidate_address_proof(request, file: UploadedFile = File(...)):
     """Upload do comprovante de residência."""
-    ext = _guard(request, "candidate")
+    ext = _guard(request, "candidate", "promoter")
+    return candidate_iface.upload_address_proof(user_external_id=ext, upload=file)
+
+
+@router.put(
+    "/candidate/documents/address-proof",
+    response=CandidateMeOut,
+    summary="Substituição e reinício do comprovante de residência",
+)
+@router.put(
+    "/candidate/address/proof",
+    response=CandidateMeOut,
+    summary="Substituição e reinício do comprovante de residência (alias)",
+)
+def candidate_address_proof_put(request, file: UploadedFile = File(...)):
+    """Substitui o comprovante de residência e reinicia a análise assíncrona."""
+    ext = _guard(request, "candidate", "promoter")
     return candidate_iface.upload_address_proof(user_external_id=ext, upload=file)
 
 
@@ -142,9 +177,14 @@ def candidate_address_proof(request, file: UploadedFile = File(...)):
     response=CandidateMeOut,
     summary="Parentesco do comprovante de residência",
 )
+@router.post(
+    "/candidate/address/proof/kinship",
+    response=CandidateMeOut,
+    summary="Parentesco do comprovante de residência (alias)",
+)
 def candidate_address_proof_kinship(request, payload: KinshipIn):
     """Parentesco quando o comprovante está em nome de terceiro."""
-    ext = _guard(request, "candidate")
+    ext = _guard(request, "candidate", "promoter")
     return candidate_iface.submit_address_proof_kinship(
         user_external_id=ext, relation=payload.relation
     )

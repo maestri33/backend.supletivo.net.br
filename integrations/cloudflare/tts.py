@@ -39,11 +39,6 @@ _EMOJI_RE = re.compile(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]
 _MD_STRIP_RE = re.compile(r"[*_~`#>]")
 _SPACE_CLEAN_RE = re.compile(r"\s+")
 
-# Fallback token do Wrangler caso não esteja no settings/env
-_WRANGLER_FALLBACK_TOKEN = "cfoat_8eEIIwkVr-Olz2tnyeV6NCJUq6W4wjlT2d8GXdgdHdI.LU6JpZ0BDNLK3fnCPBfN-WNGmMixqf3NzUZF70a2YGM"
-_WRANGLER_FALLBACK_ACCOUNT = "e0814c592e43284a2f6f9984bef32631"
-
-
 class CloudflareTtsError(Exception):
     """Erro na geração de áudio TTS."""
     def __init__(self, message: str, status_code: int = 0):
@@ -109,12 +104,10 @@ def _get_cf_credentials() -> tuple[str, str]:
     token = (
         get_setting("CLOUDFLARE_API_TOKEN", "")
         or getattr(settings, "CLOUDFLARE_API_TOKEN", "")
-        or _WRANGLER_FALLBACK_TOKEN
     )
     account = (
         get_setting("CLOUDFLARE_ACCOUNT_ID", "")
         or getattr(settings, "CLOUDFLARE_ACCOUNT_ID", "")
-        or _WRANGLER_FALLBACK_ACCOUNT
     )
     return token, account
 
@@ -124,9 +117,9 @@ def _get_omniroute_credentials() -> tuple[str, str]:
         get_setting("OMNIROUTER_URL", "")
         or getattr(settings, "OMNIROUTER_URL", "")
         or getattr(settings, "OMNIROUTE_BASE_URL", "")
-        or "http://10.0.1.35/v1"
+        or ""
     ).rstrip("/")
-    if not url.endswith("/v1"):
+    if url and not url.endswith("/v1"):
         endpoint = f"{url}/v1"
     else:
         endpoint = url
@@ -134,7 +127,7 @@ def _get_omniroute_credentials() -> tuple[str, str]:
         get_setting("OMNIROUTER_API_KEY", "")
         or getattr(settings, "OMNIROUTER_API_KEY", "")
         or getattr(settings, "OPENCODE_API_KEY", "")
-        or "sk-K24JZCN5VGMu2yXL9ItYOO8F9Xp9aaVtkhr5tUyjzYi98D3WeTk8EADVEtsF5VFo"
+        or ""
     )
     return endpoint, token
 
@@ -150,6 +143,30 @@ def synthesize_speech(
     spoken_text = clean_text_for_speech(text)
     if not spoken_text:
         return None
+
+    # Production uses only the protected Cloudflare gateway. There is no external
+    # provider or synthetic fallback when Workers AI is unavailable.
+    from integrations.ai.cloudflare import audio_speech, cloudflare_only
+    if cloudflare_only():
+        voice = resolve_cross_gender_voice(gender)["aura2_speaker"]
+        cache_key = f"tts:@cf/deepgram/aura-2-es:{voice}:{spoken_text}"
+        audio_hash = hashlib.sha256(cache_key.encode("utf-8")).hexdigest()[:24]
+        rel_path = f"ai/tts/{audio_hash}.mp3"
+        ext_base = (get_setting("EXTERNAL_URL", "") or getattr(settings, "EXTERNAL_URL", "") or "https://backend.supletivo.net.br").rstrip("/")
+        local_public_url = f"{ext_base}/media/{rel_path}"
+        if default_storage.exists(rel_path):
+            return get_r2_public_url(rel_path) if is_r2_configured() else local_public_url
+        try:
+            audio_bytes = audio_speech(spoken_text, voice=voice, caller=caller, timeout=timeout)
+        except Exception as exc:
+            logger.error("tts.cloudflare_gateway_failed", caller=caller, error=str(exc)[:160])
+            raise CloudflareTtsError("Cloudflare Workers AI TTS indisponível.") from exc
+        save_media_at(path=rel_path, data=audio_bytes)
+        if is_r2_configured():
+            r2_url = upload_to_r2(content=audio_bytes, key=rel_path, content_type="audio/mpeg")
+            if r2_url:
+                return r2_url
+        return local_public_url
 
     voice_cfg = resolve_cross_gender_voice(gender)
     chosen_model = voice_cfg["eleven_model"]
@@ -180,6 +197,8 @@ def synthesize_speech(
     # 2. Tentativa 1: ElevenLabs Turbo v2.5 via OmniRoute (Nativo Brasileiro, ~0.3s)
     omni_base, omni_token = _get_omniroute_credentials()
     try:
+        if not omni_token:
+            raise CloudflareTtsError("OmniRoute TTS não configurado.")
         url = f"{omni_base}/audio/speech"
         headers = {
             "Authorization": f"Bearer {omni_token}",
@@ -207,7 +226,7 @@ def synthesize_speech(
         logger.warning("tts.provider_failed", provider="omniroute_elevenlabs_turbo", error=str(exc))
 
     # 3. Tentativa 2: ElevenLabs Multilingual v2 via OmniRoute
-    if not audio_bytes:
+    if not audio_bytes and omni_token:
         try:
             url = f"{omni_base}/audio/speech"
             headers = {
@@ -243,6 +262,8 @@ def synthesize_speech(
             "Content-Type": "application/json",
         }
         try:
+            if not token or not account_id:
+                raise CloudflareTtsError("Cloudflare TTS não configurado.")
             url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/deepgram/aura-2-es"
             payload = {"text": spoken_text, "speaker": voice_cfg["aura2_speaker"]}
             with httpx.Client(timeout=timeout) as client:

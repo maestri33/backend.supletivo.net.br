@@ -6,6 +6,7 @@ Payment.status (só altera estado DENTRO do app Asaas). O payload bruto permanec
 """
 
 import structlog
+from django.db import transaction
 from django.utils import timezone
 
 from core import hooks as core_hooks
@@ -44,7 +45,7 @@ ASAAS_TO_PAYOUT_STATUS = {
     "TRANSFER_IN_BANK_PROCESSING": "SUBMITTED",
     "TRANSFER_DONE": "PAID",
     "TRANSFER_FAILED": "FAILED",
-    "TRANSFER_BLOCKED": "FAILED",
+    "TRANSFER_BLOCKED": "SUBMITTED",
     "TRANSFER_CANCELLED": "CANCELLED",
 }
 
@@ -74,7 +75,7 @@ def handle_event(payload, source_ip=None, user_agent=None):
     """Persiste o evento bruto e roteia. Retorna o WebhookEvent.
 
     A persistência do evento NÃO é protegida (se o banco falhar, a view 500a e o Asaas re-tenta).
-    O roteamento é protegido: erro ao aplicar não pode perder o evento já salvo — cai no fallback.
+    A aplicação que falha propaga a exceção: o evento fica salvo e o remetente pode repetir.
     """
     event = payload.get("event") if isinstance(payload, dict) else None
 
@@ -93,7 +94,7 @@ def handle_event(payload, source_ip=None, user_agent=None):
             payment, reason = _apply_payout(payload, event)
     except Exception as exc:  # roteamento falhou -> não perde o evento, cai no fallback
         logger.error("webhook_apply_failed", asaas_event=event, error=str(exc))
-        payment, reason = None, f"apply_failed: {exc}"
+        raise
 
     if payment is not None:
         consumed = False
@@ -108,18 +109,18 @@ def handle_event(payload, source_ip=None, user_agent=None):
                 receipt_url=(payload.get("payment") or {}).get("transactionReceiptUrl")
                 or (payload.get("payment") or {}).get("invoiceUrl"),
             )
-        elif payment.status == "REFUNDED" and payment.kind == Payment.Kind.CHARGE:
+        elif payment.status == "REFUNDED" and payment.kind in _CHARGE_KINDS:
             consumed = core_hooks.dispatch(
                 "payment.refunded",
-                reraise=False,
+                reraise=True,
                 provider="asaas",
                 provider_payment_id=payment.payment_id,
                 amount_cents=int(payment.amount * 100),
             )
-        elif payment.status == "DISPUTED" and payment.kind == Payment.Kind.CHARGE:
+        elif payment.status == "DISPUTED" and payment.kind in _CHARGE_KINDS:
             consumed = core_hooks.dispatch(
                 "payment.disputed",
-                reraise=False,
+                reraise=True,
                 provider="asaas",
                 provider_payment_id=payment.payment_id,
                 asaas_event=event,
@@ -161,12 +162,15 @@ def handle_event(payload, source_ip=None, user_agent=None):
     return row
 
 
+@transaction.atomic
 def _apply_charge(payload, event):
     """PAYMENT_* -> Payment(kind=charge). Retorna (payment_atualizado|None, reason)."""
     if event not in ASAAS_TO_CHARGE_STATUS:
         return None, f"unmapped_charge_event: {event}"
     new_status = ASAAS_TO_CHARGE_STATUS[event]
     data = payload.get("payment") or {}
+    if not isinstance(data, dict):
+        return None, "invalid_payment_payload"
     asaas_id = data.get("id")
     ext_ref = data.get("externalReference")
 
@@ -227,14 +231,14 @@ def _apply_charge(payload, event):
 
     # G5: não rebaixa estado terminal por evento tardio/fora de ordem. REFUNDED é final; PAID só
     # aceita ir pra PAID/REFUNDED/DISPUTED.
-    if row.status == "REFUNDED" or (
+    if (row.status == "REFUNDED" and new_status != "REFUNDED") or (
         row.status == "PAID" and new_status not in ("PAID", "REFUNDED", "DISPUTED")
     ):
         row.save()
         return None, f"terminal_{row.status}_ignora_{new_status}"
 
     if row.status == new_status:
-        if new_status in ("PAID", "DISPUTED"):
+        if new_status in ("PAID", "REFUNDED", "DISPUTED"):
             row.save()
             return row, "already_paid_redispatch"
         row.save()
@@ -252,12 +256,15 @@ def _apply_charge(payload, event):
 
 
 
+@transaction.atomic
 def _apply_payout(payload, event):
     """TRANSFER_* -> Payment(kind in pixkey,qrcode). Retorna (payment|None, reason)."""
     new_status = ASAAS_TO_PAYOUT_STATUS.get(event)
     if not new_status:
         return None, f"unmapped_transfer_event: {event}"
     data = payload.get("transfer") or {}
+    if not isinstance(data, dict):
+        return None, "invalid_transfer_payload"
     asaas_id = data.get("id")
     ext_ref = data.get("externalReference")
     fail_reason = data.get("failReason") or ""
@@ -270,6 +277,9 @@ def _apply_payout(payload, event):
     row = _find_payment(ext_ref, asaas_id, kinds=_PAYOUT_KINDS)
     if row is None:
         return None, f"no_matching_transfer: ext_ref={ext_ref} asaas_id={asaas_id}"
+
+    if row.status in ("PAID", "FAILED", "CANCELLED") and new_status != "PAID":
+        return None, f"terminal_{row.status}_ignora_{new_status}"
 
     if asaas_id and row.asaas_id != asaas_id:
         row.asaas_id = asaas_id
@@ -291,7 +301,7 @@ def _apply_payout(payload, event):
 def _find_payment(ext_ref, asaas_id, kinds, pix_qr_code_id=None):
     """Match por externalReference (= nosso payment_id), por asaas_id e, no PIX estático, pelo
     `pixQrCodeId` (id do QR que originou a cobrança automática)."""
-    qs = Payment.objects.filter(kind__in=kinds)
+    qs = Payment.objects.select_for_update().filter(kind__in=kinds)
     if ext_ref:
         row = qs.filter(payment_id=ext_ref).first()
         if row is not None:

@@ -99,6 +99,7 @@ _EXTRACT_SCHEMA_TRANSCRIPT = (
 
 _EXTRACT_SCHEMA_ADDRESS_PROOF = (
     "{"
+    '"holder_cpf": "CPF impresso no comprovante (somente dígitos) ou null", '
     '"holder_name": "nome do titular do endereço no documento, string ou null", '
     '"street": "rua/logradouro, string ou null", '
     '"number": "número, string ou null", '
@@ -189,6 +190,7 @@ EXTRACT_FIELDS: dict[str, tuple[str, ...]] = {
         "city",
     ),
     _T.ADDRESS_PROOF: (
+        "holder_cpf",
         "holder_name",
         "street",
         "number",

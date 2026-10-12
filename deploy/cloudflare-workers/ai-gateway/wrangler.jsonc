@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "supletivo-ai-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-11",
+  "observability": { "enabled": true },
+  "ai": { "binding": "AI" },
+  "routes": [{ "pattern": "supletivo-ai-gateway.v7m.live", "custom_domain": true }]
+}

@@ -150,7 +150,11 @@ def test_paid_lead_notifies_coordinator_and_promoter_with_audio(mock_send):
     assert coord_ctx.get("link_painel") == "https://admin.supletivo.net.br/coordenador"
     assert coord_ctx.get("aluno_nome") == "Aluno Matriculado"
     assert coord_ctx.get("aluno_telefone") == "(11) 99999-1111"
-    assert coord_ctx.get("polo_nome") == "Polo Central"
+    assert coord_ctx.get("polo_nome") == "Central"
+    template = tpl_iface.get("lead.paid.coordinator")
+    rendered = tpl_iface.render(template.body_md, coord_ctx)
+    assert "polo Central" in rendered
+    assert "polo polo" not in rendered.lower()
 
     # Validação do evento do promotor
     prom_call = calls_by_event["lead.paid.promoter"]
@@ -296,4 +300,3 @@ def test_promoter_with_20_leads_gets_20_commissions_and_exactly_one_flat_bonus()
     fin_commissions.run_weekly_closing()
     assert Commission.objects.filter(payee=promoter, source_type=Commission.Source.BONUS).count() == 1
     assert PaymentRequest.objects.filter(payee=promoter).count() == 1
-

@@ -33,6 +33,7 @@ from users.exceptions import (
     Forbidden,
     IntegrationError,
     NotFound,
+    NotifyUnavailable,
     RateLimited,
     Unauthorized,
     ValidationError,
@@ -410,6 +411,8 @@ def _send_or_wait(user, channel: str | None = None) -> dict:
         otp = otp_service.generate_and_send(user, channel=channel)
     except RateLimited as exc:
         return {"otp_sent": False, "otp_wait": exc.retry_after_s}
+    except NotifyUnavailable:
+        raise  # interactive login must expose provider failure as a retryable 503
     except Exception as exc:  # noqa: BLE001 — falha de dispatch não pode virar sucesso silencioso
         logger.warning(
             "auth.otp_send_failed",

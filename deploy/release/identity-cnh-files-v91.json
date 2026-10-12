@@ -1,0 +1,4 @@
+[
+  "api/health/router.py",
+  "users/roles/candidate/documents_ai.py"
+]

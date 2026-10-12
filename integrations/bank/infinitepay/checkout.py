@@ -57,6 +57,7 @@ def create_checkout(
     description=None,
     customer=None,
     redirect_url=None,
+    external_id=None,
 ) -> Checkout:
     """Cria um link de checkout InfinitePay. Retorna o Checkout persistido (status PENDING)."""
     cents = _normalize_amount_cents(amount_cents, amount)
@@ -74,9 +75,19 @@ def create_checkout(
         raise CheckoutError("external_url_not_configured")
 
     # 1. intenção persiste primeiro (§8): external_id = order_nsu (UUID opaco)
-    row = Checkout.objects.create(
-        amount_cents=cents, description=description, status=Checkout.Status.PENDING
-    )
+    if external_id is None:
+        row = Checkout.objects.create(
+            amount_cents=cents, description=description, status=Checkout.Status.PENDING
+        )
+    else:
+        row, _ = Checkout.objects.get_or_create(
+            external_id=external_id,
+            defaults={"amount_cents": cents, "description": description},
+        )
+        if row.amount_cents != cents:
+            raise CheckoutError("checkout_amount_mismatch")
+        if row.checkout_url:
+            return row
     order_nsu = str(row.external_id)
 
     raw_redirect = (
@@ -114,7 +125,7 @@ def create_checkout(
 
     payload = {
         "handle": handle,
-        "items": [{"quantity": 1, "price": cents, "description": description}],
+        "items": [{"quantity": 1, "price": cents, "description": row.description}],
         "order_nsu": order_nsu,
         "redirect_url": redirect,
         "webhook_url": webhook_url,

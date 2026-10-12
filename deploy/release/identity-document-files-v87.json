@@ -1,0 +1,14 @@
+[
+  "api/health/router.py",
+  "users/roles/_document_ai.py",
+  "users/roles/_analysis.py",
+  "users/roles/enrollment/rg.py",
+  "users/roles/enrollment/rg_extraction.py",
+  "users/roles/candidate/documents.py",
+  "users/roles/candidate/documents_ai.py",
+  "core/pdf.py",
+  "integrations/ai/service.py",
+  "pyproject.toml",
+  "uv.lock",
+  "deploy/release/identity-pdf-requirements.txt"
+]

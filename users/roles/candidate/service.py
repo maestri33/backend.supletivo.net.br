@@ -19,6 +19,7 @@ from users.auth import service as auth_iface
 from users.roles.candidate.models import Candidate
 
 from users.roles.candidate.address_proof import (
+    get_address_proof,
     run_address_proof_validation,
     submit_address_proof_kinship,
     upload_address_proof,
@@ -181,6 +182,7 @@ __all__ = [
     "get_document_section",
     "patch_document_section",
     "upload_document_photo",
+    "get_address_proof",
     "upload_address_proof",
     "submit_address_proof_kinship",
     "run_address_proof_validation",

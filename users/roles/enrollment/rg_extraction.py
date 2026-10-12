@@ -25,14 +25,15 @@ def _rg_extract_and_finish(enr: Enrollment, rg, result: dict, images: list) -> N
     from users.roles import _document_ai as doc_ai
 
     p = profiles.get(enr.user)
+    snapshot = doc_ai.identity_snapshot(rg)
     try:
-        ocr_text = doc_ai.ocr_images(
-            [fp.read_bytes() for fp in images], caller="enrollment.rg"
-        )
-        data = doc_ai.extract_rg(
-            ocr_text, holder_name=(p.name if p else None), caller="enrollment.rg"
+        data = doc_ai.read_identity_images(
+            [fp.read_bytes() for fp in images], doc_type="rg",
+            holder_name=(p.name if p else None), caller="enrollment.rg"
         )
     except Exception as exc:  # noqa: BLE001 — IA fora do ar na extração → review (humano decide)
+        if not doc_ai.identity_is_current(rg, snapshot):
+            return
         logger.warning(
             "enrollment.rg_extract_failed",
             enrollment=str(enr.external_id),
@@ -49,32 +50,32 @@ def _rg_extract_and_finish(enr: Enrollment, rg, result: dict, images: list) -> N
     # guard do worker-zumbi (Victor 2026-06-17): o OCR + extração acima levam ~15s; se NESSE meio o
     # sweep do TTL (worker que ficou lento) ou o coordenador já decidiu, NÃO sobrescrever a decisão.
     # Mesma régua que a visão já aplica nas linhas 543-545 — aqui fecha a janela do estágio de extração.
-    rg.refresh_from_db()
-    if rg.validation_status != doc_ai.PENDING:
+    if not doc_ai.identity_is_current(rg, snapshot) or rg.validation_status != doc_ai.PENDING:
         return
+    p = profiles.get(enr.user)
     result["extracted"] = data
-    match = str(data.get("name_match") or "").strip().lower()
-    name_reason = (data.get("name_reason") or "").strip()
-    if match in ("nao", "não", "no"):
+    identity_status, identity_reason, identity_checks = doc_ai.validate_identity_data(data, p)
+    result["identity_checks"] = identity_checks
+    if identity_status == "nao":
         service._finish_rg(
             enr,
             rg,
             doc_ai.REJECTED,
-            f"O nome no documento não confere com o do cadastro. {name_reason}".strip(),
+            identity_reason,
             result,
         )
         return
-    if match not in ("sim", "yes"):
+    if identity_status != "sim":
         service._finish_rg(
             enr,
             rg,
             doc_ai.REVIEW,
-            f"Não deu pra confirmar o nome do titular. {name_reason}".strip(),
+            identity_reason,
             result,
         )
         return
     _apply_rg_extracted(enr, rg, data)
-    service._finish_rg(enr, rg, doc_ai.APPROVED, name_reason or "Documento validado.", result)
+    service._finish_rg(enr, rg, doc_ai.APPROVED, identity_reason, result)
     service._notify_rg_approved(enr)  # notify também no aprovado automático (plan/13)
     service._rg_post_approval(enr, rg)
 
@@ -203,12 +204,11 @@ def run_rg_fill(enrollment_id: int) -> None:
     if not images:
         return
     p = profiles.get(enr.user)
+    snapshot = doc_ai.identity_snapshot(rg)
     try:
-        ocr_text = doc_ai.ocr_images(
-            [fp.read_bytes() for fp in images], caller="enrollment.rg_fill"
-        )
-        data = doc_ai.extract_rg(
-            ocr_text, holder_name=(p.name if p else None), caller="enrollment.rg_fill"
+        data = doc_ai.read_identity_images(
+            [fp.read_bytes() for fp in images], doc_type="rg",
+            holder_name=(p.name if p else None), caller="enrollment.rg_fill"
         )
     except Exception as exc:  # noqa: BLE001 — best-effort: falhou → o aluno digita
         logger.warning(
@@ -217,9 +217,17 @@ def run_rg_fill(enrollment_id: int) -> None:
             error=str(exc)[:200],
         )
         return
+    if not doc_ai.identity_is_current(rg, snapshot):
+        return
+    p = profiles.get(enr.user)
     result["extracted"] = data
+    identity_status, identity_reason, identity_checks = doc_ai.validate_identity_data(data, p)
+    result["identity_checks"] = identity_checks
+    result["identity_reason"] = identity_reason
     rg.validation_result = result
     rg.save(update_fields=["validation_result"])
+    if identity_status != "sim":
+        return
     _apply_rg_extracted(enr, rg, data)
     service._advance_rg(enr, user_ext)
 

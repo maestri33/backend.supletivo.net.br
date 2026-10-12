@@ -33,3 +33,5 @@ data/
 .wrangler/
 dist-test/
 node_modules/
+*.sqlite3
+.release-build/

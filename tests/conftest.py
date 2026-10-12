@@ -36,6 +36,23 @@ def test_settings():
     settings.STATIC_ROOT = Path(_temp_static_dir)
 
 
+@pytest.fixture(autouse=True)
+def offline_otp_provider(monkeypatch):
+    """OTP now sends synchronously: ordinary auth tests must never send real codes."""
+    import httpx
+    from notify.sdk import client as notify_client
+
+    original = notify_client._request
+
+    def request(method, path, **kwargs):
+        payload = kwargs.get("json") or {}
+        if method == "POST" and path == "/v1/send" and payload.get("caller") == "users.auth.otp":
+            return httpx.Response(200, json={"external_id": payload["external_id"], "status": "sent"})
+        return original(method, path, **kwargs)
+
+    monkeypatch.setattr(notify_client, "_request", request)
+
+
 @pytest.fixture
 def client():
     return Client()

@@ -46,6 +46,17 @@ def on_payment_failed(
     )
 
 
+def on_payment_disputed(*, provider: str, provider_payment_id: str, **kwargs) -> bool:
+    """Reverse earnings; partner enrollment remains available for admin review."""
+    from users.roles.lead.service import mark_refunded
+
+    return mark_refunded(
+        provider=provider,
+        provider_payment_id=provider_payment_id,
+        reason="payment_disputed",
+    )
+
+
 def on_payment_expired(
     *, provider: str, provider_payment_id: str, reason: str = "pix_expired", **kwargs
 ) -> bool:

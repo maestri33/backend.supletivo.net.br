@@ -22,6 +22,7 @@ from users.roles.enrollment.models import Enrollment
 
 from users.roles.enrollment.address_proof import (
     decide_address_proof_kinship,
+    get_address_proof,
     run_address_proof_validation,
     submit_address_proof_kinship,
     upload_address_proof,
@@ -185,6 +186,7 @@ __all__ = [
     "set_address_cep",
     "set_address_data",
     "_advance_address",
+    "get_address_proof",
     "upload_address_proof",
     "submit_address_proof_kinship",
     "decide_address_proof_kinship",

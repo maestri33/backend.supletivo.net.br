@@ -236,7 +236,7 @@ def _doc_section_dict(cand: Candidate) -> dict:
             if getattr(stored_doc, f"{side}_photo", None) and slot not in section["photos"]:
                 section["photos"][slot] = {"status": _analysis.PENDING}
     # next_slot: qual foto o front deve pedir AGORA
-    section["next_slot"] = _analysis.next_document_slot(doc_type, section["photos"])
+    section["next_slot"] = _analysis.next_document_slot(doc_type, section["photos"], stored_doc.validation_status if stored_doc else None)
     # missing_fields: o que a IA não trouxe (extraídos vazios) E o usuário ainda não digitou
     # (sub-doc). Considera os campos que o funil exige pra avançar.
     required = _required_doc_fields(doc_type)
@@ -274,14 +274,19 @@ def _reset_doc_validation(user_external_id: str, doc_type: str, slot: str) -> No
     result = sub.validation_result or {}
     photos = dict(result.get("photos") or {})
     photos.pop(slot, None)
-    for key in ("extracted", "name_match", "reason", "human"):
+    pointer_fields = []
+    for side in (("front", "back") if slot == f"{doc_type}_full" else ("full",)):
+        photos.pop(f"{doc_type}_{side}", None)
+        setattr(sub, f"{side}_photo", None)
+        pointer_fields.append(f"{side}_photo")
+    for key in ("extracted", "name_match", "reason", "human", "identity_checks", "identity_reason"):
         result.pop(key, None)
     result["photos"] = photos
     result["analysis_started_at"] = timezone.now().isoformat()
     sub.validation_status = doc_ai.PENDING
     sub.validation_result = result
     sub.validated_at = None
-    sub.save(update_fields=["validation_status", "validation_result", "validated_at"])
+    sub.save(update_fields=["validation_status", "validation_result", "validated_at", *pointer_fields])
 
 
 def _advance_documents(cand: Candidate, user_external_id: str) -> None:

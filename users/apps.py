@@ -27,12 +27,14 @@ class UsersConfig(AppConfig):
             on_payment_refunded,
             on_payment_failed,
             on_payment_expired,
+            on_payment_disputed,
         )
 
         core_hooks.register("payment.paid", on_payment_paid)
         core_hooks.register("payment.refunded", on_payment_refunded)
         core_hooks.register("payment.failed", on_payment_failed)
         core_hooks.register("payment.expired", on_payment_expired)
+        core_hooks.register("payment.disputed", on_payment_disputed)
 
         # Hooks da TAXA da matrícula (plan/14): o worker do finance dispara 'fee.paid'/'fee.problem'
         # → a matrícula avança o status (1ª paga → fee_paid) e o COORDENADOR é notificado.

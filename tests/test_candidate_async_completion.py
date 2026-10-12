@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 import pytest
+from django.utils import timezone
 
 
 def _candidate_with_documents():
@@ -25,7 +27,12 @@ def _candidate_with_documents():
         user=user,
         cpf=str(uuid.uuid4().int)[:11],
         phone=str(uuid.uuid4().int)[:13],
-        address=Address.objects.create(),
+        name="Offline Candidate",
+        birth_date=date(1990, 1, 1),
+        education_level="medio",
+        education_completed=True,
+        pix_key="offline@example.test",
+        address=Address.objects.create(zipcode="84050360", street="Rua de teste", number="1", neighborhood="Centro", city="Ponta Grossa", state="PR"),
     )
     documents.create_empty(user)
     candidate = Candidate.objects.create(
@@ -34,6 +41,10 @@ def _candidate_with_documents():
         status=Candidate.Status.SELFIE,
         doc_type=Candidate.DocType.RG,
         selfie_verified=True,
+        selfie_status="approved",
+        pix_validated=True,
+        consent_accepted=True,
+        consent_accepted_at=timezone.now(),
     )
     return candidate
 

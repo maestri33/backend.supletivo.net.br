@@ -8,6 +8,7 @@ from ninja.files import UploadedFile
 from api.auth import require_roles
 from api.base import resolve_rg_slot
 from api.clients.schemas import (
+    AddressProofSectionOut,
     ContractOut,
     DocClassifyOut,
     EducationIn,
@@ -124,6 +125,17 @@ def enrollment_address_patch(request, payload: AddressDataIn):
     )
 
 
+@router.get(
+    "/enrollment/address/proof",
+    response=AddressProofSectionOut,
+    summary="Consulta de status do comprovante de residência",
+)
+def enrollment_get_address_proof(request):
+    """Consulta direta de status e dados do comprovante de residência."""
+    ext = _enr_guard(request)
+    return enrollment_iface.get_address_proof(user_external_id=ext)
+
+
 @router.post(
     "/enrollment/address/proof",
     response=EnrollmentMeOut,
@@ -131,6 +143,17 @@ def enrollment_address_patch(request, payload: AddressDataIn):
 )
 def enrollment_address_proof(request, file: UploadedFile = File(...)):
     """Upload do comprovante de residência."""
+    ext = _enr_guard(request)
+    return enrollment_iface.upload_address_proof(user_external_id=ext, upload=file)
+
+
+@router.put(
+    "/enrollment/address/proof",
+    response=EnrollmentMeOut,
+    summary="Substituição e reinício do comprovante de residência",
+)
+def enrollment_address_proof_put(request, file: UploadedFile = File(...)):
+    """Substitui o comprovante de residência e reinicia a análise assíncrona."""
     ext = _enr_guard(request)
     return enrollment_iface.upload_address_proof(user_external_id=ext, upload=file)
 

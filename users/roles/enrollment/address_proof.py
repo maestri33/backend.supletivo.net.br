@@ -9,6 +9,12 @@ from users.roles.enrollment.common import EnrollmentError, _S, _require, logger
 from users.roles.enrollment.serializers import me_dict
 from users.roles.enrollment import service
 
+
+def get_address_proof(user_external_id: str) -> dict:
+    """Retorna o bloco/status do comprovante de residência (para consulta isolada)."""
+    return _address_proof.section_dict(user_external_id)
+
+
 def upload_address_proof(*, user_external_id: str, upload) -> dict:
     """Comprovante de residência (foto/PDF) — validado por IA em background. Aceito em qualquer
     etapa pré-completion (accept-first: o aluno pode avançar e reenviar o comprovante depois;
@@ -75,6 +81,3 @@ def run_address_proof_validation(enrollment_id: int) -> None:
     _address_proof.validate_and_store(user_ext, caller="enrollment.address_proof")
     enr.refresh_from_db(fields=["status"])
     service._advance_address(enr, user_ext)
-
-
-# ── seção DOCUMENTO (plan/13): GET rico · PATCH completa/corrige ─────────────

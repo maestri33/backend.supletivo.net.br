@@ -168,6 +168,7 @@ class AddressProofSectionOut(Schema):
         description="Com needs_kinship: 'confirm' = sobrenome em comum · 'justify' = sem relação.",
     )
     kinship_relation: str | None = None
+    holder_name: str | None = None
     needs_new_proof: bool = Field(
         False,
         description="Coordenador rejeitou a justificativa: pede outro documento.",

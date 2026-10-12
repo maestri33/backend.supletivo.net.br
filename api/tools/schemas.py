@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ninja import Schema
+from pydantic import AwareDatetime
 
 
 class ToolLeadOut(Schema):
@@ -45,6 +46,10 @@ class TurnstileVerifyOut(Schema):
     error_codes: list[str] = []
     action: str | None = None
     cdata: str | None = None
+
+
+class CronTriggerIn(Schema):
+    scheduled_time: AwareDatetime | None = None
 
 
 class CronRunOut(Schema):

@@ -52,6 +52,7 @@ def main() -> None:
     parser.add_argument("--release", required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--files-json", required=True, type=Path, help="JSON array of explicit repository-relative files")
+    parser.add_argument("--requirements", help="Explicit hashed requirements file included in the overlay")
     parser.add_argument("--migration-target", action="append", help="Explicit app:NNNN migration target; default users:0043")
     args = parser.parse_args()
     migration_targets = []
@@ -69,6 +70,8 @@ def main() -> None:
     names = sorted(set(names))
     if "api/health/router.py" not in names:
         parser.error("Explicitly include api/health/router.py for artifact identity")
+    if args.requirements and args.requirements not in names:
+        parser.error("Requirements file must be included in the explicit file list")
     sources = {}
     prohibited = {".env", ".release-secrets", "keys", "media", "data", ".git", ".venv", "node_modules", ".release-build"}
     for name in names:
@@ -113,6 +116,10 @@ ENV APP_VERSION=$APP_VERSION RELEASE_ARTIFACT_SHA=$ARTIFACT_SHA RELEASE_SOURCE_C
 LABEL org.opencontainers.image.revision=$SOURCE_COMMIT org.opencontainers.image.created=$BUILT_AT io.v7m.artifact.sha256=$ARTIFACT_SHA io.v7m.release.version=$APP_VERSION
 COPY overrides/ /app/
 """
+    if args.requirements:
+        if not re.fullmatch(r"[a-zA-Z0-9_/.-]+\.txt", args.requirements):
+            parser.error("Invalid requirements path")
+        dockerfile += f"RUN uv pip install --python /venv/bin/python --no-deps --require-hashes -r /app/{args.requirements}\n"
     (stage / "Dockerfile").write_text(dockerfile, encoding="utf-8")
     (stage / ".dockerignore").write_text("*\n!Dockerfile\n!overrides/\n!overrides/**\n", encoding="utf-8")
     controller = Path(__file__).with_name("backend_overlay_remote.py")

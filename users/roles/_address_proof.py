@@ -110,19 +110,25 @@ def run_validation(
     *,
     address,
     holder_name: str | None,
+    user_cpf: str | None = None,
     mother_name: str | None = None,
     father_name: str | None = None,
     mime_type: str = "image/jpeg",
     caller: str,
 ) -> tuple[str, dict]:
-    """Valida 1 comprovante: visão → (endereço bate?) → titularidade em camadas. Devolve
-    (status, payload). Payload guarda `vision`, `extracted`, `address_match`, `reason` e
-    `kinship_kind` quando o titular é outra pessoa.
+    """Valida 1 comprovante: visão → (endereço bate?) → titularidade em camadas (CPF → Nomes).
+    Devolve (status, payload). Payload guarda `vision`, `extracted`, `address_match`, `reason`,
+    `cpf_match` e `kinship_kind` quando o titular é outra pessoa.
 
-    Titularidade (Victor 2026-07-28): o próprio → ok; **pai ou mãe** (filiação que o RG já
-    populou) → ok direto, ninguém pergunta parentesco do próprio pai; **sobrenome em comum**
-    → confirmar o grau de parentesco (`kinship_kind="confirm"`); **nome totalmente diferente**
-    → justificar por que mora ali (`kinship_kind="justify"`)."""
+    Titularidade (Victor 2026-07-28 / 2026-10-11):
+      1. CPF: se encontrado no documento e bater com o cadastro → APROVADO direto.
+      2. Nomes: se não encontrar CPF, verifica nomes:
+         • o próprio titular → ok direto;
+         • pai ou mãe (filiação que o RG já populou) → ok direto;
+         • sobrenome em comum → confirmar o grau de parentesco (`kinship_kind="confirm"`);
+         • nome totalmente diferente → informar nome divergente e pedir justificativa do vínculo (`kinship_kind="justify"`).
+         • dúvida / parecido sem certeza → revisão manual (`review`).
+    """
     from users.roles.student import _document_ai as doc_ai
 
     # (a) Visão: é um comprovante de endereço legível?
@@ -137,7 +143,7 @@ def run_validation(
         result["reason"] = vision_reason
         return REVIEW, result
 
-    # (b) OCR + extração (endereço + titular).
+    # (b) OCR + extração (endereço + titular + CPF).
     try:
         ocr_text = doc_ai.ocr_image(image_bytes, caller=caller)
         extracted = doc_ai.extract_student_document(
@@ -172,7 +178,16 @@ def run_validation(
             )
             return REJECTED, result
 
-    # (d) titularidade em camadas (docstring): próprio → pai/mãe → sobrenome → estranho.
+    # (d) titularidade:
+    # 1. Se encontrar CPF no documento, compara com o do usuário: se igual → APROVA DIRETO
+    expected_cpf = _digits(user_cpf)
+    extracted_cpf = _digits(extracted.get("holder_cpf"))
+    if expected_cpf and extracted_cpf and expected_cpf == extracted_cpf:
+        result["cpf_match"] = True
+        result["reason"] = "CPF impresso no comprovante confere com o cadastro."
+        return APPROVED, result
+
+    # 2. Se não encontrar CPF (ou ausente), verifica nomes:
     match = str(extracted.get("name_match") or "").strip().lower()
     name_reason = (extracted.get("name_reason") or "").strip()
     holder = str(extracted.get("holder_name") or "").strip()
@@ -180,8 +195,7 @@ def run_validation(
         result["reason"] = name_reason or "Comprovante validado."
         return APPROVED, result
     if match in ("nao", "não", "no"):
-        # Pai/mãe ANTES de perguntar qualquer coisa: a filiação veio do RG (fonte oficial),
-        # comprovante no nome deles é o arranjo mais comum do público-alvo.
+        # Pai/mãe ANTES de perguntar qualquer coisa: filiação que o RG já populou
         for parent, label in ((mother_name, "mãe"), (father_name, "pai")):
             if _same_person(holder, parent):
                 result["reason"] = (
@@ -201,11 +215,11 @@ def run_validation(
         # Nome totalmente diferente: precisa JUSTIFICAR o vínculo com o endereço.
         result["kinship_kind"] = "justify"
         result["reason"] = (
-            f"O titular do comprovante ({holder or 'não identificado'}) não tem relação "
-            f"aparente com o cadastro. Justificar o vínculo. {name_reason}".strip()
+            f"Nome do titular ({holder or 'não identificado'}) divergente do cadastro. "
+            f"Informe seu grau de parentesco ou vínculo com o titular. {name_reason}".strip()
         )
         return NEEDS_KINSHIP, result
-    # duvida / ilegível → coordenador decide
+    # duvida / ilegível / parecido sem certeza → coordenador decide (revisão humana)
     result["reason"] = f"Não deu pra confirmar o titular. {name_reason}".strip()
     return REVIEW, result
 
@@ -242,28 +256,12 @@ def validate_and_store(user_external_id: str, *, caller: str) -> str:
         fp.read_bytes(),
         address=address,
         holder_name=holder_name,
+        user_cpf=p.cpf if p else None,
         mother_name=p.mother_name if p else None,
         father_name=p.father_name if p else None,
         mime_type=_mime_of(ap.photo),
         caller=caller,
     )
-    extracted = payload.get("extracted") if isinstance(payload, dict) else None
-    if p is not None and isinstance(extracted, dict):
-        try:
-            address_iface.fill_empty(
-                external_id=user_external_id,
-                zipcode=extracted.get("zip") or extracted.get("zipcode"),
-                street=extracted.get("street"),
-                number=extracted.get("number"),
-                complement=extracted.get("complement"),
-                neighborhood=extracted.get("neighborhood"),
-                city=extracted.get("city"),
-                state=extracted.get("state"),
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "address_proof.address_fill_failed", caller=caller, error=str(exc)[:200]
-            )
     ap.validation_status = status
     ap.validation_result = payload
     ap.validated_at = timezone.now()

@@ -40,7 +40,8 @@ def test_pricing_endpoint_without_ref(client: Client):
     assert "public" in cache_header
     assert "s-maxage=300" in cache_header
     assert "stale-while-revalidate=600" in cache_header
-    assert resp.headers.get("Vary") == "Origin"
+    vary = {value.strip().lower() for value in resp.headers.get("Vary", "").split(",")}
+    assert {"origin", "authorization"}.issubset(vary)
 
 
 @pytest.mark.django_db

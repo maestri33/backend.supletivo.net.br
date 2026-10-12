@@ -9,3 +9,11 @@ __pycache__
 htmlcov
 media
 staticfiles
+.env
+.env.*
+keys
+*.sqlite3
+node_modules
+.wrangler
+docs
+tests

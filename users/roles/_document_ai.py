@@ -14,6 +14,10 @@ from __future__ import annotations
 
 import structlog
 from django.conf import settings
+from datetime import date, datetime
+import re
+import unicodedata
+from difflib import SequenceMatcher
 
 logger = structlog.get_logger()
 
@@ -40,15 +44,19 @@ _SIDE_DESC = {
         "DOC DE ORIGEM, DATA DE EXPEDIÇÃO/NASCIMENTO (no modelo antigo verde, traz a referência "
         "à 'LEI Nº 7.116 DE 29/08/83')"
     ),
-    # `full` = foto ÚNICA do documento (o candidato sobe um lado só). NÃO exigir os dois lados
-    # na mesma imagem: o RG antigo (cartão verde) é dobrado — cada lado é uma foto separada, é
-    # impossível mostrar frente+verso num clique. Um lado legível já basta (a seção completa
-    # aceita `inteira OU frente+verso`; o outro lado, quando houver, entra pelos slots front/back).
+    # `full` representa os dois lados, ou a versão digital completa do documento.
     "full": (
-        "a carteira de identidade em uma foto ÚNICA — pode conter apenas UM dos lados; no "
-        "modelo antigo (cartão verde), a frente OU o verso já basta, desde que os dados "
-        "estejam legíveis. NÃO reprove por faltar o outro lado do documento"
+        "o documento COMPLETO em um ÚNICO arquivo: frente e verso juntos (lado a lado ou em "
+        "páginas do PDF), ou a versão digital completa, com foto e dados do titular. "
+        "Não trate uma foto de apenas um lado da carteira física como documento completo. "
+        "NÃO reprove pela composição conter os dois lados no mesmo arquivo."
     ),
+}
+
+_CNH_SIDE_DESC = {
+    "front": "a FRENTE da CNH física, o lado com FOTO, nome e dados de identificação do titular",
+    "back": "o VERSO da CNH física, com elementos de habilitação, observações, categorias e/ou QR Code",
+    "full": _SIDE_DESC["full"],
 }
 
 # Por `doc_type`: como o prompt descreve o documento esperado e o que **NÃO** confundir.
@@ -77,6 +85,7 @@ _EXTRACT_SCHEMA_RG = (
     '"issuing_agency": "órgão emissor com UF (ex.: SSP/SP), string ou null", '
     '"issue_date": "data de expedição no formato AAAA-MM-DD ou null", '
     '"name": "nome completo do titular ou null", '
+    '"cpf": "CPF impresso no documento, somente dígitos ou null", '
     '"birth_date": "data de nascimento no formato AAAA-MM-DD ou null", '
     '"mother_name": "nome da mãe (filiação) ou null", '
     '"father_name": "nome do pai (filiação) ou null", '
@@ -93,6 +102,7 @@ _EXTRACT_SCHEMA_CNH = (
     '"national_register": "nº do registro nacional (RENACH) se visível, string ou null", '
     '"expires_on": "data de validade no formato AAAA-MM-DD ou null", '
     '"name": "nome completo do titular ou null", '
+    '"cpf": "CPF impresso no documento, somente dígitos ou null", '
     '"birth_date": "data de nascimento no formato AAAA-MM-DD ou null", '
     '"mother_name": "nome da mãe (filiação) ou null", '
     '"father_name": "nome do pai (filiação) ou null", '
@@ -102,6 +112,114 @@ _EXTRACT_SCHEMA_CNH = (
 )
 
 _EXTRACT_SCHEMAS = {DOC_RG: _EXTRACT_SCHEMA_RG, DOC_CNH: _EXTRACT_SCHEMA_CNH}
+
+
+def _fold_name(value: str | None) -> list[str]:
+    """Normaliza nome para comparação sem tratar sobrenome de casamento como divergência."""
+    if not value:
+        return []
+    folded = unicodedata.normalize("NFKD", str(value)).encode("ascii", "ignore").decode("ascii")
+    return re.findall(r"[a-z]+", folded.lower())
+
+
+def _digits(value: object) -> str:
+    return "".join(re.findall(r"\d", str(value or "")))
+
+
+def _parse_document_date(value: object) -> date | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    for parser in (
+        lambda v: date.fromisoformat(v),
+        lambda v: datetime.strptime(v, "%d/%m/%Y").date(),
+        lambda v: datetime.strptime(v, "%d-%m-%Y").date(),
+    ):
+        try:
+            return parser(raw)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def compare_identity_names(expected: str | None, actual: str | None) -> bool | None:
+    """Retorna sim/não/indefinido, aceitando sobrenomes acrescentados ou removidos."""
+    expected_tokens = _fold_name(expected)
+    actual_tokens = _fold_name(actual)
+    if not expected_tokens or not actual_tokens:
+        return None
+    particles = {"da", "das", "de", "do", "dos", "e"}
+    if min(len(set(expected_tokens) - particles), len(set(actual_tokens) - particles)) < 2:
+        return None
+    expected_text = " ".join(expected_tokens)
+    actual_text = " ".join(actual_tokens)
+    if expected_text == actual_text:
+        return True
+    first_score = SequenceMatcher(None, expected_tokens[0], actual_tokens[0]).ratio()
+    shorter, longer = sorted((set(expected_tokens), set(actual_tokens)), key=len)
+    # Casamento normalmente só acrescenta/remove sobrenomes: todos os tokens do nome mais
+    # curto continuam presentes no nome mais longo. Também aceitamos pequeno erro de OCR no
+    # primeiro nome quando há sobrenome em comum.
+    if expected_tokens[0] == actual_tokens[0] and shorter.issubset(longer):
+        return True
+    expected_surnames = set(expected_tokens[1:]) - particles
+    actual_surnames = set(actual_tokens[1:]) - particles
+    shorter_surnames, longer_surnames = sorted((expected_surnames, actual_surnames), key=len)
+    if expected_tokens[0] != actual_tokens[0] and first_score >= 0.86 and shorter_surnames and shorter_surnames.issubset(longer_surnames):
+        return True
+    return False
+
+
+def validate_identity_data(data: dict, profile) -> tuple[str, str, dict]:
+    """Confere identidade extraída antes de aprovar RG/CNH.
+
+    CPF só é comparado quando aparece no documento; data de nascimento e nome precisam ser
+    confirmáveis quando já existem no cadastro. Nome permite variações de casamento e OCR leve.
+    Devolve `(status, motivo, checks)` com status `sim`, `nao` ou `duvida`.
+    """
+    checks: dict[str, str] = {}
+    expected_name = getattr(profile, "name", None) if profile else None
+    actual_name = data.get("name")
+    name_match = compare_identity_names(expected_name, actual_name)
+    if name_match is False:
+        checks["name"] = "mismatch"
+        return "nao", f"O nome do documento não confere com o cadastro: {data.get('name') or 'não identificado'}.", checks
+    if name_match is None:
+        checks["name"] = "unverified"
+        return "duvida", "Não foi possível confirmar o nome completo do titular no documento.", checks
+    checks["name"] = "match"
+
+    expected_cpf = _digits(getattr(profile, "cpf", None) if profile else None)
+    document_cpf = _digits(data.get("cpf"))
+    if not document_cpf and data.get("cpf_present") is not False and "cpf_present" in data:
+        checks["cpf"] = "unverified"
+        return "duvida", "Não foi possível ler ou confirmar se há CPF neste documento.", checks
+    if document_cpf:
+        from validate_docbr import CPF
+
+        if not CPF().validate(document_cpf) or not expected_cpf:
+            checks["cpf"] = "unverified"
+            return "duvida", "Não foi possível confirmar o CPF impresso com o cadastro.", checks
+        if expected_cpf and document_cpf != expected_cpf:
+            checks["cpf"] = "mismatch"
+            return "nao", "O CPF impresso no documento não confere com o cadastro.", checks
+        checks["cpf"] = "match" if expected_cpf else "unverified"
+    else:
+        checks["cpf"] = "absent"
+
+    expected_birth = _parse_document_date(getattr(profile, "birth_date", None) if profile else None)
+    document_birth = _parse_document_date(data.get("birth_date"))
+    if not document_birth or document_birth >= date.today():
+        checks["birth_date"] = "unverified"
+        return "duvida", "Não foi possível confirmar uma data de nascimento válida no documento.", checks
+    if document_birth and expected_birth:
+        if document_birth != expected_birth:
+            checks["birth_date"] = "mismatch"
+            return "nao", "A data de nascimento do documento não confere com o cadastro.", checks
+        checks["birth_date"] = "match"
+    else:
+        checks["birth_date"] = "extracted"
+    return "sim", "Nome, CPF quando disponível e data de nascimento conferidos.", checks
 
 
 def check_photo(
@@ -162,7 +280,7 @@ def check_photo(
         else ""
     )
     prompt = (
-        f"Esta imagem deve mostrar {_SIDE_DESC[side]} de {doc_hint} "
+        f"Esta imagem deve mostrar {(_CNH_SIDE_DESC if doc_type == DOC_CNH else _SIDE_DESC)[side]} de {doc_hint} "
         "A imagem pode ter sido endireitada automaticamente; NÃO reprove por orientação/rotação. "
         "Documento plastificado costuma ter brilho/reflexo — só é problema se ESCONDER os dados. "
         f"Reprove APENAS se: (a) não for {doc_type.upper()} válido (outro documento, QR code, "
@@ -172,7 +290,8 @@ def check_photo(
     )
     try:
         desc = ai.describe_image(
-            image_bytes, caller=caller, mime_type=mime_type, prompt=prompt
+            image_bytes, caller=caller, mime_type=mime_type, prompt=prompt,
+            identity_document=True,
         )
     except Exception as exc:  # noqa: BLE001 — IA fora do ar → review (coordenador resolve)
         logger.warning("document_ai.vision_failed", caller=caller, error=str(exc)[:200])
@@ -191,10 +310,8 @@ def fix_orientation(
     """Endireita a foto pela orientação EXIF do celular (decisão do Victor 2026-06-11: tratar a
     imagem antes de validar). REGRAVA reta no mesmo arquivo (formato preservado). Retorna se mudou.
 
-    Só EXIF (de propósito): é o que o celular grava ao fotografar de lado, resolve o caso real e é
-    determinístico. NÃO tentamos adivinhar rotação de imagem SEM EXIF — a visão e o OCR (Google
-    Vision) leem o documento em qualquer orientação, então endireitar é melhoria de UX/biometria,
-    não pré-requisito da validação. Best-effort: erro → não mexe na imagem."""
+    Só EXIF altera o original; a transcrição visual de RG recebe vistas orientadas separadamente.
+    Best-effort: erro → não mexe na imagem."""
     from pathlib import Path
 
     from PIL import Image, ImageOps
@@ -221,7 +338,7 @@ def fix_orientation(
 
 
 def ocr_images(images: list[bytes], *, caller: str) -> str:
-    """OCR (Google Vision, modo documento) de cada imagem; devolve o texto junto."""
+    """OCR pelo engine central de cada imagem; devolve o texto junto."""
     if settings.TEST_EXTERNAL_ADAPTERS:
         from core.test_adapters import document_ocr
 
@@ -230,6 +347,32 @@ def ocr_images(images: list[bytes], *, caller: str) -> str:
 
     parts = [ai.ocr(img, caller=caller, document=True) for img in images]
     return "\n\n--- PRÓXIMA IMAGEM ---\n\n".join(p for p in parts if p)
+
+
+def read_identity_images(images: list[bytes], *, doc_type: str, holder_name: str | None, caller: str) -> dict:
+    """Shared RG/CNH visual transcription. Never supplies expected identity to the model."""
+    if doc_type not in DOC_TYPES:
+        raise ValueError(f"Invalid identity document type: {doc_type!r}")
+    if settings.TEST_EXTERNAL_ADAPTERS:
+        from core.test_adapters import document_extract
+        return document_extract(doc_type=doc_type, holder_name=holder_name)
+    import json
+    from integrations.ai import service as ai
+    fields = json.loads(_EXTRACT_SCHEMAS[doc_type])
+    fields.pop("name_match", None)
+    fields.pop("name_reason", None)
+    return ai.read_identity_document(images, doc_type=doc_type, schema=json.dumps(fields, ensure_ascii=False), caller=caller)
+
+
+def identity_snapshot(sub) -> tuple:
+    """Identify the exact stored source and decision that started a long extraction."""
+    return (sub.validation_status, (sub.validation_result or {}).get("analysis_started_at"),
+            sub.front_photo, sub.back_photo, sub.full_photo)
+
+
+def identity_is_current(sub, snapshot: tuple) -> bool:
+    sub.refresh_from_db()
+    return identity_snapshot(sub) == snapshot
 
 
 def extract_rg(ocr_text: str, *, holder_name: str | None, caller: str) -> dict:

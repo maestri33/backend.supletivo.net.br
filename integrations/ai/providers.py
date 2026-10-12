@@ -14,6 +14,11 @@ from .client import LLMClient, LLMError
 
 def get_client(provider: str) -> LLMClient:
     """Instancia o client de um provider habilitado (com base_url/api_key do .env ou PlatformSetting)."""
+    from .cloudflare import CloudflareWorkersAIClient, cloudflare_only
+    if cloudflare_only():
+        if provider != "cloudflare":
+            raise LLMError("Provider externo recusado: IA exclusiva Cloudflare.", retryable=False)
+        return CloudflareWorkersAIClient(timeout=settings.IA_TIMEOUT)
     cfg = settings.IA_PROVIDERS.get(provider)
     if not cfg:
         from core.system_config import get_setting
@@ -39,6 +44,12 @@ def get_client(provider: str) -> LLMClient:
 
 def fallback_chain(model: str | None = None) -> list[tuple[str, str]]:
     """A cadeia `(provider, model)` a tentar. Com OmniRoute dinâmico como primário resiliente."""
+    from .cloudflare import cloudflare_only, cloudflare_model, DEFAULT_TEXT_MODEL
+    if cloudflare_only():
+        chosen = model or cloudflare_model("CLOUDFLARE_TEXT_MODEL", DEFAULT_TEXT_MODEL)
+        if not chosen.startswith("@cf/"):
+            raise LLMError("Override de modelo externo ao Workers AI recusado.", retryable=False)
+        return [("cloudflare", chosen)]
     from core.system_config import get_setting
 
     omni_base = get_setting("OMNIROUTE_BASE_URL", "http://10.0.1.35/v1")
@@ -57,6 +68,9 @@ def fallback_chain(model: str | None = None) -> list[tuple[str, str]]:
 
 
 def enabled_providers() -> list[str]:
+    from .cloudflare import cloudflare_only
+    if cloudflare_only():
+        return ["cloudflare"]
     from core.system_config import get_setting
 
     providers = list(settings.IA_PROVIDERS)

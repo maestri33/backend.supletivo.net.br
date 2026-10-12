@@ -24,7 +24,7 @@ def handle_event(order_nsu, payload, *, source_ip=None, user_agent=None):
     """Persiste o evento bruto e roteia. Retorna (WebhookEvent, result_dict).
 
     A persistência do evento NÃO é protegida (se o banco falhar, a view 500a e a InfinitePay re-tenta).
-    O roteamento é protegido: erro ao aplicar não pode perder o evento já salvo — cai no fallback.
+    A aplicação que falha propaga a exceção: o evento fica salvo e o remetente pode repetir.
     """
     row = WebhookEvent.objects.create(
         order_nsu=str(order_nsu or ""),
@@ -38,7 +38,7 @@ def handle_event(order_nsu, payload, *, source_ip=None, user_agent=None):
         checkout, result, reason = _apply(order_nsu, payload)
     except Exception as exc:  # roteamento falhou -> não perde o evento, cai no fallback
         logger.error("webhook_apply_failed", order_nsu=str(order_nsu), error=str(exc))
-        checkout, result, reason = None, {"ok": True}, f"apply_failed: {exc}"
+        raise
 
     if checkout is not None:
         # CHECKOUT PAGO -> dispara o hook do app destino (lead) §7.3.
@@ -111,6 +111,8 @@ def _apply(order_nsu, payload):
         )
     except InfinitePayError as e:
         logger.warning("payment_check_failed", order_nsu=nsu, body=str(e.payload))
+        if e.status_code is None or e.status_code in {401, 403, 408, 429} or e.status_code >= 500:
+            raise
         return None, {"ok": True, "paid": False}, f"payment_check_failed: {e.payload}"
 
     if not check.get("success"):

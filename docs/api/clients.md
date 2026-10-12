@@ -118,21 +118,27 @@ empurra a correção pro fluxo normal (modal + re-upload), não pro caminho crí
 ### 6. Comprovante de endereço
 
 - **Endpoints**:
-  - `POST /api/v1/clients/enrollment/address/proof` (multipart `file`)
-  - `POST /api/v1/clients/enrollment/address/proof/kinship` (`{relation}`)
+  - `POST /api/v1/clients/enrollment/address/proof` (multipart `file`): upload inicial.
+  - `PUT /api/v1/clients/enrollment/address/proof` (multipart `file`): substituição do documento e reinício da esteira assíncrona.
+  - `GET /api/v1/clients/enrollment/address/proof`: consulta isolada do status e dados da seção (`AddressProofSectionOut`).
+  - `POST /api/v1/clients/enrollment/address/proof/kinship` (`{relation}`): declaração de parentesco/vínculo.
 - **O que o frontend envia**: a foto/PDF do comprovante; se a IA identificar que o titular do
-  comprovante é outra pessoa (`needs_kinship`), o front pede o grau de parentesco e manda no
-  segundo endpoint.
+  comprovante é outra pessoa (`needs_kinship`), o front informa o nome divergente extraído (`holder_name`), pede o grau de parentesco e manda no
+  endpoint de parentesco.
 - **O que o backend faz**: **aceito em qualquer etapa pré-conclusão** (não tem gate de status —
   é o próprio texto do accept-first: o aluno pode já ter avançado pro RG/educação e reenviar o
   comprovante depois). Salva a foto, resolve qualquer `ValidationBlock` de `address_proof` na
-  hora (o re-upload já conta como resolução), zera o `validation_status` pra `pending` e
-  enfileira `validate_address_proof` (Django-Q): visão → confere endereço batendo com o
-  cadastrado → confere titular → aprova, rejeita, manda pra revisão, ou marca
-  `needs_kinship`. Kinship: grava o parentesco e libera.
-- **O que o backend retorna**: `EnrollmentMeOut` canônico; o bloco `address_proof` (dentro do
-  `/me`) traz `status` (`pending|approved|rejected|review|needs_kinship`), `reason`,
-  `needs_kinship`, `kinship_relation`.
+  hora (o re-upload/PUT já conta como resolução), zera o `validation_status` pra `pending`, limpa
+  veredito anterior e enfileira `validate_address_proof` (Django-Q):
+  1. **Visão**: verifica legibilidade e tipo do documento.
+  2. **CPF Match (Prioridade Máxima)**: se o comprovante contiver CPF igual ao cadastrado do titular, **APROVA DIRETO**.
+  3. **Verificação de Nomes**:
+     - Nomes iguais (ou filiação pai/mãe reconhecida no RG) $\rightarrow$ **APROVA**.
+     - Nomes parecidos / dúvida da IA $\rightarrow$ **CONFERÊNCIA HUMANA (`review`)**.
+     - Nomes divergentes $\rightarrow$ **`needs_kinship`** (com motivo orientativo amigável e `holder_name`).
+  4. **População do Banco**: quando aprovado, preenche os campos vazios do modelo `Address` (`street`, `number`, `complement`, `neighborhood`, `city`, `state`, `zipcode`).
+- **O que o backend retorna**: `EnrollmentMeOut` canônico (no POST/PUT) ou `AddressProofSectionOut` (no GET); traz `status` (`pending|approved|rejected|review|needs_kinship`), `reason`,
+  `needs_kinship`, `kinship_kind`, `kinship_relation`, `holder_name`.
 - **O que o frontend deve fazer**: dar polling em `address_proof.status` (ou nos `blocks`); se
   `needs_kinship: true`, mostrar o formulário de parentesco.
 

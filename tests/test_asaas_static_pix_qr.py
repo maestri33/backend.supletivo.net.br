@@ -46,6 +46,49 @@ def _mock_static_qr_resp(ext_ref: str):
     }
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("description", ["Descricao comercial " * 4, None])
+async def test_static_qr_description_respects_provider_limit(monkeypatch, description):
+    pid = "lead_" + "a" * 64
+    captured = {}
+
+    async def gateway(self, payload):
+        captured.update(payload)
+        return _mock_static_qr_resp(pid)
+
+    monkeypatch.setattr(asaas_static_qr, "get_client", lambda: AsaasClient("test-key"))
+    monkeypatch.setattr(AsaasClient, "create_static_qr_code", gateway)
+    await asaas_static_qr._create_qr_with_gateway(TEST_PIX_KEY, 0.01, pid, description)
+
+    assert len(captured["description"]) <= 37
+    assert captured["description"] == (description or f"Matricula {pid}")[:37]
+    assert captured["externalReference"] == pid
+    assert captured["value"] == 0.01
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("response", [{}, {"id": "provider-id"}, {"payload": TEST_QR_PAYLOAD}])
+def test_static_qr_incomplete_provider_response_does_not_create_charge(monkeypatch, response):
+    async def gateway(*args):
+        return response
+
+    monkeypatch.setattr(asaas_static_qr, "_create_qr_with_gateway", gateway)
+    with pytest.raises(asaas_static_qr.StaticQrError, match="invalid_provider_response"):
+        asaas_static_qr.create_pix_qr(amount="5.00", payment_id="incomplete", pix_address_key=TEST_PIX_KEY)
+    assert not Payment.objects.filter(payment_id="incomplete").exists()
+
+
+@pytest.mark.django_db
+def test_static_qr_does_not_reuse_legacy_fabricated_qr():
+    Payment.objects.create(
+        payment_id="legacy-fake", kind=Payment.Kind.STATIC_PIX_QR,
+        status="PENDING", amount="5.00", asaas_id="FALLBACK_legacy",
+        qrcode_payload="fabricated-payload",
+    )
+    with pytest.raises(asaas_static_qr.StaticQrError, match="invalid_existing_qr"):
+        asaas_static_qr.create_pix_qr(amount="5.00", payment_id="legacy-fake")
+
+
 # ──────────────────────────────────────────────────────────────
 # Testes de create_pix_qr
 # ──────────────────────────────────────────────────────────────
@@ -179,9 +222,40 @@ def test_create_pix_qr_asaas_error(monkeypatch):
 
     monkeypatch.setattr(AsaasClient, "list_pix_address_keys", mock_list_keys)
     monkeypatch.setattr(AsaasClient, "create_static_qr_code", mock_create_qr)
-
+    pid = f"sqr_fail_{uuid.uuid4().hex[:8]}"
     with pytest.raises(asaas_static_qr.StaticQrError, match="asaas_static_qr_create_failed"):
-        asaas_static_qr.create_pix_qr(amount=Decimal("5.00"), payment_id=f"sqr_fail_{uuid.uuid4().hex[:8]}")
+        asaas_static_qr.create_pix_qr(amount=Decimal("5.00"), payment_id=pid)
+    assert not Payment.objects.filter(payment_id=pid).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("stage", ["key_fetch", "qr_create"])
+def test_pix_gateway_network_failure_never_fabricates_payment(monkeypatch, stage):
+    import httpx
+
+    pid = f"sqr_network_{uuid.uuid4().hex[:8]}"
+
+    async def fail(*args, **kwargs):
+        raise httpx.ConnectError("gateway unavailable")
+
+    async def unexpected_gateway(*args, **kwargs):
+        raise AssertionError("QR creation must not follow a failed key lookup")
+
+    monkeypatch.setattr(
+        asaas_static_qr, "_fetch_pix_address_key", fail if stage == "key_fetch" else unexpected_gateway
+    )
+    monkeypatch.setattr(
+        asaas_static_qr, "_create_qr_with_gateway", fail if stage == "qr_create" else unexpected_gateway
+    )
+    # The old fabricated QR calls an unrelated public QR service; never send test
+    # payment data there while reproducing the defect.
+    with patch("urllib.request.urlopen", side_effect=RuntimeError("network forbidden")):
+        with pytest.raises(asaas_static_qr.StaticQrError, match="asaas_.*_failed"):
+            asaas_static_qr.create_pix_qr(
+                amount=Decimal("5.00"), payment_id=pid,
+                pix_address_key=TEST_PIX_KEY if stage == "qr_create" else None,
+            )
+    assert not Payment.objects.filter(payment_id=pid).exists()
 
 
 # ──────────────────────────────────────────────────────────────
