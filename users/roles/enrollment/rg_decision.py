@@ -99,6 +99,7 @@ def _notify_resolution(enr: Enrollment, event_key: str, **placeholders) -> None:
     ctx = dict(placeholders)
     if event_key != "enrollment.selfie_approved" and (link := _resume_link()):
         ctx["link"] = link
+        ctx["link_app"] = link
     try:
         send_event(
             event_key,
