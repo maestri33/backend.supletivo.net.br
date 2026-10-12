@@ -214,6 +214,7 @@ def set_education(
     education_status: str | None = None,
     year: int | None = None,
     city: str | None = None,
+    state: str | None = None,
     school: str | None = None,
 ) -> Profile | None:
     """Grava escolaridade estruturada no Profile e permite correção posterior."""
@@ -229,6 +230,7 @@ def set_education(
     p.education_status = education_status
     p.education_year = year
     p.education_city = city
+    p.education_state = state
     p.education_school = school
     p.save(
         update_fields=[
@@ -241,6 +243,7 @@ def set_education(
             "education_status",
             "education_year",
             "education_city",
+            "education_state",
             "education_school",
             "updated_at",
         ]

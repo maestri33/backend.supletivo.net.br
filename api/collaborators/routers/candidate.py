@@ -214,7 +214,11 @@ def candidate_education(request, payload: EducationIn):
         education_status=payload.education_status,
         year=payload.year,
         city=payload.city,
+        state=payload.state,
         school=payload.school,
+        declaration_accepted=payload.declaration_accepted,
+        declaration_ip=source_ip(request),
+        declaration_user_agent=request.headers.get("user-agent"),
     )
 
 

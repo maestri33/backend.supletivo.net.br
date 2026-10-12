@@ -1,0 +1,117 @@
+[
+  {
+    "role": "student",
+    "case": "empty_file",
+    "passed": true
+  },
+  {
+    "role": "student",
+    "case": "unsupported_type",
+    "passed": true
+  },
+  {
+    "role": "student",
+    "case": "oversized_file",
+    "passed": true
+  },
+  {
+    "role": "student",
+    "case": "protected_pdf",
+    "passed": true
+  },
+  {
+    "role": "student",
+    "case": "three_page_pdf",
+    "passed": true
+  },
+  {
+    "role": "student",
+    "case": "corrupt_pdf",
+    "passed": true
+  },
+  {
+    "role": "student",
+    "case": "corrupt_image",
+    "passed": true
+  },
+  {
+    "role": "student",
+    "case": "non_document",
+    "passed": true
+  },
+  {
+    "role": "student",
+    "case": "identity_instead_of_address",
+    "passed": true
+  },
+  {
+    "role": "student",
+    "case": "original_pdf_approved",
+    "passed": true
+  },
+  {
+    "role": "promoter",
+    "case": "empty_file",
+    "passed": true
+  },
+  {
+    "role": "promoter",
+    "case": "unsupported_type",
+    "passed": true
+  },
+  {
+    "role": "promoter",
+    "case": "oversized_file",
+    "passed": true
+  },
+  {
+    "role": "promoter",
+    "case": "protected_pdf",
+    "passed": true
+  },
+  {
+    "role": "promoter",
+    "case": "three_page_pdf",
+    "passed": true
+  },
+  {
+    "role": "promoter",
+    "case": "corrupt_pdf",
+    "passed": true
+  },
+  {
+    "role": "promoter",
+    "case": "corrupt_image",
+    "passed": true
+  },
+  {
+    "role": "promoter",
+    "case": "non_document",
+    "passed": true
+  },
+  {
+    "role": "promoter",
+    "case": "identity_instead_of_address",
+    "passed": true
+  },
+  {
+    "role": "promoter",
+    "case": "original_page_png_approved",
+    "passed": true
+  },
+  {
+    "role": "student",
+    "case": "jpeg_pending_receipt",
+    "passed": true
+  },
+  {
+    "role": "student",
+    "case": "resume_pending_after_reload",
+    "passed": true
+  },
+  {
+    "role": "student",
+    "case": "original_page_jpeg_approved_after_reload",
+    "passed": true
+  }
+]

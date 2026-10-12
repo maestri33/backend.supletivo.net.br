@@ -62,7 +62,8 @@ def test_prompt_da_frente_proibe_reprovar_por_falta_de_dados(monkeypatch):
 
     captured = {}
 
-    def fake_describe(image_bytes, *, caller, mime_type=None, prompt=None):
+    def fake_describe(image_bytes, *, caller, mime_type=None, prompt=None, **kwargs):
+        assert kwargs.get("identity_document") is True
         captured["prompt"] = prompt
         return "APROVADO. frente ok."
 

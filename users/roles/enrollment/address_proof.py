@@ -22,16 +22,9 @@ def upload_address_proof(*, user_external_id: str, upload) -> dict:
     enr = _require(
         user_external_id
     )  # sem gate de status: aceita enquanto não concluída
-    documents_iface.upload_photo(user_external_id, "address_proof_photo", upload)
+    _address_proof.receive_upload(user_external_id, upload)
     # ponytail: re-upload resolve o bloco imediatamente; análise roda em background
     blocks.resolve_for_source(user=enr.user, source_type="address_proof")
-    ap = documents_iface.get_address_proof(user_external_id)
-    if ap is not None:
-        ap.validation_status = "pending"
-        # Novo upload = veredito e flags do ANTERIOR não valem mais (inclusive
-        # `needs_new_proof`, que destrava a tela — Victor 2026-07-28).
-        ap.validation_result = {}
-        ap.save(update_fields=["validation_status", "validation_result"])
     from core.tasks import async_task
 
     async_task("users.roles.enrollment.tasks.validate_address_proof", enr.id)

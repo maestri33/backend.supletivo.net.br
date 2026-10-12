@@ -195,6 +195,9 @@ def enrollment_education(request, payload: EducationIn):
         city=payload.city,
         state=payload.state,
         last_year_when=payload.last_year_when,
+        declaration_accepted=payload.declaration_accepted,
+        declaration_ip=source_ip(request),
+        declaration_user_agent=request.headers.get("user-agent"),
     )
     return enrollment_iface.me_dict(enr)
 

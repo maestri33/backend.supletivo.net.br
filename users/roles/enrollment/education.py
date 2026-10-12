@@ -55,6 +55,9 @@ def set_education(
     state: str,
     last_school: str = "",
     last_year_when=None,
+    declaration_accepted: bool = False,
+    declaration_ip: str | None = None,
+    declaration_user_agent: str | None = None,
 ) -> Enrollment:
     enr = _require(user_external_id, _S.EDUCATION)
     # nível válido (Fundamental | Médio)
@@ -72,6 +75,30 @@ def set_education(
             code="EDUCATION_GRADE_OUT_OF_RANGE",
             extra={"level": level, "grade": grade, "min": lo, "max": hi},
         )
+    if level == "medio" and grade == 3 and completed:
+        raise EnrollmentError(
+            "Quem concluiu o 3º ano do Ensino Médio não deve iniciar esta matrícula.",
+            code="EDUCATION_ALREADY_COMPLETED",
+        )
+    if not declaration_accepted:
+        raise EnrollmentError(
+            "Confirme a declaração de veracidade antes de continuar.",
+            code="EDUCATION_DECLARATION_REQUIRED",
+        )
+    city = (city or "").strip()
+    state = (state or "").strip().upper()
+    if city and state:
+        from integrations.tools.ibge.service import existe
+        if existe(city, state) is None:
+            raise EnrollmentError(
+                "Selecione uma cidade válida para o estado informado.",
+                code="EDUCATION_CITY_INVALID",
+            )
+    elif city or state:
+        raise EnrollmentError(
+            "Informe estado e cidade da escola.",
+            code="EDUCATION_LOCATION_INCOMPLETE",
+        )
     EducationalData.objects.update_or_create(
         enrollment=enr,
         defaults={
@@ -84,6 +111,13 @@ def set_education(
             "last_year_when": last_year_when,
         },
     )
+    from django.utils import timezone
+    enr.education_declaration_accepted = True
+    enr.education_declaration_version = "education-v1"
+    enr.education_declaration_ip = declaration_ip
+    enr.education_declaration_user_agent = declaration_user_agent
+    enr.education_declaration_at = timezone.now()
+    enr.save(update_fields=["education_declaration_accepted", "education_declaration_version", "education_declaration_ip", "education_declaration_user_agent", "education_declaration_at", "updated_at"])
     _set_status(enr, _S.SELFIE)
     return enr
 

@@ -147,13 +147,17 @@ empurra a correção pro fluxo normal (modal + re-upload), não pro caminho crí
 - **Endpoints**:
   - `GET /api/v1/clients/enrollment/education`
   - `POST /api/v1/clients/enrollment/education` (`{level, grade, completed, last_school, city,
-    state, last_year_when?}`)
+    state, last_year_when?, declaration_accepted}`)
 - **O que o frontend envia**: `level` (`fundamental`|`medio`), `grade` (1–9 fundamental / 1–3
-  médio), `completed`, escola/cidade/UF/quando concluiu.
+  médio), `completed`, escola/cidade/UF/quando concluiu e `declaration_accepted: true` após o
+  modal de veracidade. A cidade é escolhida da lista de municípios IBGE carregada depois da UF.
+  `medio + grade=3 + completed=true` é rejeitado: o aluno pode ter parado no 3º ano, mas não pode
+  declarar o Ensino Médio já concluído neste fluxo.
 - **O que o backend faz**: exige status `education` (gate ESTRITO — diferente do RG/endereço,
   aqui NÃO é accept-first fora de ordem: `set_education` só roda se a matrícula estiver
   exatamente na etapa `education`, senão `409 WRONG_STATUS`); valida `level` e a faixa de `grade`
-  pro nível; grava e avança direto pra `selfie` (`_set_status(enr, _S.SELFIE)`).
+  pro nível, confere a cidade/UF no cache IBGE, exige o aceite da declaração, registra versão/IP/
+  user-agent/horário e avança direto pra `selfie` (`_set_status(enr, _S.SELFIE)`).
 - **O que o backend retorna**: `EnrollmentMeOut` canônico já com `status: "selfie"`.
 - **O que o frontend deve fazer**: usar o `GET` pra pré-preencher (o backend já faz prefill do
   Profile se a pessoa respondeu escolaridade como candidata antes); depois do POST, ir direto pra
@@ -268,6 +272,9 @@ prioridade visual sobre a tela normal do `status`.
 | `CHECKOUT_NOT_FOUND` / `LEAD_NOT_FOUND` / `STUDENT_NOT_FOUND` / `ENROLLMENT_NOT_FOUND` | recurso do aluno não existe (404) | Estado inconsistente — normalmente indica JWT de role errada |
 | `BLOCK_NOT_FOUND` | bloco inválido/já resolvido/de outro usuário (404) | Fechar o modal, refazer o GET de `blocks` |
 | `EDUCATION_LEVEL_INVALID` / `EDUCATION_GRADE_OUT_OF_RANGE` | dados de escolaridade fora da faixa (422) | Validar no front antes de enviar (nível/série) |
+| `EDUCATION_ALREADY_COMPLETED` | 3º ano do Ensino Médio informado como concluído (422) | Orientar contato com o polo |
+| `EDUCATION_DECLARATION_REQUIRED` | declaração de veracidade não aceita (422) | Exibir o modal e exigir a caixa de confirmação |
+| `EDUCATION_CITY_INVALID` / `EDUCATION_LOCATION_INCOMPLETE` | cidade/UF inválida ou incompleta (422) | Recarregar municípios após escolher a UF |
 
 ## O que o backend ESPERA do frontend
 

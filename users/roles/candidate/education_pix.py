@@ -68,9 +68,32 @@ def set_education(
     education_status: str | None = None,
     year: int | None = None,
     city: str | None = None,
+    state: str | None = None,
     school: str | None = None,
+    declaration_accepted: bool = False,
+    declaration_ip: str | None = None,
+    declaration_user_agent: str | None = None,
 ) -> dict:
     cand = _require(user_external_id, _S.PIX, _S.EDUCATION)
+    if not declaration_accepted:
+        raise CandidateError(
+            "Confirme a declaração de veracidade antes de continuar.",
+            code="EDUCATION_DECLARATION_REQUIRED",
+        )
+    city = (city or "").strip()
+    state = (state or "").strip().upper()
+    if city and state:
+        from integrations.tools.ibge.service import existe
+        if existe(city, state) is None:
+            raise CandidateError(
+                "Selecione uma cidade válida para o estado informado.",
+                code="EDUCATION_CITY_INVALID",
+            )
+    elif city or state:
+        raise CandidateError(
+            "Informe estado e cidade da escola.",
+            code="EDUCATION_LOCATION_INCOMPLETE",
+        )
     if level not in _EDU_LEVELS:
         raise CandidateError(
             "Nível de ensino inválido.",
@@ -186,9 +209,17 @@ def set_education(
         last_completed_qualification=last_completed_qualification,
         education_status=education_status,
         year=year,
-        city=(city or "").strip() or None,
+        city=city or None,
+        state=state or None,
         school=(school or "").strip() or None,
     )
+    from django.utils import timezone
+    cand.education_declaration_accepted = True
+    cand.education_declaration_version = "education-v1"
+    cand.education_declaration_ip = declaration_ip
+    cand.education_declaration_user_agent = declaration_user_agent
+    cand.education_declaration_at = timezone.now()
+    cand.save(update_fields=["education_declaration_accepted", "education_declaration_version", "education_declaration_ip", "education_declaration_user_agent", "education_declaration_at", "updated_at"])
     if cand.status == _S.PIX:
         _set_status(cand, _S.EDUCATION)
     logger.info(

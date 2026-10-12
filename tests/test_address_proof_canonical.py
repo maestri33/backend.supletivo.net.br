@@ -228,7 +228,8 @@ def test_student_address_proof_put_replaces_and_restarts(client, enrollment_user
     assert response.status_code == 200
     proof.refresh_from_db()
     assert proof.validation_status == "pending"
-    assert proof.validation_result == {}  # Limpou o resultado anterior e a flag de trava
+    assert set(proof.validation_result) == {"analysis_started_at"}
+    assert response.json()["address_proof"]["expires_at"]
     assert queued == [("users.roles.enrollment.tasks.validate_address_proof", enrollment_user.pk)]
 
 

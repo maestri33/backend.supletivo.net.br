@@ -71,7 +71,9 @@ class EducationIn(Schema):
     education_status: str | None = None
     year: int | None = None
     city: str | None = None
+    state: str | None = None
     school: str | None = None
+    declaration_accepted: bool
 
 
 class KinshipIn(Schema):
@@ -100,6 +102,7 @@ class CandidateProfileOut(Schema):
     education_status: str | None = None
     education_year: int | None = None
     education_city: str | None = None
+    education_state: str | None = None
     education_school: str | None = None
     locked_fields: list[str] = Field(default_factory=list)
 
@@ -148,6 +151,9 @@ class AddressProofSectionOut(Schema):
     exists: bool = False
     photo: str | None = None
     status: str | None = None
+    analysis_started_at: str | None = None
+    poll_after_ms: int | None = None
+    expires_at: str | None = None
     reason: str | None = None
     needs_kinship: bool = False
     kinship_kind: str | None = None

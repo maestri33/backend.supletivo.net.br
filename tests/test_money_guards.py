@@ -50,9 +50,23 @@ def test_g6_comissao_de_semana_passada_entra_no_fechamento():
     varrida pelo fechamento atual — antes ficava PENDING pra sempre."""
     from finance.interface.commissions import run_weekly_closing
     from finance.models import Commission, PaymentRequest
+    from hub.models import Hub
+    from users.address.models import Address
     from users.auth.models import User
+    from users.roles.promoter.models import Promoter
 
     payee = User.objects.create_user(external_id=uuid.uuid4())
+    old = timezone.now() - timedelta(days=10)
+    hub = Hub.objects.create(
+        address=Address.objects.create(city="Curitiba", state="PR"),
+        brand="test",
+    )
+    Promoter.objects.create(
+        user=payee,
+        hub=hub,
+        status=Promoter.Status.ACTIVE,
+        activated_at=old,
+    )
     c = Commission.objects.create(
         payee=payee,
         payee_role=Commission.Role.PROMOTER,
@@ -62,7 +76,6 @@ def test_g6_comissao_de_semana_passada_entra_no_fechamento():
         status=Commission.Status.PENDING,
     )
     # força o created_at pra 10 dias atrás (semana anterior), driblando o auto_now_add
-    old = timezone.now() - timedelta(days=10)
     Commission.objects.filter(pk=c.pk).update(created_at=old)
 
     run_weekly_closing()

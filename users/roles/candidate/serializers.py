@@ -57,6 +57,7 @@ def me_dict(cand: Candidate) -> dict:
             "education_status": p.education_status,
             "education_year": p.education_year,
             "education_city": p.education_city,
+            "education_state": p.education_state,
             "education_school": p.education_school,
             # autoritativos do CPFHub — nenhum endpoint do candidato os edita; o front usa
             # esta flag pra travar/destacar os inputs (sombra verde + ✓).

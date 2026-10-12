@@ -1,5 +1,7 @@
 # Role pipeline release — 2026-10-11
 
+Latest identity defect closure: [bounded recovery and UI feedback](identity-pending-closure-2026-10-12.md), implemented in `.92` and retained by active backend `.93` with matching overlay hashes. App was synchronized to `.93`. The `.91` observations below remain historical; identity provider recovery and the listed UI/PDF defects have since been exercised and technically closed. Full role journeys remain separate acceptance work.
+
 The latest app/backend publication is CNH renewal release `.91`. The final real UI reupload passed identity matching and original registration/category/expiry comparisons, replacing the previous wrong registration/category and clearing uncertain invalid RENACH. Original full RG JPG also passed on `.91`, after the historical `.89` PNG/PDF and both separate orders with reload. The `.89` extraction failure and two later Scout timeouts are retained as evidence; final success does not establish repeatable provider availability or platform readiness. Only the user homologates delivery.
 
 ## Final identity observations and canary cleanup

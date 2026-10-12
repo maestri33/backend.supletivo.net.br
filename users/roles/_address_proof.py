@@ -35,6 +35,44 @@ NEEDS_KINSHIP = "needs_kinship"
 _DOC_TYPE = "address_proof"
 
 
+def _snapshot(proof) -> tuple:
+    result = proof.validation_result or {}
+    return (proof.photo, proof.validation_status, result.get("analysis_started_at"), proof.validated_at)
+
+
+def _expire_pending(proof):
+    from django.utils import timezone
+    from users.roles import _analysis
+
+    result = proof.validation_result or {}
+    started = _analysis.started_at_from(result.get("analysis_started_at"))
+    if proof.validation_status == "pending" and (started is None or _analysis.is_stale("pending", started)):
+        proof.validation_status = REVIEW
+        proof.validation_result = {**result, "reason": _analysis.stale_reason()}
+        proof.validated_at = timezone.now()
+        proof.save(update_fields=["validation_status", "validation_result", "validated_at"])
+    return proof
+
+
+def receive_upload(user_external_id: str, upload) -> None:
+    """Replace source and restart its generation under the same lock used to settle OCR."""
+    from django.db import transaction
+    from django.utils import timezone
+    from users.documents import service as documents
+    from users.documents.models import AddressProof
+
+    proof = documents.get_address_proof(user_external_id)
+    with transaction.atomic():
+        proof = AddressProof.objects.select_for_update().get(pk=proof.pk)
+        proof.photo = documents.upload_photo(user_external_id, "address_proof_photo", upload)
+        proof.validation_status = "pending"
+        proof.validation_result = {"analysis_started_at": timezone.now().isoformat()}
+        proof.validated_at = None
+        proof.kinship_relation = None
+        proof.kinship_provided_at = None
+        proof.save(update_fields=["photo", "validation_status", "validation_result", "validated_at", "kinship_relation", "kinship_provided_at"])
+
+
 def _norm(s: str | None) -> str:
     """minúsculo, sem acento, colapsa espaços — pra comparar rua/cidade sem falso-negativo bobo."""
     if not s:
@@ -130,10 +168,14 @@ def run_validation(
          • dúvida / parecido sem certeza → revisão manual (`review`).
     """
     from users.roles.student import _document_ai as doc_ai
+    import time
+    from users.roles import _analysis
+    deadline = time.monotonic() + max(1, min(180, _analysis.ttl_seconds() - 10))
 
     # (a) Visão: é um comprovante de endereço legível?
     vision_status, vision_reason = doc_ai.check_student_document_photo(
-        image_bytes, doc_type=_DOC_TYPE, mime_type=mime_type, caller=caller
+        image_bytes, doc_type=_DOC_TYPE, mime_type=mime_type, caller=caller,
+        timeout=max(.1, min(30, deadline - time.monotonic())),
     )
     result: dict = {"vision": {"status": vision_status, "reason": vision_reason}}
     if vision_status == doc_ai.REJECTED:
@@ -145,9 +187,13 @@ def run_validation(
 
     # (b) OCR + extração (endereço + titular + CPF).
     try:
-        ocr_text = doc_ai.ocr_image(image_bytes, caller=caller)
+        ocr_text = doc_ai.ocr_image(image_bytes, caller=caller, deadline=deadline - 20)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Address extraction deadline exhausted")
         extracted = doc_ai.extract_student_document(
-            ocr_text, doc_type=_DOC_TYPE, holder_name=holder_name, caller=caller
+            ocr_text, doc_type=_DOC_TYPE, holder_name=holder_name, caller=caller,
+            timeout=min(20, remaining),
         )
     except Exception as exc:  # noqa: BLE001 — IA fora na extração → review
         logger.warning(
@@ -236,8 +282,10 @@ def validate_and_store(user_external_id: str, *, caller: str) -> str:
     from pathlib import Path
 
     from django.conf import settings
+    from django.db import transaction
     from django.utils import timezone
 
+    from users.documents.models import AddressProof
     from users.address import interface as address_iface
     from users.documents import service as documents_iface
     from users.profiles import interface as profiles
@@ -245,6 +293,9 @@ def validate_and_store(user_external_id: str, *, caller: str) -> str:
     ap = documents_iface.get_address_proof(user_external_id)
     if ap is None or not ap.photo:
         return REVIEW
+    if ap.validation_status != "pending":
+        return ap.validation_status
+    snapshot = _snapshot(ap)
     fp = Path(settings.MEDIA_ROOT) / ap.photo
     if not fp.exists():
         return REVIEW
@@ -252,8 +303,12 @@ def validate_and_store(user_external_id: str, *, caller: str) -> str:
     address = p.address if p else None
     holder_name = p.name if p else None
 
+    try:
+        source = fp.read_bytes()
+    except OSError:
+        return REVIEW
     status, payload = run_validation(
-        fp.read_bytes(),
+        source,
         address=address,
         holder_name=holder_name,
         user_cpf=p.cpf if p else None,
@@ -262,18 +317,36 @@ def validate_and_store(user_external_id: str, *, caller: str) -> str:
         mime_type=_mime_of(ap.photo),
         caller=caller,
     )
-    ap.validation_status = status
-    ap.validation_result = payload
-    ap.validated_at = timezone.now()
-    ap.save(update_fields=["validation_status", "validation_result", "validated_at"])
-    if status in (APPROVED, NEEDS_KINSHIP):
-        # Comprovante-PRIMEIRO (Victor 2026-07-28): o endereço extraído POPULA o cadastro —
-        # o formulário vira confirmação (número/complemento), não digitação. Só campos vazios:
-        # o que a pessoa já corrigiu à mão não é sobrescrito. `needs_kinship` também popula
-        # (a dúvida é sobre o TITULAR; o endereço extraído é o mesmo).
-        _fill_address_from_extracted(
-            user_external_id, payload.get("extracted") or {}, caller=caller
-        )
+    with transaction.atomic():
+        ap = AddressProof.objects.select_for_update().get(pk=ap.pk)
+        if _snapshot(ap) != snapshot:
+            logger.info("address_proof.stale_result_discarded", caller=caller)
+            return ap.validation_status
+        # A pending generation without a start time can be an older queued upload.
+        # Its worker may settle it, while /me safely expires abandoned legacy work.
+        from users.roles import _analysis
+        started = _analysis.started_at_from((ap.validation_result or {}).get("analysis_started_at"))
+        if _analysis.is_stale(ap.validation_status, started):
+            return _expire_pending(ap).validation_status
+        if status in (APPROVED, NEEDS_KINSHIP):
+            from users.address.models import Address
+            from users.address.service import is_complete
+            current_profile = profiles.find_by_external_id(user_external_id)
+            current_address = Address.objects.select_for_update().get(pk=current_profile.address_id) if current_profile and current_profile.address_id else None
+            if is_complete(current_address):
+                matches, reason = _address_matches(payload.get("extracted") or {}, current_address)
+                if not matches:
+                    status = REJECTED
+                    payload["reason"] = "O endereço foi atualizado durante a análise e não confere com o comprovante. " + reason
+        ap.validation_status = status
+        ap.validation_result = {**payload, "analysis_started_at": (ap.validation_result or {}).get("analysis_started_at")}
+        ap.validated_at = timezone.now()
+        ap.save(update_fields=["validation_status", "validation_result", "validated_at"])
+        if status in (APPROVED, NEEDS_KINSHIP):
+            # Preserve user corrections. Kinship uncertainty concerns the holder, not the address.
+            _fill_address_from_extracted(
+                user_external_id, payload.get("extracted") or {}, caller=caller
+            )
     logger.info("address_proof.validated", caller=caller, status=status)
 
     # ponytail: o signal post_save do AddressProof cria o bloco (rejected) ou resolve (approved/pending).
@@ -282,13 +355,14 @@ def validate_and_store(user_external_id: str, *, caller: str) -> str:
         try:
             from notify.interface.events import send_event
 
-            ev = "candidate.address_proof_rejected" if caller == "candidate" else "enrollment.address_proof_rejected"
+            is_candidate = caller.split(".")[0] == "candidate"
+            ev = "candidate.address_proof_rejected" if is_candidate else "enrollment.address_proof_rejected"
             send_event(
                 ev,
                 profile=p,
                 ctx={
                     "motivo": payload.get("reason", "Comprovante ilegível ou em nome de terceiros.")[:400],
-                    "link_app": "https://app.supletivo.net.br/documentos",
+                    "link_app": "https://app.supletivo.net.br/promoter/candidate/address" if is_candidate else "https://app.supletivo.net.br/student/enrollment/address",
                 },
             )
         except Exception:  # noqa: BLE001
@@ -339,6 +413,8 @@ def submit_kinship(user_external_id: str, relation: str) -> str:
     """Titular diferente (`needs_kinship`): a pessoa explica quem é / o parentesco. Grava e libera
     (→ approved). Só age se estava em `needs_kinship`. Devolve o novo status."""
     from django.utils import timezone
+    from django.db import transaction
+    from users.documents.models import AddressProof
 
     from users.documents import service as documents_iface
 
@@ -347,6 +423,7 @@ def submit_kinship(user_external_id: str, relation: str) -> str:
         return REVIEW
     if ap.validation_status != NEEDS_KINSHIP:
         return ap.validation_status
+    snapshot = _snapshot(ap)
     relation = (relation or "").strip()
     if not relation:
         return NEEDS_KINSHIP  # sem explicação → continua pendente
@@ -357,16 +434,14 @@ def submit_kinship(user_external_id: str, relation: str) -> str:
     verdict = ai.evaluate_kinship(relation, caller="address_proof.kinship")
     if not verdict.get("has_merit"):
         return NEEDS_KINSHIP
-    ap.kinship_relation = verdict.get("corrected") or relation
-    ap.kinship_provided_at = timezone.now()
-    ap.validation_status = APPROVED
-    ap.save(
-        update_fields=[
-            "kinship_relation",
-            "kinship_provided_at",
-            "validation_status",
-        ]
-    )
+    with transaction.atomic():
+        ap = AddressProof.objects.select_for_update().get(pk=ap.pk)
+        if _snapshot(ap) != snapshot:
+            return ap.validation_status
+        ap.kinship_relation = verdict.get("corrected") or relation
+        ap.kinship_provided_at = timezone.now()
+        ap.validation_status = APPROVED
+        ap.save(update_fields=["kinship_relation", "kinship_provided_at", "validation_status"])
     logger.info("address_proof.kinship_submitted", relation=ap.kinship_relation[:80])
     return APPROVED
 
@@ -451,11 +526,21 @@ def section_dict(user_external_id: str) -> dict:
             "kinship_relation": None,
             "needs_new_proof": False,
         }
+    from django.db import transaction
+    from users.documents.models import AddressProof
+    from users.roles import _analysis
+    if ap.validation_status == "pending":
+        with transaction.atomic():
+            ap = _expire_pending(AddressProof.objects.select_for_update().get(pk=ap.pk))
     result = ap.validation_result if isinstance(ap.validation_result, dict) else {}
+    started = _analysis.started_at_from(result.get("analysis_started_at"))
     return {
         "exists": True,
         "photo": ap.photo,
         "status": ap.validation_status,
+        "analysis_started_at": started.isoformat() if started else None,
+        "poll_after_ms": _analysis.poll_after_ms(),
+        "expires_at": _analysis.expires_at(started).isoformat() if started else None,
         "reason": _public_reason(ap.validation_status, result),
         "needs_kinship": ap.validation_status == NEEDS_KINSHIP,
         "kinship_kind": result.get("kinship_kind")

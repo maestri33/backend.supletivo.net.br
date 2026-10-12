@@ -98,15 +98,15 @@ def test_commissions_config_via_setup_endpoints(db):
     token = _auth_superuser_token()
     auth_header = {"HTTP_AUTHORIZATION": f"Bearer {token}"}
 
-    # 1. GET /config/setup traz comissões padrão de produção alvo (50, 200, 25, threshold 3)
+    # 1. GET /config/setup traz a tabela comercial vigente (R$100 direto, R$500 bônus, R$50 hub, meta 5)
     res_get = client.get("/api/v1/staff/config/setup", **auth_header)
     assert res_get.status_code == 200
     data = res_get.json()
     assert "commissions" in data
-    assert data["commissions"]["commission_direct"] in ("1", "100")
-    assert data["commissions"]["commission_bonus_flat"] in ("5", "500")
-    assert data["commissions"]["commission_coordinator"] in ("1", "25")
-    assert data["commissions"]["commission_bonus_threshold"] in (3, 5)
+    assert data["commissions"]["commission_direct"] == "100"
+    assert data["commissions"]["commission_bonus_flat"] == "500"
+    assert data["commissions"]["commission_coordinator"] == "50"
+    assert data["commissions"]["commission_bonus_threshold"] == 5
 
 
     # 2. PUT /config/setup altera os valores em PlatformSetting

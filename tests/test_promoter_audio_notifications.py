@@ -20,12 +20,14 @@ from notify.models import Template
 from users.roles.lead.service import _notify_paid
 from users.roles.candidate.promotion import _promote_to_promoter
 from users.roles.candidate.models import Candidate
+from users.documents import service as documents
 from integrations.cloudflare.tts import resolve_cross_gender_voice, clean_text_for_speech
 from notify.interface import templates as tpl_iface
 from finance.interface import commissions as fin_commissions
 from finance.models import Commission, PaymentRequest
 from finance import config as fin_config
 import uuid
+from datetime import timedelta
 
 
 @pytest.mark.django_db
@@ -60,31 +62,59 @@ def test_templates_have_audio_tts_enabled():
         assert tpl.is_tts is True, f"Template {ev} deve ter is_tts=True"
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @patch("notify.interface.events.send_event")
 def test_candidate_promotion_notifies_with_audio_tts(mock_send):
     """Valida que a promoção do candidato a promotor dispara notificação."""
     user = User.objects.create_user()
-    Profile.objects.create(
-        user=user,
-        phone="554298171770",
-        name="Diandra Adelmaris",
-        gender="F",
-    )
     addr = Address.objects.create(
         street="Rua Teste", number="10", neighborhood="Centro", city="Ponta Grossa", state="PR", zipcode="84000000"
     )
+    Profile.objects.create(
+        user=user,
+        phone="554298171770",
+        cpf="52998224725",
+        name="Diandra Adelmaris",
+        birth_date=timezone.localdate() - timedelta(days=365 * 30),
+        gender="F",
+        address=addr,
+        education_level="medio",
+        education_completed=True,
+        pix_key="offline@example.test",
+        pix_key_type="EMAIL",
+    )
     hub = Hub.objects.create(address=addr, brand="standard")
+    documents.create_empty(user)
+    rg = documents.get_rg(str(user.external_id))
+    rg.number = "123456"
+    rg.validation_status = "approved"
+    rg.full_photo = "documents/test-rg.jpg"
+    rg.save(update_fields=["number", "validation_status", "full_photo"])
+    proof = documents.get_address_proof(str(user.external_id))
+    proof.validation_status = "approved"
+    proof.photo = "documents/test-address.jpg"
+    proof.save(update_fields=["validation_status", "photo"])
     from users.roles import interface as roles
     roles.assign(user, "candidate")
-    cand = Candidate.objects.create(user=user, hub=hub, status="started")
+    cand = Candidate.objects.create(
+        user=user,
+        hub=hub,
+        status="started",
+        doc_type="rg",
+        pix_validated=True,
+        selfie_verified=True,
+        selfie_status="approved",
+        selfie_image="selfies/test.jpg",
+        consent_accepted=True,
+        consent_accepted_at=timezone.now(),
+    )
 
     locked = _promote_to_promoter(cand)
 
     assert mock_send.called
     call_args = mock_send.call_args[0]
     event_dispatched = call_args[0]
-    assert event_dispatched in ("training.approved", "training.must_train")
+    assert event_dispatched == "promoter.activated"
     assert Promoter.objects.filter(user=user).exists()
 
 
@@ -254,6 +284,16 @@ def test_promoter_with_20_leads_gets_20_commissions_and_exactly_one_flat_bonus()
         pix_key_type="phone",
         gender="M",
     )
+    bonus_hub = Hub.objects.create(
+        address=Address.objects.create(city="Curitiba", state="PR"),
+        brand="standard",
+    )
+    Promoter.objects.create(
+        user=promoter,
+        hub=bonus_hub,
+        status=Promoter.Status.ACTIVE,
+        activated_at=timezone.now() - timedelta(days=10),
+    )
 
     direct_amount = fin_config.direct_amount()
     bonus_amount = fin_config.bonus_amount()
@@ -275,7 +315,8 @@ def test_promoter_with_20_leads_gets_20_commissions_and_exactly_one_flat_bonus()
     assert direct_comms.count() == 20
 
     # Executa fechamento semanal
-    fin_commissions.run_weekly_closing()
+    closing = fin_commissions.next_closing_at()
+    fin_commissions.run_weekly_closing(reference_date=closing)
 
     # Confirma: EXATAMENTE 1 bônus flat de meta gerado
     bonus_comms = Commission.objects.filter(
@@ -297,6 +338,6 @@ def test_promoter_with_20_leads_gets_20_commissions_and_exactly_one_flat_bonus()
     assert req.amount == expected_total
 
     # Re-executar fechamento semanal é idempotente (não gera segundo bônus nem duplica request)
-    fin_commissions.run_weekly_closing()
+    fin_commissions.run_weekly_closing(reference_date=closing)
     assert Commission.objects.filter(payee=promoter, source_type=Commission.Source.BONUS).count() == 1
     assert PaymentRequest.objects.filter(payee=promoter).count() == 1

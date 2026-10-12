@@ -37,6 +37,22 @@ def test_settings():
 
 
 @pytest.fixture(autouse=True)
+def isolate_platform_settings_cache():
+    """Keep the process cache aligned with the transactional database per test.
+
+    Tests that exercise the admin setup endpoint intentionally write PlatformSetting
+    rows. Django rolls those rows back, but the module cache survives the test and
+    otherwise makes later tests observe the rolled-back values (for example 77/149
+    canary pricing or 60/250 commission settings).
+    """
+    from core import system_config
+
+    system_config.clear_settings_cache()
+    yield
+    system_config.clear_settings_cache()
+
+
+@pytest.fixture(autouse=True)
 def offline_otp_provider(monkeypatch):
     """OTP now sends synchronously: ordinary auth tests must never send real codes."""
     import httpx

@@ -158,6 +158,9 @@ class AddressProofSectionOut(Schema):
     exists: bool = False
     photo: str | None = None
     status: str | None = None
+    analysis_started_at: str | None = None
+    poll_after_ms: int | None = None
+    expires_at: str | None = None
     reason: str | None = Field(
         None,
         description="Orientação PÚBLICA (o que fazer).",
@@ -301,6 +304,7 @@ class EducationIn(Schema):
     city: str
     state: str
     last_year_when: str | None = None
+    declaration_accepted: bool
 
 
 class EnrollmentOut(Schema):

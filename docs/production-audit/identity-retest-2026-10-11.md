@@ -1,5 +1,7 @@
 # Reteste real de RG e CNH — 11/10/2026
 
+Atualização posterior: as pendências técnicas de recuperação limitada do OCR, estados de revisão, motivos por etapa e mensagens de PDF foram corrigidas e retestadas na publicação `.92`, preservada pelo backend `.93`. Consulte o [encerramento e evidências atuais](identity-pending-closure-2026-10-12.md). O histórico abaixo preserva as falhas e o estado observado antes dessa correção.
+
 Escopo: documento de identidade do aluno e do candidato a promotor. Os arquivos foram escolhidos na interface de produção, com classificação e análise assíncrona reais na Cloudflare. A preparação e restauração dos estados de canário foram controladas no backend; não representam novos cadastros pela landing. Nenhum teste desta rodada alterou pagamentos ou enviou documentos de endereço/selfie.
 
 Resultado técnico observado: RG completo em JPG/PNG/PDF e RG separado nas duas ordens passaram. A CNH passou no reenvio final `.91`, com identidade conferida e registro/categoria/validade comparados ao original e persistidos. Duas chamadas anteriores do OCR Scout atingiram 60 s e ficaram em revisão: a instabilidade continua aberta e não foi escondida pelo sucesso posterior. Não há homologação de plataforma ou aprovação em nome do usuário.

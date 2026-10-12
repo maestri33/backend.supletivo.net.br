@@ -28,13 +28,8 @@ def upload_address_proof(*, user_external_id, upload) -> dict:
         _S.COMPLETED,
         _S.APPROVED,
     )
-    documents_iface.upload_photo(user_external_id, "address_proof_photo", upload)
+    _address_proof.receive_upload(user_external_id, upload)
     blocks.resolve_for_source(user=cand.user, source_type="address_proof")
-    ap = documents_iface.get_address_proof(user_external_id)
-    if ap is not None:
-        ap.validation_status = "pending"
-        ap.validation_result = {}
-        ap.save(update_fields=["validation_status", "validation_result"])
     from core.tasks import async_task
 
     async_task("users.roles.candidate.tasks.validate_address_proof", cand.id)
