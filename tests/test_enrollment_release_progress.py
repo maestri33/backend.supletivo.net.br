@@ -80,13 +80,19 @@ def test_missing_coordinator_and_payment_keep_unknown_facts_unknown(enrollment, 
     assert data["payment_confirmed"] is False
 
 
-def test_coordinator_name_does_not_publish_private_profile_phone(enrollment, monkeypatch):
+def test_contact_uses_manager_of_assigned_hub(enrollment, monkeypatch):
+    import uuid
+    from users.models import User
     from users.profiles.models import Profile
 
     Profile.objects.create(user=enrollment.hub.coordinator, name="Coordenadora do polo", phone="5541999990001")
+    promoter = User.objects.create_user(external_id=uuid.uuid4())
+    Profile.objects.create(user=promoter, name="Promotor", phone="5541999990002")
+    enrollment.promoter = promoter
     data = progress(enrollment, monkeypatch)
     assert data["coordinator_name"] == "Coordenadora do polo"
-    assert "5541999990001" not in str(data)
+    assert data["contact_url"] == "https://wa.me/5541999990001"
+    assert "5541999990002" not in str(data)
 
 
 def test_enrollment_me_schema_retains_public_release_progress(enrollment, monkeypatch):

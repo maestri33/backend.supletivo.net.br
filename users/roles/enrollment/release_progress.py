@@ -1,5 +1,7 @@
 """Public release progress derived from enrollment facts, without internal fees."""
 
+import phonenumbers
+
 from users.profiles import interface as profiles
 from users.roles.enrollment.models import Enrollment
 from users.roles.lead.models import Checkout
@@ -19,6 +21,15 @@ def release_dict(enrollment, *, rg_status, address_proof_status) -> dict | None:
 
     hub = enrollment.hub
     coordinator_profile = profiles.get(hub.coordinator) if hub.coordinator_id else None
+    contact_url = None
+    if coordinator_profile and coordinator_profile.phone:
+        try:
+            phone = phonenumbers.parse(coordinator_profile.phone, "BR")
+            if phonenumbers.is_possible_number(phone):
+                digits = phonenumbers.format_number(phone, phonenumbers.PhoneNumberFormat.E164).lstrip("+")
+                contact_url = f"https://wa.me/{digits}"
+        except phonenumbers.NumberParseException:
+            pass
     facts = service.fee_facts(enrollment)
     reviewed = (
         enrollment.selfie_status == "approved"
@@ -45,8 +56,8 @@ def release_dict(enrollment, *, rg_status, address_proof_status) -> dict | None:
         "next_action": next_action,
         "hub_name": hub.brand if hub.brand not in {"standard", "test", ""} else "Polo responsável",
         "coordinator_name": coordinator_profile.name if coordinator_profile else None,
-        # Hub has no dedicated public contact field. Never publish a private profile phone.
-        "contact_url": None,
+        # The hub manager owns student support once the paid lead becomes enrollment.
+        "contact_url": contact_url,
         "updated_at": enrollment.updated_at.isoformat() if enrollment.updated_at else None,
         "payment_confirmed": Checkout.objects.filter(lead__user_id=enrollment.user_id, is_paid=True).exists(),
         # Awaiting release is owned by the coordinator. Upload routes are gated to wizard states.
