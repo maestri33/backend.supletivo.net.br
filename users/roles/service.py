@@ -271,11 +271,16 @@ def resolve_user_roles_and_statuses(
     student_obj = _rel("student")
     enrollment_obj = _rel("enrollment")
     lead_obj = _rel("lead")
+    student_role_names = ("lead", "enrollment", "student", "veteran", "aluno")
+    has_student_role = any(r in raw for r in student_role_names)
+    retired_student = bool(user and not has_student_role and user.roles.filter(
+        role__in=student_role_names, revoked_at__isnull=False
+    ).exists())
     is_student = (
-        student_obj is not None
-        or enrollment_obj is not None
-        or lead_obj is not None
-        or any(r in raw for r in ("lead", "enrollment", "student", "veteran", "aluno"))
+        has_student_role
+        or (not retired_student and (
+            student_obj is not None or enrollment_obj is not None or lead_obj is not None
+        ))
     )
 
     if is_student:

@@ -101,6 +101,24 @@ def test_revoked_promoter_history_does_not_override_new_student_journey(client, 
     assert Promoter.objects.filter(pk=promoter.pk).exists()
 
 
+def test_revoked_student_history_does_not_offer_inaccessible_lead_tab(client, promoter):
+    from users.roles.lead.models import Lead
+    user = promoter.user
+    roles.grant(user, "lead")
+    lead = Lead.objects.create(user=user, promoter=user, status="paid")
+    tokens = jwt.issue(str(user.external_id), ["lead", "promoter"])
+    roles.revoke(user, "lead")
+    response = client.get("/api/v1/clients/whoami", HTTP_AUTHORIZATION=f"Bearer {tokens['access_token']}")
+    assert response.status_code == 200
+    assert response.json()["roles"] == ["promoter"]
+    assert response.json()["role_statuses"] == {"promoter": "active"}
+    assert Lead.objects.filter(pk=lead.pk, status="paid").exists()
+    roles.grant(user, "lead")
+    canonical, statuses = resolve_user_roles_and_statuses(user)
+    assert canonical == ["student", "promoter"]
+    assert statuses["student"] == "lead"
+
+
 @pytest.mark.parametrize(
     ("previous", "current", "expected_status"),
     [("lead", "enrollment", "enrollment"), ("enrollment", "student", "active")],
