@@ -15,7 +15,7 @@ def unconfigured_tts(monkeypatch, settings):
     monkeypatch.setattr(tts, "get_setting", lambda key, default="": default)
     for name in (
         "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "WORKERS_AI_GATEWAY_URL",
-        "WORKERS_AI_GATEWAY_TOKEN", "OMNIROUTER_API_KEY", "OPENCODE_API_KEY",
+        "WORKERS_AI_GATEWAY_TOKEN", "OMNIROUTER_API_KEY", "OMNIROUTE_API_KEY", "OPENCODE_API_KEY",
     ):
         monkeypatch.setattr(settings, name, "", raising=False)
     monkeypatch.setattr(settings, "WORKERS_AI_GATEWAY_URL", "", raising=False)
@@ -34,32 +34,23 @@ def test_unconfigured_speech_does_not_send_hardcoded_credentials(unconfigured_tt
 
     monkeypatch.setattr(httpx.Client, "post", unavailable)
 
-    with pytest.raises(tts.CloudflareTtsError, match="Cloudflare Workers AI TTS indisponível"):
+    with pytest.raises(tts.CloudflareTtsError, match="Nenhum provedor de TTS"):
         tts.synthesize_speech("Teste sem credenciais", caller="test.credentials")
 
     assert requested == []
 
 
-def test_configured_cloudflare_speech_provider_produces_real_cached_audio(
-    unconfigured_tts, monkeypatch, settings
-):
-    requested = []
-    monkeypatch.setattr(settings, "WORKERS_AI_GATEWAY_URL", "https://gateway.example.test", raising=False)
-    monkeypatch.setattr(settings, "WORKERS_AI_GATEWAY_TOKEN", "test-gateway-key", raising=False)
-    audio = b"test-provider-audio"
-
-    def synthesize(url, **kwargs):
-        requested.append((url, kwargs["headers"]["Authorization"]))
-        return httpx.Response(200, content=audio)
-
-    monkeypatch.setattr(httpx, "post", synthesize)
-
-    result = tts.synthesize_speech("Teste de credenciais Cloudflare", caller="test.credentials")
-
+def test_elevenlabs_failure_advances_to_multilingual(unconfigured_tts, monkeypatch, settings):
+    monkeypatch.setattr(settings, "OMNIROUTE_API_KEY", "configured-test-key", raising=False)
+    monkeypatch.setattr(settings, "OMNIROUTE_BASE_URL", "https://gateway.example.test/v1", raising=False)
+    calls = []
+    def post(self, url, **kwargs):
+        calls.append(kwargs["json"]["model"])
+        return httpx.Response(503, text="unavailable") if len(calls) == 1 else httpx.Response(200, content=b"provider-audio")
+    monkeypatch.setattr(httpx.Client, "post", post)
+    result = tts.synthesize_speech("Teste da cadeia", gender="M")
     assert result
-    assert requested == [("https://gateway.example.test/v1/audio/speech", "Bearer test-gateway-key")]
-    path = result.split("/media/", 1)[1]
-    assert Path(settings.MEDIA_ROOT, path).read_bytes() == audio
+    assert calls == ["elevenlabs/eleven_turbo_v2_5", "elevenlabs/eleven_multilingual_v2"]
 
 
 def test_cloudflare_tts_r2_cache_hit_returns_public_url(

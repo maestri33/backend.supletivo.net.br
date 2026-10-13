@@ -1,14 +1,9 @@
 """Módulo de Síntese de Voz (TTS) via Cloudflare Workers AI & R2 Storage.
 
-Diretivas Canônicas do Projeto (Victor Maestri):
-- Regra Cruzada de Gênero:
-    * Destinatário Masculino (M) -> Voz Feminina ('carina' / 'asteria' / 'Portuguese_SereneWoman')
-    * Destinatário Feminino (F)  -> Voz Masculina ('alvaro' / 'orion' / 'Portuguese_GentleTeacher')
-    * Desconhecido (None)        -> Voz Masculina fallback ('alvaro' / 'Portuguese_GentleTeacher')
-- Provedor Principal: Cloudflare Workers AI (@cf/deepgram/aura-2-es e @cf/deepgram/aura-1)
-- Fallback em Alta Disponibilidade: OmniRoute (10.0.1.35)
-- Armazenamento e Distribuição: Cloudflare R2 com CDN Global + Fallback em storage local.
-- Cache SHA-256 com zero reprocessamento de textos já sintetizados.
+TTS provider order: ElevenLabs Turbo via OmniRoute, ElevenLabs Multilingual,
+then Brazilian Edge-TTS. Cloudflare Aura Spanish is skipped for pt-BR.
+Male recipient -> female voice; female/unknown recipient -> male voice.
+Audio storage remains Cloudflare R2 with local storage fallback.
 """
 
 from __future__ import annotations
@@ -124,7 +119,9 @@ def _get_omniroute_credentials() -> tuple[str, str]:
     else:
         endpoint = url
     token = (
-        get_setting("OMNIROUTER_API_KEY", "")
+        get_setting("OMNIROUTE_API_KEY", "")
+        or get_setting("OMNIROUTER_API_KEY", "")
+        or getattr(settings, "OMNIROUTE_API_KEY", "")
         or getattr(settings, "OMNIROUTER_API_KEY", "")
         or getattr(settings, "OPENCODE_API_KEY", "")
         or ""
@@ -143,30 +140,6 @@ def synthesize_speech(
     spoken_text = clean_text_for_speech(text)
     if not spoken_text:
         return None
-
-    # Production uses only the protected Cloudflare gateway. There is no external
-    # provider or synthetic fallback when Workers AI is unavailable.
-    from integrations.ai.cloudflare import audio_speech, cloudflare_only
-    if cloudflare_only():
-        voice = resolve_cross_gender_voice(gender)["aura2_speaker"]
-        cache_key = f"tts:@cf/deepgram/aura-2-es:{voice}:{spoken_text}"
-        audio_hash = hashlib.sha256(cache_key.encode("utf-8")).hexdigest()[:24]
-        rel_path = f"ai/tts/{audio_hash}.mp3"
-        ext_base = (get_setting("EXTERNAL_URL", "") or getattr(settings, "EXTERNAL_URL", "") or "https://backend.supletivo.net.br").rstrip("/")
-        local_public_url = f"{ext_base}/media/{rel_path}"
-        if default_storage.exists(rel_path):
-            return get_r2_public_url(rel_path) if is_r2_configured() else local_public_url
-        try:
-            audio_bytes = audio_speech(spoken_text, voice=voice, caller=caller, timeout=timeout)
-        except Exception as exc:
-            logger.error("tts.cloudflare_gateway_failed", caller=caller, error=str(exc)[:160])
-            raise CloudflareTtsError("Cloudflare Workers AI TTS indisponível.") from exc
-        save_media_at(path=rel_path, data=audio_bytes)
-        if is_r2_configured():
-            r2_url = upload_to_r2(content=audio_bytes, key=rel_path, content_type="audio/mpeg")
-            if r2_url:
-                return r2_url
-        return local_public_url
 
     voice_cfg = resolve_cross_gender_voice(gender)
     chosen_model = voice_cfg["eleven_model"]
@@ -253,27 +226,10 @@ def synthesize_speech(
             failures.append(f"omni/eleven-v2: {exc}")
             logger.warning("tts.provider_failed", provider="omniroute_elevenlabs_v2", error=str(exc))
 
-    # 4. Tentativa 3: Fallback Cloudflare Workers AI - Deepgram Aura-2
+    # Aura's Spanish voices cannot satisfy Brazilian Portuguese notifications.
+    # Keep the legacy slot explicit, then proceed to the Brazilian fallback.
     if not audio_bytes:
-        token, account_id = _get_cf_credentials()
-        cf_headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        }
-        try:
-            if not token or not account_id:
-                raise CloudflareTtsError("Cloudflare TTS não configurado.")
-            url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/deepgram/aura-2-es"
-            payload = {"text": spoken_text, "speaker": voice_cfg["aura2_speaker"]}
-            with httpx.Client(timeout=timeout) as client:
-                resp = client.post(url, json=payload, headers=cf_headers)
-                if resp.status_code == 200 and resp.content:
-                    audio_bytes = resp.content
-                    logger.info("tts.cf_fallback_success", model="@cf/deepgram/aura-2-es")
-                else:
-                    failures.append(f"cf/aura-2-es ({resp.status_code}): {resp.text[:100]}")
-        except Exception as exc:
-            failures.append(f"cf/aura-2-es: {exc}")
+        failures.append("cf/aura-2-es: Portuguese Brazilian voice unsupported")
 
     # 5. Tentativa 4: Edge-TTS Neural (pt-BR-AntonioNeural / pt-BR-FranciscaNeural)
     if not audio_bytes:
