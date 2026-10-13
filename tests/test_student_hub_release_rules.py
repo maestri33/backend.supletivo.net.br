@@ -317,6 +317,54 @@ def test_hub_review_queue_resolves_stale_document_helpers(process):
     assert reviews == {"rg": [], "selfie": [], "address_proof": []}
 
 
+def test_student_partner_fees_show_actual_schedule_without_internal_errors(process):
+    from api.clients.schemas import StudentMeOut
+    student, enrollment, _ = process
+    due = timezone.now() + timedelta(days=10)
+    PaymentRequest.objects.create(kind="fee", method="pix_qr", amount="1.01", status="paid", external_reference=enrollment_service._fee_now_ref(enrollment), last_error="internal provider response")
+    PaymentRequest.objects.create(kind="fee", method="pix_qr", amount="1.02", status="queued", scheduled_for=due, external_reference=enrollment_service._fee_due_ref(enrollment))
+    data = StudentMeOut.model_validate(student_service.to_dict(student)).model_dump()
+    fees = data["partner_fees"]
+    assert fees["first_paid"] is True
+    assert fees["second_scheduled"] is True
+    assert fees["first"]["amount"] == "1.01"
+    assert fees["second"]["scheduled_for"] == due.isoformat()
+    assert "last_error" not in fees["first"]
+
+
+def test_lead_contacts_follow_assigned_promoter_and_hub(process):
+    from api.clients.schemas import LeadMeOut
+    _, _, checkout = process
+    data = LeadMeOut.model_validate(lead_service.lead_self_dict(checkout.lead)).model_dump()
+    assert data["promoter"]["contact_url"] == "https://wa.me/5543990000001"
+    assert data["hub"]["name"] == "unit"
+    assert data["hub"]["coordinator_name"] == "Unit coordinator"
+    assert data["hub"]["contact_url"] == data["promoter"]["contact_url"]
+
+
+def test_lead_pricing_cannot_change_an_issued_charge(process):
+    _, _, checkout = process
+    with pytest.raises(Conflict) as error:
+        lead_service.update_unissued_pricing(str(checkout.lead.external_id), pix="999", card_installment="99", card_installments=12)
+    assert error.value.code == "LEAD_PRICING_LOCKED"
+    checkout.refresh_from_db()
+    assert checkout.amount == Decimal("1.01")
+
+
+def test_lead_pricing_updates_only_unissued_proposal(process):
+    _, _, checkout = process
+    lead = checkout.lead
+    checkout.delete()
+    lead.status = Lead.Status.PENDING
+    lead.save(update_fields=["status"])
+    updated = lead_service.update_unissued_pricing(str(lead.external_id), pix="999.00", card_installment="99.00", card_installments=12)
+    updated.refresh_from_db()
+    assert updated.pix_price == Decimal("999.00")
+    assert updated.card_price == Decimal("1188.00")
+    assert updated.pricing_snapshot["promo_card"] is None
+    assert updated.get_pricing_dict()["card"] == {"installments": 12, "installment": "99.00", "total": "1188.00"}
+
+
 @pytest.mark.parametrize("state", ["failed", "cancelled", "awaiting_balance", "awaiting_pix"])
 def test_failed_or_unfunded_second_fee_does_not_allow_conclusion(process, state):
     from users.roles.enrollment.fees_events import fee_facts, batch_fee_facts

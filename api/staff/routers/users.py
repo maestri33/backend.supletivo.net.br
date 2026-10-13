@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from ninja import Query, Router
+from ninja import Schema, Field
+from decimal import Decimal
+from api.clients.schemas import LeadMeOut
 
 from api.auth import require_superuser
 from api.staff.schemas import (
@@ -31,6 +34,29 @@ from users.roles.lead import service as lead_iface
 from users.roles.student import service as student_iface
 
 router = Router(tags=["staff"])
+
+
+class LeadPricingIn(Schema):
+    pix: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    card_installment: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    card_installments: int = Field(ge=1, le=12)
+
+
+@router.get("/leads/{external_id}", response=LeadMeOut, summary="Consultar proposta e responsáveis do lead")
+def lead_detail(request, external_id: str):
+    require_superuser(request.auth)
+    lead = lead_iface.get_by_external_id(external_id)
+    if lead is None:
+        raise NotFound("Lead não encontrado.", code="LEAD_NOT_FOUND")
+    return lead_iface.lead_self_dict(lead)
+
+
+@router.put("/leads/{external_id}/pricing", response=LeadMeOut, summary="Editar valores antes de emitir cobrança")
+def lead_pricing(request, external_id: str, payload: LeadPricingIn):
+    require_superuser(request.auth)
+    lead = lead_iface.update_unissued_pricing(external_id, pix=payload.pix,
+        card_installment=payload.card_installment, card_installments=payload.card_installments)
+    return lead_iface.lead_self_dict(lead)
 
 
 @router.get("/leads", response=list[StaffLeadOut], tags=["lead"], summary="Listar todos os leads")

@@ -373,6 +373,7 @@ def referral_name(ref) -> str | None:
     return name.split()[0] if name else None
 
 
+@transaction.atomic
 def _create_checkout_row(lead: Lead, method: str) -> Checkout:
     """Cria a LINHA do checkout (local, sem rede) com o token do link curto já gerado.
 
@@ -380,6 +381,7 @@ def _create_checkout_row(lead: Lead, method: str) -> Checkout:
     chamado pela task async (com retry) ou pelo clique no link curto (lazy)."""
     from decimal import Decimal
 
+    lead = Lead.objects.select_for_update().get(pk=lead.pk)
     pricing = lead.get_pricing_dict()
     if method == "pix":
         provider = Checkout.Provider.ASAAS
@@ -1124,6 +1126,22 @@ def lead_self_dict(lead: Lead) -> dict:
     c = getattr(lead, "checkout", None)
     customer = profiles.get(lead.user)
     promoter = profiles.get(lead.promoter)
+    # A captação sempre conserva o promotor original. O polo é resolvido pelas relações reais
+    # do promotor (ou, no caso do promotor padrão, pelo polo que o coordena); não há fallback
+    # sintético para a visão do lead.
+    hub = None
+    promoter_role = getattr(lead.promoter, "promoter", None)
+    candidate_role = getattr(lead.promoter, "candidate", None)
+    if promoter_role is not None:
+        hub = promoter_role.hub
+    elif candidate_role is not None:
+        hub = candidate_role.hub
+    else:
+        from hub.models import Hub
+
+        hub = Hub.objects.filter(coordinator=lead.promoter).first()
+
+    coordinator_profile = profiles.get(hub.coordinator) if hub and hub.coordinator_id else None
     checkout = None
     if c is not None:
         checkout = _checkout_dict(c)
@@ -1144,10 +1162,40 @@ def lead_self_dict(lead: Lead) -> dict:
         "promoter": {
             "external_id": str(lead.promoter.external_id),
             "name": promoter.name if promoter else None,
+            "contact_url": _whatsapp_url(promoter.phone if promoter else None) or None,
         },
+        "hub": {
+            "name": hub.brand if hub else None,
+            "coordinator_name": coordinator_profile.name if coordinator_profile else None,
+            "contact_url": _whatsapp_url(coordinator_profile.phone if coordinator_profile else None) or None,
+        } if hub else None,
         "checkout": checkout,
         "pricing": lead.get_pricing_dict(),
     }
+
+
+@transaction.atomic
+def update_unissued_pricing(external_id: str, *, pix, card_installment, card_installments: int) -> Lead:
+    """Override explícito de proposta sem cobrança; valores emitidos permanecem imutáveis."""
+    from decimal import Decimal
+    from users.exceptions import Conflict, NotFound, ValidationError
+    lead = Lead.objects.select_for_update().filter(external_id=external_id).first()
+    if lead is None:
+        raise NotFound("Lead não encontrado.", code="LEAD_NOT_FOUND")
+    if lead.status == Lead.Status.PAID or Checkout.objects.filter(lead=lead).exists():
+        raise Conflict("A proposta já possui cobrança emitida. Os valores dessa cobrança devem ser preservados.", code="LEAD_PRICING_LOCKED")
+    pix, installment = Decimal(str(pix)), Decimal(str(card_installment))
+    if not pix.is_finite() or not installment.is_finite() or pix <= 0 or installment <= 0 or not 1 <= card_installments <= 12:
+        raise ValidationError("Informe valores positivos e de 1 a 12 parcelas.", code="INVALID_PRICING")
+    snapshot = dict(lead.get_pricing_dict())
+    card = {"installments": card_installments, "installment": f"{installment:.2f}", "total": f"{installment * card_installments:.2f}"}
+    snapshot.update(pix=f"{pix:.2f}", card=card, promo_pix=None, promo_card=None, has_discount=False)
+    lead.pix_price, lead.card_price = pix, installment * card_installments
+    lead.card_installment, lead.card_installments = installment, card_installments
+    lead.has_discount, lead.pricing_snapshot = False, snapshot
+    lead.save(update_fields=["pix_price", "card_price", "card_installment", "card_installments", "has_discount", "pricing_snapshot", "updated_at"])
+    logger.info("lead.pricing_updated", external_id=str(lead.external_id))
+    return lead
 
 
 def pricing(ref: str | None = None) -> dict:

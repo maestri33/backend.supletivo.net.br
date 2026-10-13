@@ -123,6 +123,17 @@ class LeadPromoterOut(Schema):
         description="external_id do USER do promotor (o mesmo do `?ref=` da landing)"
     )
     name: str | None = None
+    contact_url: str | None = Field(
+        None, description="WhatsApp do promotor responsável, quando o número está disponível."
+    )
+
+
+class LeadHubOut(Schema):
+    name: str | None = None
+    coordinator_name: str | None = None
+    contact_url: str | None = Field(
+        None, description="WhatsApp do coordenador do polo, quando o número está disponível."
+    )
 
 
 class LeadSelfCheckoutOut(Schema):
@@ -148,6 +159,7 @@ class LeadMeOut(Schema):
     created_at: str
     customer: LeadCustomerOut
     promoter: LeadPromoterOut
+    hub: LeadHubOut | None = None
     checkout: LeadSelfCheckoutOut | None = None
     pricing: PricingOut | None = None
 
@@ -221,6 +233,20 @@ class StudentDiplomaOut(Schema):
     transcript_file: str | None = None
 
 
+class StudentPartnerFeeOut(Schema):
+    status: str
+    amount: str
+    scheduled_for: str | None = None
+    paid: bool = False
+
+
+class StudentPartnerFeesOut(Schema):
+    first: StudentPartnerFeeOut | None = None
+    second: StudentPartnerFeeOut | None = None
+    first_paid: bool = False
+    second_scheduled: bool = False
+
+
 class StudentMeOut(Schema):
     external_id: str = Field(
         description="external_id do STUDENT (≠ do user, ≠ da matrícula)"
@@ -237,6 +263,10 @@ class StudentMeOut(Schema):
     exam_block_reason: str | None = None
     exams: list[dict[str, Any]] = Field(default_factory=list)
     platform: StudentPlatformFields
+    partner_fees: StudentPartnerFeesOut | None = Field(
+        None,
+        description="As duas taxas reais pagas/agendadas pelo polo para a instituição parceira.",
+    )
     documents: list[StudentDocumentOut]
     pendencies: list[StudentPendencyOut]
     diploma: StudentDiplomaOut | None = None

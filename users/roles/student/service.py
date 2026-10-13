@@ -231,6 +231,34 @@ def to_dict(student: Student) -> dict:
         available_at = exam_available_at(student)
     except StudentError as exc:
         block_reason = exc.detail
+    # As taxas da instituição parceira pertencem à matrícula e são lidas da fila financeira
+    # real. O aluno recebe somente estado, valor e agenda; detalhes internos de erro nunca saem
+    # pela API de cliente.
+    partner_fees = None
+    from users.roles.enrollment.models import Enrollment
+    enrollment = Enrollment.objects.filter(user=student.user).first()
+    if enrollment is not None:
+        from users.roles.enrollment.fees_events import fee_facts
+
+        facts = fee_facts(enrollment)
+
+        def public_fee(value):
+            if value is None:
+                return None
+            return {
+                "status": value.get("status"),
+                "amount": value.get("amount"),
+                "scheduled_for": value.get("scheduled_for"),
+                "paid": bool(value.get("paid")),
+            }
+
+        partner_fees = {
+            "first": public_fee(facts.get("first")),
+            "second": public_fee(facts.get("second")),
+            "first_paid": bool(facts.get("first_paid")),
+            "second_scheduled": bool(facts.get("second_scheduled")),
+        }
+
     return {
         "external_id": str(student.external_id),
         "status": student.status,
@@ -253,6 +281,7 @@ def to_dict(student: Student) -> dict:
             "password": student.platform_password,
             "notes": student.platform_notes,
         },
+        "partner_fees": partner_fees,
         "documents": _student_documents_dict(student),
         "pendencies": [
             {
