@@ -187,7 +187,6 @@ def synthesize_speech(
     if default_storage.exists(rel_path):
         logger.info("tts.cache_hit", hash=audio_hash, caller=caller)
         if is_r2_configured():
-            from integrations.cloudflare.r2 import get_r2_public_url
             return get_r2_public_url(rel_path)
         return local_public_url
 

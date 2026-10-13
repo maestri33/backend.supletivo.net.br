@@ -60,3 +60,23 @@ def test_configured_cloudflare_speech_provider_produces_real_cached_audio(
     assert requested == [("https://gateway.example.test/v1/audio/speech", "Bearer test-gateway-key")]
     path = result.split("/media/", 1)[1]
     assert Path(settings.MEDIA_ROOT, path).read_bytes() == audio
+
+
+def test_cloudflare_tts_r2_cache_hit_returns_public_url(
+    unconfigured_tts, monkeypatch
+):
+    """A cached Cloudflare/R2 voice note must not hit an unbound local import."""
+    from integrations.ai import cloudflare
+
+    monkeypatch.setattr(cloudflare, "cloudflare_only", lambda: True)
+    monkeypatch.setattr(tts.default_storage, "exists", lambda path: True)
+    monkeypatch.setattr(tts, "is_r2_configured", lambda: True)
+    monkeypatch.setattr(
+        tts,
+        "get_r2_public_url",
+        lambda path: f"https://media.example.test/{path}",
+    )
+
+    result = tts.synthesize_speech("Mensagem em cache", gender="M", caller="test.cache")
+
+    assert result.startswith("https://media.example.test/ai/tts/")
