@@ -255,6 +255,11 @@ class IdentityIn(Schema):
 
 class IdentityOut(Schema):
     cpf: str
+    status: str = "success"
+    pending: bool = False
+    lookup_id: str | None = None
+    attempts: int = 0
+    last_error: str | None = None
     name: str | None = None
     birth_date: str | None = Field(
         None, description="ISO YYYY-MM-DD — o front calcula a idade"

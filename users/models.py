@@ -6,7 +6,7 @@ Os models vivem nos sub-módulos (auth/profiles/roles/otp) pra ficar tudo "MUITO
 """
 
 from users.address.models import Address
-from users.auth.models import User, UserManager
+from users.auth.models import CpfHubLookup, User, UserManager
 from users.auth.otp.models import OtpCode, OtpRateLimit
 from users.blocks.models import ValidationBlock
 from users.documents.models import (
@@ -33,6 +33,7 @@ from users.roles.student.models import (
 from users.roles.training.models import Material, MaterialAssignment, Submission
 
 __all__ = [
+    "CpfHubLookup",
     "User",
     "UserManager",
     "Profile",

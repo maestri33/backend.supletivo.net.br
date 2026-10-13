@@ -85,3 +85,34 @@ class User(ExternalIdModel, AbstractBaseUser, PermissionsMixin):
 
     def __str__(self) -> str:
         return str(self.external_id)
+
+
+class CpfHubLookup(ExternalIdModel):
+    """Fila persistente de consultas CPFHub executada pelo worker."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "aguardando CPFHub"
+        SUCCESS = "success", "identidade confirmada"
+        NOT_FOUND = "not_found", "CPF não encontrado"
+
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.CASCADE, related_name="cpfhub_lookups")
+    cpf = models.CharField("CPF", max_length=11, unique=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.CharField(max_length=255, blank=True, default="")
+    last_status_code = models.PositiveSmallIntegerField(null=True, blank=True)
+    identity_name = models.CharField(max_length=200, null=True, blank=True)
+    identity_gender = models.CharField(max_length=1, null=True, blank=True)
+    identity_birth_date = models.DateField(null=True, blank=True)
+    next_attempt_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    lease_until = models.DateTimeField(null=True, blank=True)
+    alert_pending = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "users"
+        db_table = "users_cpfhublookup"
+
+    def __str__(self) -> str:
+        return f"cpfhub<{self.external_id}:{self.status}>"

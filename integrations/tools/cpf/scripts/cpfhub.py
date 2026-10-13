@@ -119,11 +119,10 @@ async def lookup(cpf: str) -> CpfIdentity | None:
 
     body = _json_or_none(resp)
     if not isinstance(body, dict) or not body.get("success"):
-        logger.info("cpfhub.unsuccessful")
-        return None
+        raise CpfHubError(200, "CPFHub devolveu resposta inconclusiva")
     data = body.get("data")
     if not isinstance(data, dict):
-        return None
+        raise CpfHubError(200, "CPFHub devolveu identidade incompleta")
     return _parse_identity(digits, data)
 
 

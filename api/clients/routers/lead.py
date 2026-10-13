@@ -77,11 +77,18 @@ def lead_pix_page(request, token: str):
 
 @router.post("/identity", response=IdentityOut, summary="Confirmação de CPF (Passo 3)")
 def lead_identity(request, payload: IdentityIn):
-    """Passo 3 — confirma o CPF e devolve a identidade (pergaminho)."""
+    """Passo 3 — enfileira a confirmação CPFHub e devolve o estado do job."""
     require_roles(request.auth, "lead")
     return auth_iface.confirm_identity(
         user_external_id=request.auth.external_id, cpf=payload.cpf
     )
+
+
+@router.get("/identity/status", response=IdentityOut, summary="Estado da confirmação CPFHub")
+def lead_identity_status(request):
+    """Consulta o último job CPFHub do lead sem repetir chamada externa."""
+    require_roles(request.auth, "lead")
+    return auth_iface.get_identity_lookup(user_external_id=request.auth.external_id)
 
 
 @router.post("/email", response=EmailOut, summary="Gravação de e-mail (Passo 5)")
