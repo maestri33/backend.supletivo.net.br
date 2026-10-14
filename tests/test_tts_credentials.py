@@ -71,3 +71,19 @@ def test_cloudflare_tts_r2_cache_hit_returns_public_url(
     result = tts.synthesize_speech("Mensagem em cache", gender="M", caller="test.cache")
 
     assert result.startswith("https://media.example.test/ai/tts/")
+
+
+@pytest.mark.parametrize("gender,voice", [("M", "RGymW84CSmfVugnA5tvA"), ("F", "Zk0wRqIFBWGMu2lIk7hw")])
+def test_direct_elevenlabs_uses_brazilian_voice_and_model_fallback(unconfigured_tts, monkeypatch, gender, voice):
+    config = {"ELEVENLABS_API_KEY": "test-key", "ELEVENLABS_VOICE_FEMALE": "RGymW84CSmfVugnA5tvA", "ELEVENLABS_VOICE_MALE": "Zk0wRqIFBWGMu2lIk7hw"}
+    monkeypatch.setattr(tts, "get_setting", lambda key, default="": config.get(key, default))
+    calls = []
+    def post(self, url, **kwargs):
+        calls.append((url, kwargs))
+        return httpx.Response(503) if len(calls) == 1 else httpx.Response(200, content=b"audio", headers={"Content-Type": "audio/mpeg"})
+    monkeypatch.setattr(httpx.Client, "post", post)
+    assert tts.synthesize_speech("Teste direto brasileiro", gender=gender)
+    assert [c[1]["json"]["model_id"] for c in calls] == ["eleven_turbo_v2_5", "eleven_multilingual_v2"]
+    assert all(c[0] == "https://api.elevenlabs.io/v1/text-to-speech/" + voice for c in calls)
+    assert all(c[1]["json"]["language_code"] == "pt" for c in calls)
+    assert all(c[1]["headers"] == {"xi-api-key": "test-key"} for c in calls)

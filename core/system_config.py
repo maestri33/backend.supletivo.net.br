@@ -42,6 +42,9 @@ COMMISSION_KEYS = {
 }
 
 INTEGRATION_KEYS = {
+    "ELEVENLABS_API_KEY": True,
+    "ELEVENLABS_VOICE_FEMALE": False,
+    "ELEVENLABS_VOICE_MALE": False,
     "ASAAS_API_KEY": True,  # is_secret
     "ASAAS_BASE_URL": False,
     "ASAAS_WEBHOOK_SECRET": True,
