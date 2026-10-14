@@ -39,7 +39,7 @@ def test_g5_pagamento_tardio_ainda_confirma():
     Payment.objects.create(
         payment_id="chg_g5b", kind=Payment.Kind.CHARGE, status="PENDING", amount=100
     )
-    payload = {"payment": {"externalReference": "chg_g5b", "id": "a2"}}
+    payload = {"payment": {"externalReference": "chg_g5b", "id": "a2", "value": 100}}
     row, reason = _apply_charge(payload, "PAYMENT_CONFIRMED")
     assert row is not None and row.status == "PAID"
 

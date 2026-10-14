@@ -42,7 +42,7 @@ def test_g4_webhook_propaga_falha_do_handler(monkeypatch):
 
     payload = {
         "event": "PAYMENT_CONFIRMED",
-        "payment": {"externalReference": "chg_g4", "id": "a1"},
+        "payment": {"externalReference": "chg_g4", "id": "a1", "value": 100},
     }
     with pytest.raises(RuntimeError):
         webhooks.handle_event(payload)
@@ -71,7 +71,7 @@ def test_g4_retry_redispatcha_payment_ja_pago(monkeypatch):
 
     payload = {
         "event": "PAYMENT_CONFIRMED",
-        "payment": {"externalReference": "chg_g4b", "id": "a2"},
+        "payment": {"externalReference": "chg_g4b", "id": "a2", "value": 100},
     }
     webhooks.handle_event(payload)
 

@@ -24,7 +24,7 @@ def test_infinitepay_check_outage_does_not_acknowledge_payment(monkeypatch):
     from integrations.bank.infinitepay.client import InfinitePayError
     from integrations.bank.infinitepay.models import Checkout, WebhookEvent
 
-    row = Checkout.objects.create(amount_cents=99900, description="test", status="PENDING")
+    row = Checkout.objects.create(amount_cents=99900, description="test", status="PENDING", request_payload={"handle": "original-handle"})
 
     async def unavailable(*args):
         raise InfinitePayError("provider unavailable", status_code=503)

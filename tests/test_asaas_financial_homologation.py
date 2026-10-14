@@ -453,7 +453,7 @@ def test_webhook_payment_overdue_and_anti_downgrade(lead_with_checkout):
 
     payload_paid = {
         "event": "PAYMENT_RECEIVED",
-        "payment": {"id": payment.asaas_id, "externalReference": payment.payment_id},
+        "payment": {"id": payment.asaas_id, "externalReference": payment.payment_id, "value": str(payment.amount)},
     }
     asaas_webhooks.handle_event(payload_paid)
     payment.refresh_from_db()

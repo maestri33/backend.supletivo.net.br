@@ -167,7 +167,7 @@ def test_student_complete_journey_e2e(client: Client, default_hub: Hub, temp_med
     checkout = Checkout.objects.get(lead__user__external_id=user_ext_id)
     checkout.provider_payment_id = "pay_student_e2e_01"
     checkout.save(update_fields=["provider_payment_id"])
-    assert lead_iface.mark_paid(provider=checkout.provider, provider_payment_id="pay_student_e2e_01")
+    assert lead_iface.mark_paid(provider=checkout.provider, provider_payment_id="pay_student_e2e_01", amount_cents=int(checkout.amount * 100))
 
     # Atualiza token com a nova role 'enrollment'
     user = User.objects.get(external_id=user_ext_id)

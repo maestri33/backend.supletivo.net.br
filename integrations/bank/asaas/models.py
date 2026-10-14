@@ -11,6 +11,7 @@ Convenções (CONVENTION §4/§6/§8):
 """
 
 from django.db import models
+from django.utils import timezone
 
 from core.models import ExternalIdModel
 
@@ -111,6 +112,8 @@ class Payment(models.Model):
     invoice_url = models.URLField(
         max_length=500, null=True, blank=True
     )  # URL da fatura hospedada no Asaas
+    receipt_url = models.URLField(max_length=500, null=True, blank=True)
+    confirmation_payload = models.JSONField(default=dict)
     identification_field = models.CharField(
         max_length=128, null=True, blank=True
     )  # Linha digitável do boleto
@@ -157,6 +160,13 @@ class WebhookEvent(models.Model):
     payload = models.JSONField(default=dict)
     forwarded_ok = models.BooleanField(default=False)
     forwarded_at = models.DateTimeField(null=True, blank=True)
+    processing_state = models.CharField(max_length=12, default="pending", db_index=True)
+    attempts = models.PositiveIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(default=timezone.now, db_index=True)
+    lease_until = models.DateTimeField(null=True, blank=True)
+    lease_token = models.UUIDField(null=True, blank=True)
+    last_error_code = models.CharField(max_length=64, blank=True, default="")
+    processed_at = models.DateTimeField(null=True, blank=True)
     source_ip = models.CharField(max_length=64, null=True, blank=True)
     user_agent = models.TextField(null=True, blank=True)
 

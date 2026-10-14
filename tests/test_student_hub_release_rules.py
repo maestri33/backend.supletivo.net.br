@@ -226,11 +226,11 @@ def test_mark_paid_captures_observed_confirmation_once(process, monkeypatch):
     Checkout.objects.filter(pk=checkout.pk).update(is_paid=False, paid_at=None)
     observed = datetime(2026, 10, 11, 12, tzinfo=SP)
     monkeypatch.setattr(timezone, "now", lambda: observed)
-    assert lead_service.mark_paid(provider=checkout.provider, provider_payment_id=checkout.provider_payment_id)
+    assert lead_service.mark_paid(provider=checkout.provider, provider_payment_id=checkout.provider_payment_id, amount_cents=int(Decimal(str(checkout.amount)) * 100))
     checkout.refresh_from_db()
     assert checkout.paid_at == observed
     monkeypatch.setattr(timezone, "now", lambda: observed + timedelta(days=1))
-    assert lead_service.mark_paid(provider=checkout.provider, provider_payment_id=checkout.provider_payment_id)
+    assert lead_service.mark_paid(provider=checkout.provider, provider_payment_id=checkout.provider_payment_id, amount_cents=int(Decimal(str(checkout.amount)) * 100))
     checkout.refresh_from_db()
     assert checkout.paid_at == observed
     assert Commission.objects.filter(source_type=Commission.Source.LEAD, source_external_id=checkout.lead.external_id).count() == 1

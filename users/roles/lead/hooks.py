@@ -18,6 +18,7 @@ def on_payment_paid(
         provider=provider,
         provider_payment_id=provider_payment_id,
         receipt_url=receipt_url,
+        amount_cents=amount_cents,
     )
 
 

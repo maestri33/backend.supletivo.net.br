@@ -113,7 +113,7 @@ def test_paid_referral_uses_candidates_hub_and_retains_commission(candidate):
     documents.create_empty(student)
     lead = Lead.objects.create(user=student, promoter=candidate.user)
     checkout = Checkout.objects.create(lead=lead, provider="asaas", provider_payment_id="offline-candidate-sale", amount=999)
-    assert mark_paid(provider="asaas", provider_payment_id=checkout.provider_payment_id)
+    assert mark_paid(provider="asaas", provider_payment_id=checkout.provider_payment_id, amount_cents=int(checkout.amount * 100))
     assert Enrollment.objects.get(user=student).hub == candidate.hub
     run_weekly_closing(reference_date=next_closing_at())
     assert Commission.objects.get(payee=candidate.user).status == Commission.Status.PENDING

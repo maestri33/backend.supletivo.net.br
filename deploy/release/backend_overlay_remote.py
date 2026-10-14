@@ -115,6 +115,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("inspect", "build", "preflight", "migrate", "promote", "rollback"))
     parser.add_argument("--expected-artifact", help="Exact artifact SHA from the reviewed manifest")
+    parser.add_argument("--skip-backup", action="store_true", help="Owner-authorized test-only database; record the omission explicitly")
     args = parser.parse_args()
     manifest = json.loads((STAGE / "manifest.json").read_text())
     # Compose interpolates the established PEMs. Read them from the running web
@@ -171,16 +172,17 @@ def main() -> None:
         return
     if args.action == "migrate":
         backup = STAGE / "database-before-migration.dump"
-        if backup.exists():
+        if backup.exists() and not args.skip_backup:
             raise RuntimeError("Backup already exists; inspect the earlier migration action")
-        with backup.open("xb") as output:
-            result = subprocess.run(["docker", "exec", "v7m-postgres", "sh", "-c", 'pg_dump -U "$POSTGRES_USER" -d supletivo_backend -Fc'], stdout=output, stderr=subprocess.PIPE, timeout=120)
-        if result.returncode or backup.stat().st_size < 1000:
-            raise RuntimeError("Database backup failed; migration was not started")
+        if not args.skip_backup:
+            with backup.open("xb") as output:
+                result = subprocess.run(["docker", "exec", "v7m-postgres", "sh", "-c", 'pg_dump -U "$POSTGRES_USER" -d supletivo_backend -Fc'], stdout=output, stderr=subprocess.PIPE, timeout=120)
+            if result.returncode or backup.stat().st_size < 1000:
+                raise RuntimeError("Database backup failed; migration was not started")
         targets = manifest.get("migration_targets", [["users", "0043"]])
         for app, number in targets:
             run([*compose("compose.override.json"), "run", "--rm", "--no-deps", "backend-web", "python", "manage.py", "migrate", app, number, "--noinput"], timeout=120)
-        record = {"backup_file": backup.name, "backup_bytes": backup.stat().st_size, "backup_sha256": digest(backup.read_bytes()), "migrations": targets, "applied_at": datetime.now(timezone.utc).isoformat(), "restore_tested": False}
+        record = {"backup_file": backup.name if not args.skip_backup else None, "backup_bytes": backup.stat().st_size if not args.skip_backup else None, "backup_sha256": digest(backup.read_bytes()) if not args.skip_backup else None, "backup_skipped_owner_test_data": args.skip_backup, "migrations": targets, "applied_at": datetime.now(timezone.utc).isoformat(), "restore_tested": False}
         (STAGE / "migration-result.json").write_text(json.dumps(record, indent=2) + "\n")
         print(json.dumps(record))
         return

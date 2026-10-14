@@ -6,6 +6,7 @@ Payment.status (só altera estado DENTRO do app Asaas). O payload bruto permanec
 """
 
 import structlog
+from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.utils import timezone
 
@@ -71,7 +72,7 @@ def is_insufficient_balance_reason(reason: str | None) -> bool:
     return any(hint in reason for hint in _INSUFFICIENT_BALANCE_HINTS)
 
 
-def handle_event(payload, source_ip=None, user_agent=None):
+def handle_event(payload, source_ip=None, user_agent=None, *, event_row=None):
     """Persiste o evento bruto e roteia. Retorna o WebhookEvent.
 
     A persistência do evento NÃO é protegida (se o banco falhar, a view 500a e o Asaas re-tenta).
@@ -79,7 +80,7 @@ def handle_event(payload, source_ip=None, user_agent=None):
     """
     event = payload.get("event") if isinstance(payload, dict) else None
 
-    row = WebhookEvent.objects.create(
+    row = event_row or WebhookEvent.objects.create(
         event=event or "",
         payload=payload if isinstance(payload, dict) else {"_raw": payload},
         source_ip=source_ip,
@@ -93,11 +94,11 @@ def handle_event(payload, source_ip=None, user_agent=None):
         elif isinstance(event, str) and event.startswith("TRANSFER_"):
             payment, reason = _apply_payout(payload, event)
     except Exception as exc:  # roteamento falhou -> não perde o evento, cai no fallback
-        logger.error("webhook_apply_failed", asaas_event=event, error=str(exc))
+        logger.error("webhook_apply_failed", asaas_event=event, code="processing_failed")
         raise
 
     if payment is not None:
-        consumed = False
+        consumed = payment.kind in _PAYOUT_KINDS or payment.status not in ("PAID", "REFUNDED", "DISPUTED")
         if payment.status == "PAID" and payment.kind in (Payment.Kind.CHARGE, Payment.Kind.STATIC_PIX_QR):
             consumed = core_hooks.dispatch(
                 "payment.paid",
@@ -106,8 +107,7 @@ def handle_event(payload, source_ip=None, user_agent=None):
                 provider_payment_id=payment.payment_id,
                 amount_cents=int(payment.amount * 100),
                 # comprovante PIX / fatura (Asaas)
-                receipt_url=(payload.get("payment") or {}).get("transactionReceiptUrl")
-                or (payload.get("payment") or {}).get("invoiceUrl"),
+                receipt_url=payment.receipt_url,
             )
         elif payment.status == "REFUNDED" and payment.kind in _CHARGE_KINDS:
             consumed = core_hooks.dispatch(
@@ -141,9 +141,10 @@ def handle_event(payload, source_ip=None, user_agent=None):
                 provider_payment_id=payment.payment_id,
                 reason="pix_or_slip_overdue",
             )
-        row.forwarded_ok = True
-        row.forwarded_at = timezone.now()
-        row.save(update_fields=["forwarded_ok", "forwarded_at"])
+        row.forwarded_ok = consumed
+        row.forwarded_at = timezone.now() if consumed else None
+        row.last_error_code = "" if consumed else "consumer_missing"
+        row.save(update_fields=["forwarded_ok", "forwarded_at", "last_error_code"])
         if not consumed:
             logger.warning(
                 "webhook_unconsumed",
@@ -152,6 +153,8 @@ def handle_event(payload, source_ip=None, user_agent=None):
                 reason=f"applied_no_consumer: {reason}",
             )
     else:
+        row.last_error_code = reason.split(":", 1)[0]
+        row.save(update_fields=["last_error_code"])
         logger.warning(
             "webhook_unconsumed",
             provider="asaas",
@@ -189,6 +192,25 @@ def _apply_charge(payload, event):
             f"pix_qr_code_id={pix_qr_code_id}"
         )
 
+    if new_status == "PAID":
+        # Authenticated delivery proves its source, not that it matches our fixed quote.
+        value = data.get("value")
+        if value is None:
+            return None, "amount_missing"
+        if isinstance(value, bool):
+            return None, "invalid_amount"
+        try:
+            amount = Decimal(str(value))
+        except (InvalidOperation, ValueError, TypeError):
+            return None, "invalid_amount"
+        if not amount.is_finite() or amount <= 0 or amount != row.amount:
+            return None, "amount_mismatch"
+        from integrations.bank.recovery import safe_receipt_url
+
+        row.confirmation_payload = data
+        if not row.receipt_url:
+            row.receipt_url = safe_receipt_url(data.get("transactionReceiptUrl") or data.get("invoiceUrl"))
+
     # Atualiza metadados se vierem no webhook. No QR estático o `asaas_id` da linha é o id do
     # QR (a âncora do match): sobrescrever com o id da cobrança quebraria os eventos seguintes.
     if asaas_id and row.asaas_id != asaas_id and row.kind != Payment.Kind.STATIC_PIX_QR:
@@ -205,8 +227,6 @@ def _apply_charge(payload, event):
         row.nosso_numero = data.get("nossoNumero")
     if data.get("netValue") is not None:
         try:
-            from decimal import Decimal
-
             row.net_value = Decimal(str(data.get("netValue"))).quantize(Decimal("0.01"))
         except Exception:
             pass

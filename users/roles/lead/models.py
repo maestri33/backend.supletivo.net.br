@@ -244,6 +244,44 @@ class Checkout(models.Model):
         return f"checkout<{self.lead_id}:{self.payment_method}:{'pago' if self.is_paid else 'pendente'}>"
 
 
+class PaymentAttempt(ExternalIdModel):
+    """Immutable charge identity/history; Checkout is only the current UI projection.
+
+    Identity snapshots prevent an old payment from being attached to a recreated account.
+    Financial history survives deletion of test funnel users.
+    """
+
+    lead = models.ForeignKey(Lead, null=True, on_delete=models.SET_NULL, related_name="payment_attempts")
+    checkout = models.OneToOneField(Checkout, null=True, on_delete=models.SET_NULL, related_name="payment_attempt")
+    lead_external_id = models.UUIDField(db_index=True)
+    user_external_id = models.UUIDField(db_index=True)
+    provider = models.CharField(max_length=12)
+    payment_method = models.CharField(max_length=12)
+    provider_payment_id = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    paid_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True)
+    short_token = models.CharField(max_length=32, null=True, blank=True, db_index=True)
+    checkout_url = models.URLField(max_length=500, null=True, blank=True)
+    receipt_url = models.URLField(max_length=500, null=True, blank=True)
+    qrcode_payload = models.TextField(null=True, blank=True)
+    qrcode_image = models.URLField(max_length=500, null=True, blank=True)
+    due_date = models.DateField(null=True)
+    paid_at = models.DateTimeField(null=True)
+    superseded = models.BooleanField(default=False)
+    provider_confirmed = models.BooleanField(default=False)
+    app_applied = models.BooleanField(default=False)
+    creation_uncertain = models.BooleanField(default=False)
+    last_error = models.CharField(max_length=64, blank=True)
+    next_retry_at = models.DateTimeField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "users"
+        db_table = "users_payment_attempt"
+        constraints = [models.UniqueConstraint(fields=["provider", "provider_payment_id"], name="unique_lead_provider_attempt")]
+
+
 class LeadAttribution(models.Model):
     """Rastreamento de aquisição e atribuição de tráfego do lead (UTMs, click IDs, cookies Meta e rede)."""
 

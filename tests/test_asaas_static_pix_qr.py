@@ -284,6 +284,7 @@ def test_webhook_payment_received_static_pix_qr():
             "externalReference": pid,
             "status": "RECEIVED",
             "billingType": "PIX",
+            "value": 5,
         },
     }
 
@@ -326,6 +327,7 @@ def test_webhook_charge_payment_still_works():
             "externalReference": pid,
             "status": "RECEIVED",
             "billingType": "PIX",
+            "value": 5,
         },
     }
 
@@ -347,7 +349,8 @@ def test_fill_pix_uses_static_qr_not_charge(monkeypatch):
     from integrations.bank.asaas import static_qr as asaas_static_qr
     import integrations.bank.asaas.charge as asaas_charge
     import users.roles.lead.service as lead_service
-    from unittest.mock import MagicMock
+    from users.auth.models import User
+    from users.roles.lead.models import Lead, Checkout
 
     fill_pix_called_with = []
 
@@ -371,12 +374,11 @@ def test_fill_pix_uses_static_qr_not_charge(monkeypatch):
     monkeypatch.setattr(asaas_static_qr, "create_pix_qr", fake_create_pix_qr)
     monkeypatch.setattr(asaas_charge, "create_charge", fake_create_charge)
 
-    checkout_mock = MagicMock()
-    checkout_mock.lead.external_id.hex = "a" * 32
-    checkout_mock.pk = 1
-    checkout_mock.amount = Decimal("5.00")
-    checkout_mock.short_token = "tok_fill_pix"
-    profile_mock = MagicMock()
+    user = User.objects.create_user()
+    promoter = User.objects.create_user()
+    lead = Lead.objects.create(user=user, promoter=promoter)
+    checkout_mock = Checkout.objects.create(lead=lead, provider="asaas", payment_method="pix", amount=Decimal("5.00"), short_token="tok_fill_pix")
+    profile_mock = None
 
     with patch("integrations.bank.asaas.qr.qr_url_for", return_value="http://example.com/qr.png"):
         with override_settings(FRONTEND_URL="https://app.supletivo.test"):

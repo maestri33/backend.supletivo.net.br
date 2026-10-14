@@ -150,6 +150,13 @@ class LeadSelfCheckoutOut(Schema):
     due_date: str | None = None
 
 
+class LeadPaymentStatusOut(Schema):
+    stage: str
+    continuation_url: str | None = None
+    actual_capture_method: str | None = None
+    paid_amount: str | None = None
+
+
 class LeadMeOut(Schema):
     external_id: str = Field(
         description="external_id do LEAD (≠ do user — proposta #8)"
@@ -162,6 +169,7 @@ class LeadMeOut(Schema):
     hub: LeadHubOut | None = None
     checkout: LeadSelfCheckoutOut | None = None
     pricing: PricingOut | None = None
+    payment_status: LeadPaymentStatusOut | None = None
 
 
 class AddressProofSectionOut(Schema):

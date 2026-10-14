@@ -36,6 +36,41 @@ from users.roles.student import service as student_iface
 router = Router(tags=["staff"])
 
 
+class PaymentAttemptOut(Schema):
+    external_id: str
+    lead_external_id: str
+    provider: str
+    amount: str
+    status: str
+    provider_payment_id: str | None
+    provider_confirmed: bool
+    app_applied: bool
+    superseded: bool
+    creation_uncertain: bool
+    last_error: str | None
+    next_retry_at: str | None
+    created_at: str
+
+
+@router.get("/payment-attempts", response=list[PaymentAttemptOut], summary="Estado financeiro e aplicação de cada cobrança")
+def payment_attempts(request):
+    from users.roles.lead.models import PaymentAttempt
+    from users.roles.lead import payments
+    require_superuser(request.auth)
+    return [payments.diagnostic(row) for row in PaymentAttempt.objects.select_related("lead__user").order_by("-created_at")[:200]]
+
+
+@router.post("/payment-attempts/{external_id}/reconcile", response=PaymentAttemptOut, summary="Reconciliar cobrança sem emitir nem presumir pagamento")
+def reconcile_payment_attempt(request, external_id: str):
+    from users.roles.lead.models import PaymentAttempt
+    from users.roles.lead import payments
+    require_superuser(request.auth)
+    attempt = PaymentAttempt.objects.filter(external_id=external_id).first()
+    if attempt is None:
+        raise NotFound("Cobrança não encontrada.", code="CHECKOUT_NOT_FOUND")
+    return payments.reconcile(attempt)
+
+
 class LeadPricingIn(Schema):
     pix: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
     card_installment: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
@@ -87,10 +122,10 @@ def mark_lead_paid(request, external_id: str):
     checkout = getattr(lead, "checkout", None)
     if not checkout or not checkout.provider_payment_id:
         raise Conflict("Lead não tem checkout de pagamento.", code="NO_CHECKOUT")
-    lead_iface.mark_paid(
-        provider=checkout.provider,
-        provider_payment_id=checkout.provider_payment_id,
-    )
+    from users.roles.lead import payments
+    result = payments.reconcile(payments.snapshot(checkout))
+    if not result["app_applied"]:
+        raise Conflict("Pagamento sem confirmação financeira ou aplicação pendente. Confira a cobrança.", code="PAYMENT_NOT_CONFIRMED")
     return {"detail": "Pagamento confirmado. Lead promovido a enrollment."}
 
 
