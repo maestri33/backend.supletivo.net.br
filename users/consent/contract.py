@@ -15,7 +15,7 @@ import hashlib
 from dataclasses import dataclass
 
 # str do topo (spec da lane): versão canônica atual dos contratos.
-CONTRACT_VERSION = "2026-07-29"
+CONTRACT_VERSION = "2026-10-15"
 
 
 @dataclass(frozen=True)
@@ -42,20 +42,35 @@ class Contract:
         }
 
 
-_STUDENT_TEXT = """CONTRATO DE PRESTAÇÃO DE SERVIÇOS EDUCACIONAIS E TRATAMENTO DE DADOS
+_STUDENT_CLAUSES: tuple[tuple[str, str], ...] = (
+    (
+        "Objeto e Adesão aos Serviços",
+        "Pelo presente instrumento, o(a) ALUNO(A) adere ao serviço de preparação e certificação supletiva "
+        "do Supletivo Brasil, voltado à conclusão da educação básica nos termos da legislação educacional vigente.",
+    ),
+    (
+        "Tratamento de Dados Pessoais (LGPD)",
+        "O(A) ALUNO(A) autoriza expressamente o tratamento dos seus dados pessoais, documentos de identificação "
+        "e imagem/selfie biométrica para as finalidades exclusivas de matrícula, identificação, autenticação junto ao "
+        "polo e emissão de certificado oficial, nos termos da Lei nº 13.709/2018 (LGPD).",
+    ),
+    (
+        "Assinatura Eletrônica e Biometria",
+        "Ao capturar e enviar a selfie ao vivo, o(a) ALUNO(A) declara ter lido, compreendido e aceito integralmente "
+        "este contrato, constituindo a imagem biométrica a sua assinatura eletrônica inequívoca, "
+        "sendo o aceite registrado com data, hora, endereço IP e dispositivo utilizado.",
+    ),
+    (
+        "Avaliação Presencial e Certificação",
+        "A conclusão do curso e agendamento da prova presencial junto ao polo e instituição parceira credenciada "
+        "observam o cumprimento dos prazos regulamentares mínimos e a aprovação de todos os documentos exigidos.",
+    ),
+)
 
-Pelo presente instrumento, o(a) ALUNO(A) adere ao serviço de preparação e certificação supletiva,
-autorizando o tratamento dos seus dados pessoais (inclusive documento de identidade e imagem/selfie
-biométrica) para as finalidades de matrícula, identificação e emissão de certificado, nos termos da
-Lei nº 13.709/2018 (LGPD).
-
-Ao enviar a selfie, o(a) ALUNO(A) declara ter lido e aceito integralmente este contrato, sendo a
-selfie a assinatura eletrônica deste aceite. O aceite é registrado com data, hora, endereço IP e
-navegador utilizados.
-
-Versão final a definir — este texto é um placeholder e deve ser substituído pela redação jurídica
-oficial antes da produção.
-"""
+_STUDENT_TEXT = (
+    "CONTRATO DE PRESTAÇÃO DE SERVIÇOS EDUCACIONAIS E TRATAMENTO DE DADOS\n\n"
+    + "\n\n".join(f"{t}\n{d}" for t, d in _STUDENT_CLAUSES)
+)
 
 
 # Cláusulas do contrato do promotor, na redação do protótipo. O `text` assinado é derivado
@@ -86,8 +101,7 @@ _PROMOTER_CLAUSES: tuple[tuple[str, str], ...] = (
         "Este acordo observa a Lei Geral de Proteção de Dados (Lei nº 13.709/2018). Seus "
         "dados são tratados apenas para os fins da parceria. Ao enviar a selfie, o(a) "
         "PROMOTOR(A) declara ter lido e aceito integralmente este acordo, sendo a selfie a "
-        "assinatura eletrônica do aceite, registrado com data, hora, IP e navegador. "
-        "(Texto provisório — versão final a definir.)",
+        "assinatura eletrônica do aceite, registrado com data, hora, IP e navegador.",
     ),
 )
 
@@ -96,7 +110,9 @@ _PROMOTER_TEXT = (
     + "\n\n".join(f"{t}\n{d}" for t, d in _PROMOTER_CLAUSES)
 )
 
-STUDENT_CONTRACT = Contract(version=CONTRACT_VERSION, text=_STUDENT_TEXT)
+STUDENT_CONTRACT = Contract(
+    version=CONTRACT_VERSION, text=_STUDENT_TEXT, clauses=_STUDENT_CLAUSES
+)
 PROMOTER_CONTRACT = Contract(
     version=CONTRACT_VERSION, text=_PROMOTER_TEXT, clauses=_PROMOTER_CLAUSES
 )
