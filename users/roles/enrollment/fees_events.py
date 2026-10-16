@@ -19,8 +19,7 @@ from users.roles.enrollment.common import (
     get_by_external_id,
     logger,
 )
-from users.roles.enrollment.serializers import me_dict
-from users.roles.enrollment import service
+
 
 def _fee_now_ref(enr: Enrollment) -> str:
     """Referência determinística da 1ª parcela (à vista) — idempotência na fila do finance."""
@@ -117,6 +116,8 @@ def apply_fee_paid(enr: Enrollment, *, external_reference: str, amount=None) -> 
     # match por PREFIXO: re-tentativas pós-falha carregam sufixo `_rN` na mesma família de ref.
     if external_reference.startswith(_fee_now_ref(enr)):
         if enr.status == _S.AWAITING_RELEASE:
+            from users.roles.enrollment import service
+
             service._set_status(enr, _S.FEE_PAID)
         _notify_fee_event(enr, "enrollment.fee_paid", valor=valor)
         logger.info("enrollment.fee_paid", external_id=str(enr.external_id))
