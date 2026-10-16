@@ -25,7 +25,7 @@ staff_health_router = Router(tags=["staff-health"])
 
 class HealthzOut(Schema):
     status: str
-    version: str = "0.0.0-sandbox.56"
+    version: str = "0.0.1-beta"
     db: bool
     migrations_pending: int
     sha: str | None = None
@@ -91,7 +91,7 @@ def healthz(request):
     deploy = _deploy_info()
     return {
         "status": "ok" if db_ok else "degraded",
-        "version": getattr(settings, "APP_VERSION", "0.0.0-sandbox.56"),
+        "version": getattr(settings, "APP_VERSION", "0.0.1-beta"),
         "db": db_ok,
         "migrations_pending": _pending_migrations(),
         "sha": deploy["sha"],
