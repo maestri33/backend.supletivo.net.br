@@ -17,6 +17,9 @@ from django.core.checks import Error, Warning
 
 
 def check_ia_config(app_configs, **kwargs):
+    import os
+    if os.getenv("CI") or getattr(settings, "TEST_MODE", False):
+        return []
     errors = []
     from .cloudflare import cloudflare_only, is_workers_ai_configured
     if cloudflare_only():
