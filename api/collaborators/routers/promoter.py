@@ -7,6 +7,7 @@ from ninja import Router
 from api.auth import require_roles
 from api.collaborators.schemas import (
     PromoterCommissionOut,
+    PromoterDocumentArchiveOut,
     PromoterLeadInviteIn,
     PromoterLeadInviteOut,
     PromoterLeadOut,
@@ -101,6 +102,13 @@ def promoter_lead_invite(request, payload: PromoterLeadInviteIn):
 def promoter_commissions(request):
     """Lista de comissões ganhas pelo promotor."""
     return promoter_iface.list_commissions(_promoter(request).user)
+
+
+@router.get("/promoter/documents", response=PromoterDocumentArchiveOut, summary="Meus documentos e assinatura")
+def promoter_documents(request):
+    """The identity is always taken from the authenticated principal."""
+    ext = _guard(request, "candidate", "promoter")
+    return promoter_iface.document_archive(ext)
 
 
 @router.get(

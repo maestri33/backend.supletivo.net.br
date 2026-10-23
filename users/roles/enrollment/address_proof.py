@@ -9,6 +9,12 @@ from users.roles.enrollment.common import EnrollmentError, _S, _require, logger
 from users.roles.enrollment.serializers import me_dict
 from users.roles.enrollment import service
 
+
+def get_address_proof(user_external_id: str) -> dict:
+    """Retorna o bloco/status do comprovante de residência (para consulta isolada)."""
+    return _address_proof.section_dict(user_external_id)
+
+
 def upload_address_proof(*, user_external_id: str, upload) -> dict:
     """Comprovante de residência (foto/PDF) — validado por IA em background. Aceito em qualquer
     etapa pré-completion (accept-first: o aluno pode avançar e reenviar o comprovante depois;
@@ -16,16 +22,9 @@ def upload_address_proof(*, user_external_id: str, upload) -> dict:
     enr = _require(
         user_external_id
     )  # sem gate de status: aceita enquanto não concluída
-    documents_iface.upload_photo(user_external_id, "address_proof_photo", upload)
+    _address_proof.receive_upload(user_external_id, upload)
     # ponytail: re-upload resolve o bloco imediatamente; análise roda em background
     blocks.resolve_for_source(user=enr.user, source_type="address_proof")
-    ap = documents_iface.get_address_proof(user_external_id)
-    if ap is not None:
-        ap.validation_status = "pending"
-        # Novo upload = veredito e flags do ANTERIOR não valem mais (inclusive
-        # `needs_new_proof`, que destrava a tela — Victor 2026-07-28).
-        ap.validation_result = {}
-        ap.save(update_fields=["validation_status", "validation_result"])
     from core.tasks import async_task
 
     async_task("users.roles.enrollment.tasks.validate_address_proof", enr.id)
@@ -39,7 +38,7 @@ def submit_address_proof_kinship(*, user_external_id: str, relation: str) -> dic
 
     enr = _require(user_external_id)  # sem gate de status
     _address_proof.submit_kinship(user_external_id, relation)
-    _advance_address(enr, user_external_id)
+    service._advance_address(enr, user_external_id)
     return me_dict(enr)
 
 
@@ -52,15 +51,15 @@ def decide_address_proof_kinship(
     (de preferência no nome dele) até um novo upload. O motivo fica interno."""
     from users.roles import _address_proof
 
-    enr = _enrollment_for_coordinator(enrollment_external_id, coordinator)
+    enr = service._enrollment_for_coordinator(enrollment_external_id, coordinator)
     status = _address_proof.decide_kinship(
         str(enr.user.external_id), approve=approve, reason=reason
     )
     if approve:
-        _advance_address(enr, str(enr.user.external_id))
-        _notify_resolution(enr, "enrollment.address_proof.approved")
+        service._advance_address(enr, str(enr.user.external_id))
+        service._notify_resolution(enr, "enrollment.address_proof.approved")
     else:
-        _notify_resolution(enr, "enrollment.address_proof.new_proof_needed")
+        service._notify_resolution(enr, "enrollment.address_proof.new_proof_needed")
     return {"external_id": enrollment_external_id, "status": status}
 
 
@@ -74,7 +73,4 @@ def run_address_proof_validation(enrollment_id: int) -> None:
     user_ext = str(enr.user.external_id)
     _address_proof.validate_and_store(user_ext, caller="enrollment.address_proof")
     enr.refresh_from_db(fields=["status"])
-    _advance_address(enr, user_ext)
-
-
-# ── seção DOCUMENTO (plan/13): GET rico · PATCH completa/corrige ─────────────
+    service._advance_address(enr, user_ext)

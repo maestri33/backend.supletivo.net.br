@@ -9,6 +9,7 @@ from ninja import Field, Schema
 from api.schemas.address import PublicAddressOut
 from api.schemas.auth import CheckIn, LoginIn
 from api.schemas.student import StudentPlatformFields
+from api.clients.schemas import AddressProofSectionOut
 
 
 class HubOut(Schema):
@@ -218,6 +219,7 @@ class HubEnrollmentDetailOut(Schema):
     profile: EnrollmentProfileOut | None = None
     address_complete: bool = False
     address: PublicAddressOut | None = None
+    address_proof: AddressProofSectionOut | None = None
     selfie: EnrollmentSelfieOut | None = None
     rg: EnrollmentRgOut | None = None
     education: EnrollmentEducationOut | None = None
@@ -262,7 +264,7 @@ class ReviewItemOut(Schema):
     )
     type: str = Field(description="enrollment | candidate | student | promoter")
     kind: str = Field(
-        description="rg | selfie | document | awaiting_approval | locked_training"
+        description="rg | selfie | address_proof | document | awaiting_approval | locked_training"
     )
     name: str | None = None
     doc_type: str | None = None
@@ -277,6 +279,7 @@ class ReviewItemOut(Schema):
 class ReviewsOut(Schema):
     enrollment_rg: list[ReviewItemOut] = Field(default_factory=list)
     enrollment_selfie: list[ReviewItemOut] = Field(default_factory=list)
+    enrollment_address_proof: list[ReviewItemOut] = Field(default_factory=list)
     candidate_document: list[ReviewItemOut] = Field(default_factory=list)
     candidate_selfie: list[ReviewItemOut] = Field(default_factory=list)
     student_documents: list[ReviewItemOut] = Field(default_factory=list)
@@ -396,6 +399,8 @@ class StudentPendencyOut(Schema):
 class StudentDiplomaOut(Schema):
     issued_at: str | None = None
     picked_up: bool
+    diploma_file: str | None = None
+    transcript_file: str | None = None
 
 
 class StudentUserOut(Schema):
@@ -411,6 +416,7 @@ class HubStudentDetailOut(Schema):
     status: str
     hub_external_id: str
     blood_type: str | None = None
+    exams: list[dict] = Field(default_factory=list)
     self_study: bool
     platform: StudentPlatformFields
     documents: list[StudentDocItemOut] = Field(default_factory=list)

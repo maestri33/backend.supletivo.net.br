@@ -36,13 +36,14 @@ def test_infinitepay_webhook_valor_menor_que_esperado_recusa():
         amount_cents=1000,
         description="test",
         status=Checkout.Status.PENDING,
+        request_payload={"handle": "test_handle"},
     )
     nsu = str(checkout.external_id)
 
     # Mock do payment_check: confirma pago mas com valor MENOR (500)
     with patch(
         "integrations.bank.infinitepay.webhooks._payment_check",
-        return_value={"success": True, "paid": True, "paid_amount": 500},
+        return_value={"success": True, "paid": True, "amount": 1000, "paid_amount": 500},
     ):
         result_checkout, result_dict, reason = _apply(
             nsu,
@@ -70,12 +71,13 @@ def test_infinitepay_webhook_valor_correto_aprova():
         amount_cents=1000,
         description="test",
         status=Checkout.Status.PENDING,
+        request_payload={"handle": "test_handle"},
     )
     nsu = str(checkout.external_id)
 
     with patch(
         "integrations.bank.infinitepay.webhooks._payment_check",
-        return_value={"success": True, "paid": True, "paid_amount": 1000},
+        return_value={"success": True, "paid": True, "amount": 1000, "paid_amount": 1000},
     ):
         result_checkout, result_dict, reason = _apply(
             nsu,
@@ -210,14 +212,14 @@ def test_infinitepay_view_extracts_order_nsu_from_json_and_edge_headers(rf):
         HTTP_X_ORIGINAL_USER_AGENT="InfinitePay-Edge-Bot/1.0",
     )
 
-    with patch("integrations.bank.infinitepay.webhooks.handle_event") as mock_handle:
-        mock_handle.return_value = (None, {"ok": True, "handled": True})
+    with patch("integrations.bank.recovery.receive") as mock_handle:
         resp = webhook(req)
 
     assert resp.status_code == 200
     mock_handle.assert_called_once_with(
-        "EDGE-NSU-999",
+        "infinitepay",
         {"order_nsu": "EDGE-NSU-999", "status": "paid"},
+        order_nsu="EDGE-NSU-999",
         source_ip="189.1.2.3",
         user_agent="InfinitePay-Edge-Bot/1.0",
     )
@@ -239,8 +241,9 @@ def test_infinitepay_checkout_handles_network_timeout(settings):
         with pytest.raises(CheckoutError) as exc_info:
             create_checkout(amount_cents=5000, description="Matrícula Timeout")
 
-    assert "Edge timeout" in str(exc_info.value)
+    assert str(exc_info.value) == "checkout_creation_uncertain"
     failed_row = Checkout.objects.order_by("-created_at").first()
     assert failed_row is not None
     assert failed_row.status == Checkout.Status.PENDING
-    assert "ConnectTimeout" in str(failed_row.response_payload)
+    assert failed_row.creation_state == "uncertain"
+    assert failed_row.response_payload == {"error_code": "checkout_creation_uncertain"}

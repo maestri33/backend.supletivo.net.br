@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 import pytest
+from django.utils import timezone
 
 
 def _candidate_with_documents():
@@ -25,7 +27,12 @@ def _candidate_with_documents():
         user=user,
         cpf=str(uuid.uuid4().int)[:11],
         phone=str(uuid.uuid4().int)[:13],
-        address=Address.objects.create(),
+        name="Offline Candidate",
+        birth_date=date(1990, 1, 1),
+        education_level="medio",
+        education_completed=True,
+        pix_key="offline@example.test",
+        address=Address.objects.create(zipcode="84050360", street="Rua de teste", number="1", neighborhood="Centro", city="Ponta Grossa", state="PR"),
     )
     documents.create_empty(user)
     candidate = Candidate.objects.create(
@@ -34,6 +41,10 @@ def _candidate_with_documents():
         status=Candidate.Status.SELFIE,
         doc_type=Candidate.DocType.RG,
         selfie_verified=True,
+        selfie_status="approved",
+        pix_validated=True,
+        consent_accepted=True,
+        consent_accepted_at=timezone.now(),
     )
     return candidate
 
@@ -96,3 +107,38 @@ def test_comprovante_pode_ser_a_fonte_inicial_do_endereco():
 
     assert matches is True
     assert "preenchido a partir do comprovante" in reason
+
+
+@pytest.mark.django_db
+def test_candidate_actions_are_asynchronous_and_non_blocking():
+    from users.roles.candidate import service
+    from users.roles.candidate.models import Candidate
+
+    candidate = _candidate_with_documents()
+    candidate.status = Candidate.Status.STARTED
+    candidate.save(update_fields=["status"])
+    user_ext = str(candidate.user.external_id)
+
+    # 1. Pode preencher dados de endereço mesmo em STARTED
+    res_addr = service.set_address_data(user_external_id=user_ext, street="Rua Nova", number="123")
+    assert res_addr["address"]["street"] == "Rua Nova"
+    assert res_addr["address"]["number"] == "123"
+
+    # 2. Pode subir dados de documento mesmo com endereço em andamento
+    res_doc = service.set_documents(user_external_id=user_ext, doc_type="rg", number="998877")
+    assert res_doc["documents"]["rg"]["number"] == "998877"
+
+    # 3. Decisão manual de documento em PENDING funciona sem erro DOC_NOT_IN_REVIEW
+    from users.documents import service as documents
+    rg = documents.get_doc_sub(user_ext, "rg")
+    rg.validation_status = "pending"
+    rg.save(update_fields=["validation_status"])
+
+    decided = service.decide_document(
+        candidate_external_id=str(candidate.external_id),
+        coordinator=candidate.hub.coordinator,
+        approve=True,
+        reason="Aprovado manualmente",
+    )
+    assert decided["documents"]["rg"]["validation_status"] == "approved"
+

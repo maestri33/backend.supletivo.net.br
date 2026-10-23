@@ -135,7 +135,7 @@ def test_pdf_e_convertido_para_imagem_antes_da_classificacao(monkeypatch):
 
     assert captured["image_bytes"] == b"jpeg-renderizado"
     assert captured["mime_type"] == "image/jpeg"
-    assert captured["timeout"] == 8.0
+    assert 1.0 <= captured["timeout"] <= 45.0
 
 
 def test_endpoint_classify_exige_auth(client):

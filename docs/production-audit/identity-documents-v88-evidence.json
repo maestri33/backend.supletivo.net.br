@@ -1,0 +1,55 @@
+{
+  "release": "0.0.0-sandbox.88",
+  "owner_homologation": false,
+  "backend": {
+    "artifact_sha256": "6fc98d4de15c8c8321c29aff15318ebf223629af2a7b3db3ccb30f5f9819d518",
+    "image": "sha256:795c8047129d79643a26426da28cc7e72649e607d7f538b7189d476ec3e8cfc5",
+    "built_at": "2026-10-11T20:17:43.334527+00:00",
+    "promoted_at": "2026-10-11T20:19:08.113081+00:00",
+    "public_health_status": 200,
+    "db": true,
+    "migrations_pending": 0,
+    "web_and_qcluster_same_image": true
+  },
+  "app_worker": "68c5c611-d875-4ad0-ae97-aa5fde5d664e",
+  "gateway_worker": "a0593d51-3e7f-4204-9357-2483a03734c8",
+  "tests": {"backend": 60, "frontend": 27, "astro_errors": 0, "build_passed": true},
+  "real_predeployment_classification": [
+    {"case": "rg_front", "result": "front", "seconds": 13.03},
+    {"case": "rg_back", "result": "back", "seconds": 6.95},
+    {"case": "rg_full", "result": "full", "seconds": 8.2},
+    {"case": "cnh_pdf", "result": "full", "seconds": 24.8},
+    {"case": "blank_png", "is_document": false, "seconds": 8.68}
+  ],
+  "real_predeployment_identity": [
+    {"case": "rg_back", "checks": {"name": "match", "cpf": "match", "birth_date": "match"}, "seconds": 41.55},
+    {"case": "rg_full", "checks": {"name": "match", "cpf": "match", "birth_date": "match"}, "seconds": 33.23},
+    {"case": "cnh_pdf_scout_ocr_and_cloudflare_json", "checks": {"name": "match", "cpf": "match", "birth_date": "match"}, "seconds": 25.35}
+  ],
+  "production_student_reanalysis": {
+    "scope": "authorized existing stored RG; no new signup, payment or frontend upload",
+    "source_sha256": "0974c3938952f4780b5896348c51ff7158c335fd8214cc4941515bdec9261aad",
+    "task_id": "73b93bbbcf084a0e8f43d29b92489b3e",
+    "task_success": true,
+    "validation_status": "approved",
+    "identity_checks": {"name": "match", "cpf": "match", "birth_date": "match"},
+    "validated_at": "2026-10-11T20:21:23.362152+00:00",
+    "vision_latency_ms": 13139,
+    "ocr_latency_ms": 68355,
+    "inference_provider": "cloudflare",
+    "inference_model": "@cf/google/gemma-4-26b-a4b-it",
+    "document_number_matches_transcription": true,
+    "birth_date_matches_transcription": true,
+    "persisted_fields_present": ["document_number", "birth_date", "mother_name", "father_name", "birthplace", "issuing_agency", "issue_date"],
+    "ui": ["RG aprovado", "Frente e verso recebidos no mesmo arquivo", "Continuar matrícula"],
+    "whatsapp_outbound_message_id": "3EB02E5E19086DEA831747",
+    "whatsapp_outbound_timestamp": "2026-10-11T20:21:25Z"
+  },
+  "limits": [
+    "Real identity content and credentials are intentionally excluded.",
+    "Promoter signup, live selfie and activation have not been exercised end to end by this release.",
+    "The CNH evaluation did not mutate a promoter account.",
+    "Address approval is outside this release's acceptance evidence.",
+    "Correct readings of these samples do not guarantee all future OCR results."
+  ]
+}

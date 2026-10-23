@@ -1,0 +1,434 @@
+{
+  "recorded_date_utc": "2026-10-11",
+  "release": "0.0.0-sandbox.89",
+  "scope": "Identity capture only. Authorized production canaries, real UI uploads, real queue and Cloudflare inference. Payment and address flows not exercised in this retest.",
+  "release_evidence": {
+    "backend_artifact_sha256": "df34b84257ede903705d170eed487e7b63364890d9a556261beca3993a1a4fe7",
+    "backend_image": "sha256:fe692adf9baea6537cedcc37573918b0a682fbeb9de34fa0e9041e3bcb7fba86",
+    "backend_release": "identity-retest-20261011-v89",
+    "backend_promoted_at": "2026-10-11T21:00:14.346082Z",
+    "app_worker": "a38a8864-5ec5-498d-a8ab-2487566c5c83",
+    "gateway_worker": "96bc4518-859e-404f-9eb3-202e3e4bcb56",
+    "rollback": {
+      "backend_release": "identity-retest-20261011-v89",
+      "backend_previous": "0.0.0-sandbox.88",
+      "app_worker": "68c5c611-d875-4ad0-ae97-aa5fde5d664e",
+      "gateway_worker": "a0593d51-3e7f-4204-9357-2483a03734c8"
+    }
+  },
+  "observed_failure": {
+    "release": ".88",
+    "task": "493df2068d7a457fb0c20ebb9403bc88",
+    "result": "review",
+    "cause": "OCR response did not contain structured JSON; gateway dropped response_format and fabricated finish_reason stop",
+    "fixed_in": ".89",
+    "bounded_retry_limit": 2
+  },
+  "student_full_png": {
+    "rg": {
+      "status": "approved",
+      "validated_at": "2026-10-11 21:01:17.606593+00:00",
+      "sources": {
+        "front": false,
+        "back": false,
+        "full": true
+      },
+      "photo_statuses": {
+        "rg_full": "approved"
+      },
+      "identity_checks": {
+        "cpf": "match",
+        "name": "match",
+        "birth_date": "match"
+      },
+      "number_present": true,
+      "extraction_present": true
+    },
+    "cnh": {
+      "status": "pending",
+      "validated_at": null,
+      "sources": {
+        "front": false,
+        "back": false,
+        "full": false
+      },
+      "photo_statuses": {},
+      "identity_checks": null,
+      "number_present": false,
+      "extraction_present": false
+    },
+    "enrollment": "address",
+    "candidate": null,
+    "recent_tasks": [
+      {
+        "id": "97050aceaa0b4c7a868be242a7180e72",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 21:01:06.218218+00:00",
+        "stopped": "2026-10-11 21:01:17.658924+00:00"
+      },
+      {
+        "id": "493df2068d7a457fb0c20ebb9403bc88",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 20:52:52.156997+00:00",
+        "stopped": "2026-10-11 20:54:09.633172+00:00"
+      },
+      {
+        "id": "dd83869e416549988861faa7ec7d3287",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 20:50:17.662190+00:00",
+        "stopped": "2026-10-11 20:51:27.800564+00:00"
+      },
+      {
+        "id": "73b93bbbcf084a0e8f43d29b92489b3e",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 20:20:01.609225+00:00",
+        "stopped": "2026-10-11 20:21:23.425079+00:00"
+      },
+      {
+        "id": "78dc2715b4274e3a884ed8a480de06ad",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 17:53:06.345859+00:00",
+        "stopped": "2026-10-11 17:53:08.420112+00:00"
+      }
+    ]
+  },
+  "student_full_pdf": {
+    "rg": {
+      "status": "approved",
+      "validated_at": "2026-10-11 21:02:36.105794+00:00",
+      "sources": {
+        "front": false,
+        "back": false,
+        "full": true
+      },
+      "photo_statuses": {
+        "rg_full": "approved"
+      },
+      "identity_checks": {
+        "cpf": "match",
+        "name": "match",
+        "birth_date": "match"
+      },
+      "number_present": true,
+      "number_matches_transcription": true,
+      "extraction_present": true,
+      "populated_fields": {
+        "issuing_agency": true,
+        "issue_date": true,
+        "category": false,
+        "national_register": false,
+        "expires_on": false
+      }
+    },
+    "cnh": {
+      "status": "pending",
+      "validated_at": null,
+      "sources": {
+        "front": false,
+        "back": false,
+        "full": false
+      },
+      "photo_statuses": {},
+      "identity_checks": null,
+      "number_present": false,
+      "number_matches_transcription": false,
+      "extraction_present": false,
+      "populated_fields": {
+        "issuing_agency": false,
+        "issue_date": false,
+        "category": false,
+        "national_register": false,
+        "expires_on": false
+      }
+    },
+    "profile_populated_fields": {
+      "birth_date": true,
+      "mother_name": true,
+      "father_name": true,
+      "birthplace": true,
+      "nationality": false
+    },
+    "enrollment": "address",
+    "candidate": null,
+    "recent_tasks": [
+      {
+        "id": "9eb263ca621044658a05cdf0c7345496",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 21:02:25.552001+00:00",
+        "stopped": "2026-10-11 21:02:36.230988+00:00"
+      },
+      {
+        "id": "97050aceaa0b4c7a868be242a7180e72",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 21:01:06.218218+00:00",
+        "stopped": "2026-10-11 21:01:17.658924+00:00"
+      },
+      {
+        "id": "493df2068d7a457fb0c20ebb9403bc88",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 20:52:52.156997+00:00",
+        "stopped": "2026-10-11 20:54:09.633172+00:00"
+      },
+      {
+        "id": "dd83869e416549988861faa7ec7d3287",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 20:50:17.662190+00:00",
+        "stopped": "2026-10-11 20:51:27.800564+00:00"
+      },
+      {
+        "id": "73b93bbbcf084a0e8f43d29b92489b3e",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 20:20:01.609225+00:00",
+        "stopped": "2026-10-11 20:21:23.425079+00:00"
+      }
+    ]
+  },
+  "student_back_then_front": {
+    "rg": {
+      "status": "approved",
+      "validated_at": "2026-10-11 21:09:03.677571+00:00",
+      "sources": {
+        "front": true,
+        "back": true,
+        "full": false
+      },
+      "photo_statuses": {
+        "rg_back": "approved",
+        "rg_front": "approved"
+      },
+      "identity_checks": {
+        "cpf": "match",
+        "name": "match",
+        "birth_date": "match"
+      },
+      "number_present": true,
+      "number_matches_transcription": true,
+      "extraction_present": true,
+      "populated_fields": {
+        "issuing_agency": true,
+        "issue_date": true,
+        "category": false,
+        "national_register": false,
+        "expires_on": false
+      }
+    },
+    "cnh": {
+      "status": "pending",
+      "validated_at": null,
+      "sources": {
+        "front": false,
+        "back": false,
+        "full": false
+      },
+      "photo_statuses": {},
+      "identity_checks": null,
+      "number_present": false,
+      "number_matches_transcription": false,
+      "extraction_present": false,
+      "populated_fields": {
+        "issuing_agency": false,
+        "issue_date": false,
+        "category": false,
+        "national_register": false,
+        "expires_on": false
+      }
+    },
+    "profile_populated_fields": {
+      "birth_date": true,
+      "mother_name": true,
+      "father_name": true,
+      "birthplace": true,
+      "nationality": false
+    },
+    "enrollment": "address",
+    "candidate": {
+      "status": "started",
+      "doc_type": null
+    },
+    "recent_tasks": [
+      {
+        "id": "28af36113696488289b20edbe3dc4755",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 21:08:53.985972+00:00",
+        "stopped": "2026-10-11 21:09:03.718817+00:00"
+      },
+      {
+        "id": "f573bb7e1f1e4d01ab4c35d8f4790c1b",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 21:08:25.488957+00:00",
+        "stopped": "2026-10-11 21:08:26.710391+00:00"
+      },
+      {
+        "id": "400324ed53924cb2b1553bf503522e85",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 21:07:18.171970+00:00",
+        "stopped": "2026-10-11 21:07:24.549382+00:00"
+      },
+      {
+        "id": "087dda2e7fe6461c84e25cce873df6d1",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 21:03:25.210997+00:00",
+        "stopped": "2026-10-11 21:03:27.458475+00:00"
+      },
+      {
+        "id": "9eb263ca621044658a05cdf0c7345496",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 21:02:25.552001+00:00",
+        "stopped": "2026-10-11 21:02:36.230988+00:00"
+      }
+    ]
+  },
+  "candidate_name_mismatch": {
+    "rg": {
+      "status": "approved",
+      "validated_at": "2026-10-11 21:09:03.677571+00:00",
+      "sources": {
+        "front": true,
+        "back": true,
+        "full": false
+      },
+      "photo_statuses": {
+        "rg_back": "approved",
+        "rg_front": "approved"
+      },
+      "identity_checks": {
+        "cpf": "match",
+        "name": "match",
+        "birth_date": "match"
+      },
+      "number_present": true,
+      "number_matches_transcription": true,
+      "extraction_present": true,
+      "populated_fields": {
+        "issuing_agency": true,
+        "issue_date": true,
+        "category": false,
+        "national_register": false,
+        "expires_on": false
+      }
+    },
+    "cnh": {
+      "status": "rejected",
+      "validated_at": "2026-10-11 21:13:36.105155+00:00",
+      "sources": {
+        "front": false,
+        "back": false,
+        "full": true
+      },
+      "photo_statuses": {
+        "cnh_full": "approved"
+      },
+      "identity_checks": {
+        "name": "mismatch"
+      },
+      "number_present": false,
+      "number_matches_transcription": false,
+      "extraction_present": true,
+      "populated_fields": {
+        "issuing_agency": false,
+        "issue_date": false,
+        "category": false,
+        "national_register": false,
+        "expires_on": false
+      }
+    },
+    "profile_populated_fields": {
+      "birth_date": true,
+      "mother_name": true,
+      "father_name": true,
+      "birthplace": true,
+      "nationality": false
+    },
+    "enrollment": "address",
+    "candidate": {
+      "status": "documents",
+      "doc_type": "cnh"
+    },
+    "recent_tasks": [
+      {
+        "id": "02248608881a4040890ea496f12c544a",
+        "func": "users.roles.candidate.tasks.validate_document",
+        "success": true,
+        "started": "2026-10-11 21:12:35.706580+00:00",
+        "stopped": "2026-10-11 21:13:36.148797+00:00"
+      },
+      {
+        "id": "28af36113696488289b20edbe3dc4755",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 21:08:53.985972+00:00",
+        "stopped": "2026-10-11 21:09:03.718817+00:00"
+      },
+      {
+        "id": "f573bb7e1f1e4d01ab4c35d8f4790c1b",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 21:08:25.488957+00:00",
+        "stopped": "2026-10-11 21:08:26.710391+00:00"
+      },
+      {
+        "id": "400324ed53924cb2b1553bf503522e85",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 21:07:18.171970+00:00",
+        "stopped": "2026-10-11 21:07:24.549382+00:00"
+      },
+      {
+        "id": "087dda2e7fe6461c84e25cce873df6d1",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-11 21:03:25.210997+00:00",
+        "stopped": "2026-10-11 21:03:27.458475+00:00"
+      }
+    ]
+  },
+  "production_rules": {
+    "total": 19,
+    "passed": 19,
+    "level": "14 controlled field mutations of saved real OCR plus 5 real production file decoders. No AI inference, no DB mutation; separate from browser tests.",
+    "cases": [
+      "matching_identity",
+      "different_name",
+      "name_missing",
+      "name_one_token",
+      "name_married_added_surname",
+      "invalid_cpf_checksum",
+      "different_valid_cpf",
+      "cpf_unreadable",
+      "cpf_presence_unknown",
+      "cpf_not_printed",
+      "birth_date_missing",
+      "birth_date_invalid",
+      "birth_date_future",
+      "birth_date_different",
+      "empty_upload",
+      "renamed_text",
+      "unsupported_mime",
+      "too_large",
+      "truncated_pdf"
+    ]
+  },
+  "limitations": [
+    "Finite matrix, not all possible documents or failures.",
+    "One person's authorized RG and CNH samples.",
+    "A safe review/error is expected when OCR is inconclusive; no guarantee of universal model accuracy.",
+    "Temporary candidate context tests document UI/pipeline, not fresh promoter signup or full activation.",
+    "Address, live selfie, contract, diploma, payout and complete platform homologation remain separate."
+  ],
+  "candidate_happy": "in progress"
+}

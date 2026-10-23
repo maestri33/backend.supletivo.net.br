@@ -28,6 +28,7 @@ class Commission(ExternalIdModel):
         VETERAN = "veteran", "student→veteran"  # comissão pro coordenador do hub
         BONUS = "bonus", "bônus de meta"  # >= threshold indicações na semana (flat)
         MANUAL = "manual", "avulso / manual"  # crédito manual ou antecipado pelo Admin
+        REVERSAL = "reversal", "desconto de comissão estornada"
 
 
     class Status(models.TextChoices):
@@ -48,6 +49,9 @@ class Commission(ExternalIdModel):
     source_external_id = models.UUIDField(db_index=True)
     # reais; lido do .env no credit (corrige o bug do legado: valor vinha do caller).
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    bonus_period_start = models.DateField(null=True, blank=True, db_index=True)
+    canary_run_id = models.UUIDField(null=True, blank=True, db_index=True)
+    canary_snapshot = models.JSONField(default=dict, blank=True)
     status = models.CharField(
         max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True
     )
@@ -100,6 +104,7 @@ class PaymentRequest(ExternalIdModel):
         )  # asaas sem saldo, espera (não falha)
         PAID = "paid", "paga"  # reconciliada como PAID
         FAILED = "failed", "falhou"
+        CANCELLED = "cancelled", "cancelada"
 
     class Kind(models.TextChoices):
         COMMISSION = (
@@ -164,6 +169,7 @@ class PaymentRequest(ExternalIdModel):
     week_of = models.DateField(
         db_index=True, null=True, blank=True
     )  # segunda-feira (só commission)
+    canary_run_id = models.UUIDField(null=True, blank=True, db_index=True)
     # fee: destino do PIX QR code (copia-e-cola) + fornecedor (texto até modelar instituição) + agendamento.
     qrcode_payload = models.TextField(null=True, blank=True)
     supplier_name = models.CharField(max_length=200, null=True, blank=True)
@@ -259,6 +265,7 @@ class FinancialTransaction(ExternalIdModel):
     source_type = models.CharField(max_length=24, choices=SourceType.choices, db_index=True)
     source_external_id = models.UUIDField(null=True, blank=True, db_index=True)
     idempotency_key = models.CharField(max_length=128, unique=True, db_index=True)
+    canary_run_id = models.UUIDField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     settled_at = models.DateTimeField(null=True, blank=True)
 
@@ -392,6 +399,7 @@ class FinancialAuditLog(ExternalIdModel):
         DISPUTE_RESOLUTION = "dispute_resolution", "Veredito de Disputa / Chargeback"
         CLOSING_RUN = "closing_run", "Execução Manual de Fechamento"
         GATEWAY_SYNC = "gateway_sync", "Sincronização Manual de Gateway"
+        CANARY_CONFIG = "canary_config", "Configuração de teste autorizado"
 
     actor = models.ForeignKey(
         settings.AUTH_USER_MODEL,

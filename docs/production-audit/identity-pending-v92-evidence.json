@@ -1,0 +1,278 @@
+{
+  "recorded_at_utc": "2026-10-12 02:31:25 UTC",
+  "scope": "Technical closure of identity pending defects, no platform homologation. Existing authorized student and temporary candidate contexts, original media, real providers; controlled UI review state and separately declared real-network deadline fault injection.",
+  "own_release": {
+    "version": "0.0.0-sandbox.92",
+    "release": "identity-pending-20261012-v92",
+    "artifact_sha256": "f50363e33914553e763ac60e28ba2decfe90494a4e1b6ff2cad190f62df17c83",
+    "image": "sha256:5b59b759f278c254736c3d2e81dcf84284628e5dc50170a55b5c53c13ce1c0ae",
+    "built_at": "2026-10-12T02:17:43.169122Z",
+    "promoted_at": "2026-10-12T02:18:22.819618Z",
+    "app_worker": "ff1d3764-1b00-42c9-b22a-634265bc0f4a",
+    "app_oracle_at": "2026-10-12T02:19:47.995Z",
+    "backend_tests": 150,
+    "frontend_tests": 30,
+    "astro": {
+      "files": 118,
+      "errors": 0,
+      "warnings": 0
+    },
+    "build_passed": true,
+    "preflight": {
+      "at": "2026-10-12T02:18:01.158655Z",
+      "migration_plan": []
+    },
+    "rollback": {
+      "backend_image": "sha256:a30a4ae2976b4767fed6fa40958ee796b43c8a9a8f58545209cf86e314319119",
+      "backend_version": ".91",
+      "app_worker": "aaab7a43-602a-41da-870f-4175d2310301"
+    }
+  },
+  "active_backend_after_concurrent_publication": {
+    "version": "0.0.0-sandbox.93",
+    "artifact": "997020e7c464b7d13902053fd390d818693a1597cae8939dced11e9ca40a2c6f",
+    "built_at": "2026-10-12T02:19:46.321550+00:00",
+    "files": {
+      "api/health/router.py": "92967d0afee9accb8a22c5b1452a15cccb083822a48a3ab6fc014cb19ef1c69b",
+      "api/schemas/documents.py": "5d26fd78d10e5a0b52ecfbbafe5542f6bb8880e06b172769189cb4496de554f0",
+      "core/pdf.py": "f72babf15b052ae24ec4d3085716f4c8f76650a564410c3c13efa24a349de32e",
+      "integrations/ai/cloudflare.py": "ff42cc4011931b77192e678f8003faec3535bab7a7e414d107fdc30369141eba",
+      "integrations/ai/service.py": "1f8b794e71170a45adf16382a49d495bcb16eff0d585cdd6ca8c0ecbecc85482"
+    }
+  },
+  "all_five_overlay_hashes_match": true,
+  "active_app": {
+    "version": "0.0.0-sandbox.93",
+    "worker": "46ce4e63-9f15-482e-b0ed-f4472f2bc8b5",
+    "oracle_recorded_at": "2026-10-12T02:29:30.809Z",
+    "source_change_from_tested_92": "package version synchronization only",
+    "build_passed": true
+  },
+  "health_observation": {
+    "http": 200,
+    "body": {
+      "status": "ok",
+      "version": "0.0.0-sandbox.93",
+      "db": true,
+      "migrations_pending": 0,
+      "sha": "997020e7c464b7d13902053fd390d818693a1597cae8939dced11e9ca40a2c6f",
+      "built_at": "2026-10-12T02:19:46.321550+00:00"
+    }
+  },
+  "live_recovery": {
+    "controlled_real_network_deadline": true,
+    "fake_responses": false,
+    "business_records_written": false,
+    "scout_attempts": 2,
+    "identity_matches": true,
+    "identity_checks": {
+      "name": "match",
+      "cpf": "match",
+      "birth_date": "match"
+    },
+    "number_matches_original": true,
+    "category_matches_original": true,
+    "duration_ms": 32823,
+    "calls": [
+      {
+        "status": "error",
+        "latency_ms": 218,
+        "error": "Workers AI indisponível (total_timeout)."
+      },
+      {
+        "status": "success",
+        "latency_ms": 26049,
+        "error": null
+      }
+    ]
+  },
+  "final_status_after_cleanup": {
+    "rg": {
+      "status": "approved",
+      "validated_at": "2026-10-12 02:27:39.568228+00:00",
+      "sources": {
+        "front": false,
+        "back": false,
+        "full": true
+      },
+      "photo_statuses": {
+        "rg_full": "approved"
+      },
+      "identity_checks": {
+        "cpf": "match",
+        "name": "match",
+        "birth_date": "match"
+      },
+      "number_present": true,
+      "number_matches_transcription": true,
+      "extraction_present": true,
+      "populated_fields": {
+        "issuing_agency": true,
+        "issue_date": true,
+        "category": false,
+        "national_register": false,
+        "expires_on": false
+      }
+    },
+    "cnh": {
+      "status": "approved",
+      "validated_at": "2026-10-12 02:26:10.286736+00:00",
+      "sources": {
+        "front": false,
+        "back": false,
+        "full": true
+      },
+      "photo_statuses": {
+        "cnh_full": "approved"
+      },
+      "identity_checks": {
+        "cpf": "match",
+        "name": "match",
+        "birth_date": "match"
+      },
+      "number_present": true,
+      "number_matches_transcription": true,
+      "extraction_present": true,
+      "populated_fields": {
+        "issuing_agency": false,
+        "issue_date": false,
+        "category": true,
+        "national_register": false,
+        "expires_on": true
+      }
+    },
+    "profile_populated_fields": {
+      "birth_date": true,
+      "mother_name": true,
+      "father_name": true,
+      "birthplace": true,
+      "nationality": false
+    },
+    "enrollment": "address",
+    "candidate": null,
+    "recent_tasks": [
+      {
+        "id": "91dbc7ca941e45f3b17e0ece32cca20f",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-12 02:27:29.271995+00:00",
+        "stopped": "2026-10-12 02:27:39.614143+00:00"
+      },
+      {
+        "id": "c5f4ac1d1c39483fb7e93673660a5037",
+        "func": "users.roles.candidate.tasks.validate_document",
+        "success": true,
+        "started": "2026-10-12 02:25:41.975374+00:00",
+        "stopped": "2026-10-12 02:26:10.472700+00:00"
+      },
+      {
+        "id": "765db6dc57d0467bb997c0098dfbece1",
+        "func": "users.roles.candidate.tasks.validate_document",
+        "success": true,
+        "started": "2026-10-12 01:51:07.531874+00:00",
+        "stopped": "2026-10-12 01:51:41.389052+00:00"
+      },
+      {
+        "id": "fe98f9dc6f8348dfaba01c3805ca6353",
+        "func": "users.roles.enrollment.tasks.validate_rg",
+        "success": true,
+        "started": "2026-10-12 01:49:56.028999+00:00",
+        "stopped": "2026-10-12 01:50:08.123377+00:00"
+      },
+      {
+        "id": "9a0c7fbbd4484e10bee07f37eb6ec40b",
+        "func": "users.roles.candidate.tasks.validate_document",
+        "success": true,
+        "started": "2026-10-11 21:36:30.349858+00:00",
+        "stopped": "2026-10-11 21:37:32.299410+00:00"
+      }
+    ]
+  },
+  "cnh_fields_against_original": {
+    "number_is_11_digits": true,
+    "number_matches_printed_register": true,
+    "persisted_number_matches_original": true,
+    "national_register_matches_printed_renach": false,
+    "uncertain_renach_not_filled": true,
+    "category_correct": true,
+    "persisted_category_matches_original": true,
+    "expiry_correct": true,
+    "persisted_expiry_matches_original": true
+  },
+  "notifications": [
+    {
+      "id": "3EB0664CBDE3635A504E6C",
+      "timestamp": "2026-10-12T02:27:43Z",
+      "is_from_me": true,
+      "kind": "document-approved"
+    },
+    {
+      "id": "3EB0D24067554301DC44CA",
+      "timestamp": "2026-10-12T02:26:15Z",
+      "is_from_me": true,
+      "kind": "document-approved"
+    }
+  ],
+  "cleanup": {
+    "temporary_candidate_removed": true,
+    "retired_promoter_restored": true,
+    "temporary_role_revoked": true,
+    "parking_user_removed": true,
+    "old_tokens_invalidated": true,
+    "student_preserved": true,
+    "active_roles": [
+      "admin",
+      "enrollment",
+      "staff"
+    ]
+  },
+  "preserved_invariants": {
+    "active_roles": [
+      "admin",
+      "enrollment",
+      "staff"
+    ],
+    "student_lead_paid": true,
+    "student_lead_owner_preserved": true,
+    "lead_default_promoter_preserved": true,
+    "lead_frozen_pix": "1.01",
+    "lead_frozen_card": "1.02",
+    "default_hub_preserved": true,
+    "default_coordinator_preserved": true,
+    "default_promoter_preserved": true,
+    "default_promoter_active": true,
+    "retired_promoter_preserved": true,
+    "candidate_context_removed": true,
+    "direct_canary_commission": [
+      {
+        "amount": "0.01",
+        "status": "pending"
+      }
+    ],
+    "existing_owner_paid_manual_preserved": true,
+    "commercial_pix": "1615",
+    "commercial_direct": "100",
+    "commercial_bonus": "500",
+    "commercial_coordinator": "50"
+  },
+  "ui": {
+    "file": "identity-pending-ui-v92.json",
+    "cases": 7,
+    "passed": 7,
+    "scope": "Review presentation controlled in DB; four real invalid PDF uploads and two original identity happy paths."
+  },
+  "bounds": {
+    "identity_read_total_seconds": 120,
+    "scout_call_max_seconds": 60,
+    "scout_attempts_per_source_max": 2,
+    "retries_for_non_retryable_errors": 0,
+    "safe_result_on_exhaustion": "review"
+  },
+  "limits": [
+    "Real-network fault injection is declared, not a natural outage or UI canary.",
+    "Finite matrix with one holder's original RG/CNH does not demonstrate universal model accuracy.",
+    "External provider unavailability remains possible; implemented bounded recovery/review is the completed defect fix.",
+    "No owner homologation of the entire platform; address/live selfie/contract/activation/payment journeys are separate.",
+    "Local documentation/code not claimed as a new published Git commit."
+  ]
+}

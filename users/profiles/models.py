@@ -114,6 +114,9 @@ class Profile(models.Model):
     education_city = models.CharField(
         "cidade onde estudou", max_length=128, null=True, blank=True
     )
+    education_state = models.CharField(
+        "UF onde estudou", max_length=2, null=True, blank=True
+    )
     education_school = models.CharField(
         "última escola", max_length=255, null=True, blank=True
     )

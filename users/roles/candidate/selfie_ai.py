@@ -124,11 +124,12 @@ def _resolve_selfie(cand: Candidate) -> None:
         service._complete_candidate(cand)
     elif cand.selfie_status == _selfie.REJECTED:
         service._notify_selfie_rejected(cand)
-        # F2: 5ª reprovação → sobe a flag nível-pessoa (não bloqueia) e SEGUE promovendo — o encontro
-        # presencial fica pro fim do curso (gate em `student._maybe_release_exam`).
+        # Repeated rejection requests human review; it cannot approve identity.
         if cand.selfie_reject_count >= _selfie.MAX_REJECTS_BEFORE_MEETING:
             profiles.set_selfie_needs_meeting(cand.user)
-            service._complete_candidate(cand)
+            cand.selfie_status = _selfie.REVIEW
+            cand.save(update_fields=["selfie_status", "updated_at"])
+            service._notify_selfie_review(cand)
     elif cand.selfie_status == _selfie.REVIEW:
         service._notify_selfie_review(cand)
 

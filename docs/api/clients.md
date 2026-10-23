@@ -118,21 +118,27 @@ empurra a correção pro fluxo normal (modal + re-upload), não pro caminho crí
 ### 6. Comprovante de endereço
 
 - **Endpoints**:
-  - `POST /api/v1/clients/enrollment/address/proof` (multipart `file`)
-  - `POST /api/v1/clients/enrollment/address/proof/kinship` (`{relation}`)
+  - `POST /api/v1/clients/enrollment/address/proof` (multipart `file`): upload inicial.
+  - `PUT /api/v1/clients/enrollment/address/proof` (multipart `file`): substituição do documento e reinício da esteira assíncrona.
+  - `GET /api/v1/clients/enrollment/address/proof`: consulta isolada do status e dados da seção (`AddressProofSectionOut`).
+  - `POST /api/v1/clients/enrollment/address/proof/kinship` (`{relation}`): declaração de parentesco/vínculo.
 - **O que o frontend envia**: a foto/PDF do comprovante; se a IA identificar que o titular do
-  comprovante é outra pessoa (`needs_kinship`), o front pede o grau de parentesco e manda no
-  segundo endpoint.
+  comprovante é outra pessoa (`needs_kinship`), o front informa o nome divergente extraído (`holder_name`), pede o grau de parentesco e manda no
+  endpoint de parentesco.
 - **O que o backend faz**: **aceito em qualquer etapa pré-conclusão** (não tem gate de status —
   é o próprio texto do accept-first: o aluno pode já ter avançado pro RG/educação e reenviar o
   comprovante depois). Salva a foto, resolve qualquer `ValidationBlock` de `address_proof` na
-  hora (o re-upload já conta como resolução), zera o `validation_status` pra `pending` e
-  enfileira `validate_address_proof` (Django-Q): visão → confere endereço batendo com o
-  cadastrado → confere titular → aprova, rejeita, manda pra revisão, ou marca
-  `needs_kinship`. Kinship: grava o parentesco e libera.
-- **O que o backend retorna**: `EnrollmentMeOut` canônico; o bloco `address_proof` (dentro do
-  `/me`) traz `status` (`pending|approved|rejected|review|needs_kinship`), `reason`,
-  `needs_kinship`, `kinship_relation`.
+  hora (o re-upload/PUT já conta como resolução), zera o `validation_status` pra `pending`, limpa
+  veredito anterior e enfileira `validate_address_proof` (Django-Q):
+  1. **Visão**: verifica legibilidade e tipo do documento.
+  2. **CPF Match (Prioridade Máxima)**: se o comprovante contiver CPF igual ao cadastrado do titular, **APROVA DIRETO**.
+  3. **Verificação de Nomes**:
+     - Nomes iguais (ou filiação pai/mãe reconhecida no RG) $\rightarrow$ **APROVA**.
+     - Nomes parecidos / dúvida da IA $\rightarrow$ **CONFERÊNCIA HUMANA (`review`)**.
+     - Nomes divergentes $\rightarrow$ **`needs_kinship`** (com motivo orientativo amigável e `holder_name`).
+  4. **População do Banco**: quando aprovado, preenche os campos vazios do modelo `Address` (`street`, `number`, `complement`, `neighborhood`, `city`, `state`, `zipcode`).
+- **O que o backend retorna**: `EnrollmentMeOut` canônico (no POST/PUT) ou `AddressProofSectionOut` (no GET); traz `status` (`pending|approved|rejected|review|needs_kinship`), `reason`,
+  `needs_kinship`, `kinship_kind`, `kinship_relation`, `holder_name`.
 - **O que o frontend deve fazer**: dar polling em `address_proof.status` (ou nos `blocks`); se
   `needs_kinship: true`, mostrar o formulário de parentesco.
 
@@ -141,13 +147,17 @@ empurra a correção pro fluxo normal (modal + re-upload), não pro caminho crí
 - **Endpoints**:
   - `GET /api/v1/clients/enrollment/education`
   - `POST /api/v1/clients/enrollment/education` (`{level, grade, completed, last_school, city,
-    state, last_year_when?}`)
+    state, last_year_when?, declaration_accepted}`)
 - **O que o frontend envia**: `level` (`fundamental`|`medio`), `grade` (1–9 fundamental / 1–3
-  médio), `completed`, escola/cidade/UF/quando concluiu.
+  médio), `completed`, escola/cidade/UF/quando concluiu e `declaration_accepted: true` após o
+  modal de veracidade. A cidade é escolhida da lista de municípios IBGE carregada depois da UF.
+  `medio + grade=3 + completed=true` é rejeitado: o aluno pode ter parado no 3º ano, mas não pode
+  declarar o Ensino Médio já concluído neste fluxo.
 - **O que o backend faz**: exige status `education` (gate ESTRITO — diferente do RG/endereço,
   aqui NÃO é accept-first fora de ordem: `set_education` só roda se a matrícula estiver
   exatamente na etapa `education`, senão `409 WRONG_STATUS`); valida `level` e a faixa de `grade`
-  pro nível; grava e avança direto pra `selfie` (`_set_status(enr, _S.SELFIE)`).
+  pro nível, confere a cidade/UF no cache IBGE, exige o aceite da declaração, registra versão/IP/
+  user-agent/horário e avança direto pra `selfie` (`_set_status(enr, _S.SELFIE)`).
 - **O que o backend retorna**: `EnrollmentMeOut` canônico já com `status: "selfie"`.
 - **O que o frontend deve fazer**: usar o `GET` pra pré-preencher (o backend já faz prefill do
   Profile se a pessoa respondeu escolaridade como candidata antes); depois do POST, ir direto pra
@@ -262,6 +272,9 @@ prioridade visual sobre a tela normal do `status`.
 | `CHECKOUT_NOT_FOUND` / `LEAD_NOT_FOUND` / `STUDENT_NOT_FOUND` / `ENROLLMENT_NOT_FOUND` | recurso do aluno não existe (404) | Estado inconsistente — normalmente indica JWT de role errada |
 | `BLOCK_NOT_FOUND` | bloco inválido/já resolvido/de outro usuário (404) | Fechar o modal, refazer o GET de `blocks` |
 | `EDUCATION_LEVEL_INVALID` / `EDUCATION_GRADE_OUT_OF_RANGE` | dados de escolaridade fora da faixa (422) | Validar no front antes de enviar (nível/série) |
+| `EDUCATION_ALREADY_COMPLETED` | 3º ano do Ensino Médio informado como concluído (422) | Orientar contato com o polo |
+| `EDUCATION_DECLARATION_REQUIRED` | declaração de veracidade não aceita (422) | Exibir o modal e exigir a caixa de confirmação |
+| `EDUCATION_CITY_INVALID` / `EDUCATION_LOCATION_INCOMPLETE` | cidade/UF inválida ou incompleta (422) | Recarregar municípios após escolher a UF |
 
 ## O que o backend ESPERA do frontend
 

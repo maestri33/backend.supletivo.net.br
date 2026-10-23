@@ -44,7 +44,7 @@ def decide_document(
     if not cand.doc_type:
         raise CandidateError("Documento ainda não enviado.", code="DOC_TYPE_NOT_SET")
     sub = documents_iface.get_doc_sub(str(cand.user.external_id), cand.doc_type)
-    if sub is None or sub.validation_status != doc_ai.REVIEW:
+    if sub is None or sub.validation_status not in (doc_ai.REVIEW, doc_ai.PENDING):
         raise CandidateError(
             "O documento não está em revisão.",
             code="DOC_NOT_IN_REVIEW",
@@ -61,7 +61,7 @@ def decide_document(
     }
     if not approve:
         service._finish_doc(cand, sub, doc_ai.REJECTED, note, result)
-        return me_dict(cand)
+        return service.me_dict(cand)
     # aprovação humana: as fotos presentes valem como aprovadas
     photos = dict(result.get("photos") or {})
     for slot, field in _DOC_SLOT_FIELD.items():
@@ -75,13 +75,13 @@ def decide_document(
         subject="Seu cadastro — documento aprovado",
     )
     if result.get("extracted"):
-        _apply_doc_extracted(cand, sub, result["extracted"])
+        service._apply_doc_extracted(cand, sub, result["extracted"])
     else:
         from core.tasks import async_task
 
         async_task("users.roles.candidate.tasks.fill_document_data", cand.id)
     service._doc_post_approval(cand, sub)
-    return me_dict(cand)
+    return service.me_dict(cand)
 
 
 def _notify_doc_event(
@@ -151,7 +151,7 @@ def _sweep_stale_reviews(hub) -> None:
     user_ids = list(Candidate.objects.filter(hub=hub).values_list("user_id", flat=True))
     for model in (RG, CNH):
         _analysis.sweep_stale_documents(
-            model.objects.filter(document__user_id__in=user_ids), _doc_started_at
+            model.objects.filter(document__user_id__in=user_ids), service._doc_started_at
         )
 
 

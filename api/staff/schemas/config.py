@@ -63,6 +63,7 @@ class CommissionsIn(Schema):
 
 
 class PlatformSetupIn(Schema):
+    default_promoter_external_id: str | None = None
     boss: BossIn | None = None
     pricing: PricingIn | None = None
     commissions: CommissionsIn | None = None
@@ -105,6 +106,7 @@ class PlatformSetupCommissionsOut(Schema):
 
 
 class PlatformSetupOut(Schema):
+    default_promoter_external_id: str | None = None
     boss: PlatformSetupBossOut | None = None
     pricing: PlatformSetupPricingOut | None = None
     commissions: PlatformSetupCommissionsOut | None = None

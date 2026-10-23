@@ -13,6 +13,7 @@ import secrets
 from pathlib import Path
 
 import structlog
+import httpx
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -26,7 +27,7 @@ from users.auth.otp.models import (
     OtpCode,
     OtpRateLimit,
 )
-from users.exceptions import RateLimited
+from users.exceptions import NotifyUnavailable, RateLimited
 
 logger = structlog.get_logger()
 
@@ -196,17 +197,31 @@ def generate_and_send(user, channel: str | None = None) -> OtpCode:
 
     from notify.interface.send import send
 
-    notif_external_id = send(
-        text=content,
-        caller="users.auth.otp",
-        phone=phone if want_whatsapp else None,
-        email=email if want_email else None,
-        whatsapp=want_whatsapp,
-        email_channel=want_email,
-        subject="Seu código de acesso — Supletivo Brasil",
-        title="Código de Acesso",
-        mail_template="otp",
-    )
+    from notify.sdk.client import NotifyServerError
+
+    try:
+        notif_external_id = send(
+            text=content,
+            caller="users.auth.otp",
+            phone=phone if want_whatsapp else None,
+            email=email if want_email else None,
+            whatsapp=want_whatsapp,
+            email_channel=want_email,
+            subject="Seu código de acesso — Supletivo Brasil",
+            title="Código de Acesso",
+            mail_template="otp",
+            run_sync=True,
+        )
+    except (NotifyServerError, httpx.HTTPError, ValueError, KeyError) as exc:
+        otp.status = STATUS_FAILED
+        otp.failure_reason = "provider_unavailable"
+        otp.error_detail = type(exc).__name__  # never persist/log the plaintext code or provider body
+        otp.save(update_fields=["status", "failure_reason", "error_detail"])
+        logger.warning("otp.send.provider_failed", id=otp.id, error=type(exc).__name__)
+        raise NotifyUnavailable(
+            "Não foi possível enviar o código. Tente novamente em instantes.",
+            code="OTP_NOT_SENT",
+        ) from exc
     otp.status = STATUS_SENT
     otp.notification_external_id = notif_external_id
     otp.save(update_fields=["status", "notification_external_id"])

@@ -21,6 +21,7 @@ from decimal import Decimal
 
 import structlog
 from django.db import transaction
+from django.conf import settings
 from django.utils import timezone
 
 from users.blocks import service as blocks
@@ -214,11 +215,13 @@ def pending_blocking_count(user) -> int:
 
 def is_locked(user) -> bool:
     """True se o promotor está TRAVADO (tem matéria obrigatória pendente). Lido do banco (não do JWT)."""
-    return pending_blocking_count(user) > 0
+    return settings.TRAINING_ENABLED and pending_blocking_count(user) > 0
 
 
 def pending_materials(user) -> list[dict]:
     """Matérias ainda PENDENTES do user (pro `/promoter/me`: o front sabe o que falta)."""
+    if not settings.TRAINING_ENABLED:
+        return []
     qs = (
         MaterialAssignment.objects.filter(
             user=user,
@@ -301,6 +304,8 @@ def progress(user_external_id: str) -> list[dict]:
 def on_became_promoter(user) -> bool:
     """Chamado quando o candidato vira promotor: atribui as matérias FIXAS ativas e, se houver
     obrigatória pendente, dá a role overlay `training` (trava). Devolve `locked` (pro caller notificar)."""
+    if not settings.TRAINING_ENABLED:
+        return False
     with transaction.atomic():
         for material in Material.objects.filter(active=True, kind=Material.Kind.FIXED):
             assign_material(user, material)

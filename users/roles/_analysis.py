@@ -109,21 +109,32 @@ def sweep_stale_documents(queryset, started_at) -> None:
             document.save(update_fields=["validation_status"])
 
 
-def next_document_slot(doc_type: str, photos: dict) -> str | None:
-    """Próxima foto do documento, ou None enquanto a análise aguarda/concluiu."""
+def next_document_slot(doc_type: str, photos: dict, analysis_status: str | None = None) -> str | None:
+    """Próximo lado do documento.
+
+    Uma face pode ser enviada enquanto a outra ainda está em análise. Só um arquivo `full`
+    bloqueia uma nova captura até o parecer, porque ele já representa o documento inteiro.
+    """
     full, front, back = (f"{doc_type}_{side}" for side in ("full", "front", "back"))
 
     def status(slot: str) -> str | None:
         return (photos.get(slot) or {}).get("status")
 
-    if status(full) == APPROVED or (
+    if analysis_status == REJECTED and status(full) != REJECTED and status(front) != REJECTED and status(back) != REJECTED:
+        return full
+
+    if status(full) in (APPROVED, PENDING, REVIEW) or (
         status(front) == APPROVED and status(back) == APPROVED
     ):
         return None
-    if any(status(slot) in (PENDING, REVIEW) for slot in (full, front, back)):
-        return None
     if status(full) == REJECTED:
         return full
+    if status(front) in (PENDING, REVIEW) and status(back) not in (PENDING, REVIEW, APPROVED):
+        return back
+    if status(back) in (PENDING, REVIEW) and status(front) not in (PENDING, REVIEW, APPROVED):
+        return front
+    if status(front) in (PENDING, REVIEW) or status(back) in (PENDING, REVIEW):
+        return None
     if status(front) == APPROVED:
         return back
     if status(back) == APPROVED:

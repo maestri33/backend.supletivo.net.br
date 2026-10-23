@@ -26,11 +26,11 @@ O Asaas dispara PAYMENT_RECEIVED com `externalReference` igual ao nosso `pid` e 
 from __future__ import annotations
 
 import asyncio
-import base64
 import uuid
 from decimal import Decimal, InvalidOperation
 
 import structlog
+import httpx
 from django.db import IntegrityError
 
 from .client import AsaasError, get_client
@@ -82,6 +82,8 @@ def _reusable_or_new_payment_id(payment_id: str | None, amount: Decimal):
         raise StaticQrError(
             f"payment_id_amount_mismatch: existente={row.amount} pedido={amount}"
         )
+    if not row.asaas_id or row.asaas_id.startswith("FALLBACK_") or not row.qrcode_payload:
+        raise StaticQrError("invalid_existing_qr")
     return pid, row
 
 
@@ -107,7 +109,7 @@ async def _create_qr_with_gateway(pix_key: str, value: float, pid: str, descript
         payload = {
             "addressKey": pix_key,
             "value": value,
-            "description": description or f"Matricula {pid}",
+            "description": (description or f"Matricula {pid}")[:37],
             "format": "ALL",                # retorna payload + encodedImage
             "allowsMultiplePayments": False,  # uso único por checkout
             "externalReference": pid,
@@ -142,23 +144,23 @@ def create_pix_qr(
 
     try:
         pix_key = pix_address_key or asyncio.run(_fetch_pix_address_key())
+    except (AsaasError, httpx.HTTPError, ValueError) as exc:
+        raise StaticQrError("asaas_pix_key_fetch_failed") from exc
+
+    try:
         created = asyncio.run(
             _create_qr_with_gateway(pix_key, float(amt), pid, description)
         )
-        encoded = created.get("encodedImage")
-        payload = created.get("payload")
-        asaas_id = created.get("id")
-    except (AsaasError, Exception) as e:
-        logger.warning("asaas_static_qr_fallback", error=str(e), payment_id=pid)
-        payload = f"00020126580014br.gov.bcb.pix2536chave-pix-supletivo-brasil-mec52040000530398654{float(amt):.2f}5802BR5925SUPLETIVO BRASIL EDUCAC6009SAO PAULO62070503{pid[:20]}6304ABCD"
-        try:
-            import urllib.request
-            qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={payload}"
-            img_bytes = urllib.request.urlopen(qr_url, timeout=5).read()
-            encoded = base64.b64encode(img_bytes).decode("utf-8")
-        except Exception:
-            encoded = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-        asaas_id = f"FALLBACK_{pid[:12]}"
+    except (AsaasError, httpx.HTTPError, ValueError) as exc:
+        raise StaticQrError("asaas_static_qr_create_failed") from exc
+
+    if not isinstance(created, dict):
+        raise StaticQrError("invalid_provider_response")
+    encoded = created.get("encodedImage")
+    payload = created.get("payload")
+    asaas_id = created.get("id")
+    if not isinstance(asaas_id, str) or not asaas_id.strip() or not isinstance(payload, str) or not payload.strip():
+        raise StaticQrError("invalid_provider_response")
 
     if encoded:
         try:
@@ -176,7 +178,7 @@ def create_pix_qr(
             amount=amt,
             description=description,
             status="PENDING",
-            asaas_id=asaas_id,  # ID do QR Code no Asaas ou Fallback
+            asaas_id=asaas_id,
         )
     except IntegrityError:
         # corrida: outro worker gravou o MESMO pid entre a checagem e o insert (`payment_id` é

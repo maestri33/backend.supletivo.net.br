@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from django.conf import settings
-from ninja import Router
+from ninja import Router, Schema, Field
 from ninja.errors import HttpError
 
 from api.auth import require_roles
@@ -48,6 +48,33 @@ def lead_me(request):
     return lead_iface.lead_self_dict(_lead_guard(request))
 
 
+class CardConfirmationIn(Schema):
+    order_nsu: str = Field(min_length=1, max_length=128)
+    transaction_nsu: str = Field(min_length=1, max_length=128)
+    slug: str = Field(min_length=1, max_length=128)
+
+
+@router.post("/card-confirmation", response=LeadMeOut, summary="Conferir retorno do cartão na API do provedor")
+def lead_card_confirmation(request, payload: CardConfirmationIn):
+    from users.roles.lead.models import PaymentAttempt
+    from integrations.bank import recovery
+    lead = _lead_guard(request)
+    # Return parameters identify a charge; they are never financial proof.
+    attempt = PaymentAttempt.objects.filter(lead=lead, user_external_id=request.auth.external_id,
+        provider="infinitepay", provider_payment_id=payload.order_nsu).first()
+    if attempt is None:
+        raise NotFound("Cobrança não pertence a esta conta.", code="CHECKOUT_NOT_FOUND")
+    from django.utils import timezone
+    from datetime import timedelta
+    from integrations.bank.infinitepay.models import WebhookEvent
+    row = WebhookEvent.objects.filter(order_nsu=payload.order_nsu,
+        payload__transaction_nsu=payload.transaction_nsu, payload__slug=payload.slug,
+        received_at__gte=timezone.now() - timedelta(seconds=30)).order_by("-received_at").first()
+    row = row or recovery.receive("infinitepay", payload.dict(), order_nsu=payload.order_nsu)
+    recovery.process("infinitepay", row.pk)
+    return lead_iface.lead_self_dict(_lead_guard(request))
+
+
 @router.get("/checkout-url", response=UrlOut, summary="URL de checkout do lead")
 def lead_checkout_url(request):
     """Só a URL de pagamento/recibo do lead."""
@@ -77,11 +104,18 @@ def lead_pix_page(request, token: str):
 
 @router.post("/identity", response=IdentityOut, summary="Confirmação de CPF (Passo 3)")
 def lead_identity(request, payload: IdentityIn):
-    """Passo 3 — confirma o CPF e devolve a identidade (pergaminho)."""
+    """Passo 3 — enfileira a confirmação CPFHub e devolve o estado do job."""
     require_roles(request.auth, "lead")
     return auth_iface.confirm_identity(
         user_external_id=request.auth.external_id, cpf=payload.cpf
     )
+
+
+@router.get("/identity/status", response=IdentityOut, summary="Estado da confirmação CPFHub")
+def lead_identity_status(request):
+    """Consulta o último job CPFHub do lead sem repetir chamada externa."""
+    require_roles(request.auth, "lead")
+    return auth_iface.get_identity_lookup(user_external_id=request.auth.external_id)
 
 
 @router.post("/email", response=EmailOut, summary="Gravação de e-mail (Passo 5)")

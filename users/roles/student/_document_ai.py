@@ -34,6 +34,7 @@ def check_student_document_photo(
     doc_type: str,
     mime_type: str = "image/jpeg",
     caller: str,
+    timeout: float | None = None,
 ) -> tuple[str, str]:
     """Visão: a foto é mesmo o tipo de documento esperado e está legível?
 
@@ -55,9 +56,8 @@ def check_student_document_photo(
         "APROVADO ou REPROVADO, seguida de um motivo curto e claro."
     )
     try:
-        desc = ai.describe_image(
-            image_bytes, caller=caller, mime_type=mime_type, prompt=prompt
-        )
+        kwargs = {"timeout": timeout} if timeout is not None else {}
+        desc = ai.describe_image(image_bytes, caller=caller, mime_type=mime_type, prompt=prompt, **kwargs)
     except Exception as exc:  # noqa: BLE001 — IA fora do ar → review
         logger.warning(
             "student_doc_ai.vision_failed", caller=caller, error=str(exc)[:200]
@@ -75,10 +75,16 @@ def ocr_image(
     image_bytes: bytes,
     *,
     caller: str,
+    deadline: float | None = None,
 ) -> str:
     """OCR de 1 foto; devolve o texto bruto. Reutiliza o helper multi-imagem do módulo compartilhado."""
     from users.roles import _document_ai
 
+    if deadline is not None:
+        from django.conf import settings
+        if not settings.TEST_EXTERNAL_ADAPTERS:
+            from integrations.ai import service as ai
+            return ai.ocr(image_bytes, caller=caller, document=True, deadline=deadline)
     return _document_ai.ocr_images([image_bytes], caller=caller)
 
 
@@ -88,6 +94,7 @@ def extract_student_document(
     doc_type: str,
     holder_name: str | None,
     caller: str,
+    timeout: float | None = None,
 ) -> dict:
     """1 chamada LLM (JSON): extrai campos relevantes do documento do aluno + confere nome do titular.
 
@@ -115,11 +122,13 @@ def extract_student_document(
         "NÃO invente: qualquer campo que não estiver no texto = null."
     )
     try:
+        kwargs = {"timeout": timeout} if timeout is not None else {}
         data = ai.generate_json(
             prompt,
             caller=caller,
             instruction=instruction,
             schema_description=schema,
+            **kwargs,
         )
     except Exception as exc:  # noqa: BLE001 — erro de IA na extração sobe
         logger.warning(

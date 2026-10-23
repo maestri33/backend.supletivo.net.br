@@ -13,6 +13,7 @@ class DocClassifyOut(Schema):
     completeness: str | None = None
     is_legible: bool | None = None
     reason: str | None = None
+    error_code: str | None = None
     confidence: float | None = None
 
 

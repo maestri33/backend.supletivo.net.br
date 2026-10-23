@@ -1,0 +1,222 @@
+{
+  "scope": "Actual authorized production UI uploads, real Cloudflare, no mocks. Identity only; no address/selfie actions or payment writes.",
+  "evidence": [
+    {
+      "case": "empty",
+      "stage": "frontend",
+      "result": "Escolha um arquivo não vazio de até 15 MB."
+    },
+    {
+      "case": "unsupported.txt",
+      "stage": "frontend",
+      "result": "Use uma imagem JPG, PNG, WebP ou um PDF do RG."
+    },
+    {
+      "case": "oversize.png",
+      "stage": "frontend",
+      "result": "Escolha um arquivo não vazio de até 15 MB."
+    },
+    {
+      "case": "corrupt.jpg",
+      "stage": "frontend classification",
+      "result": "Envie uma foto legível do RG, com as quatro bordas visíveis."
+    },
+    {
+      "case": "corrupt.pdf",
+      "stage": "frontend classification",
+      "result": "Envie uma foto legível do RG, com as quatro bordas visíveis."
+    },
+    {
+      "case": "encrypted.pdf",
+      "stage": "frontend classification",
+      "result": "Envie uma foto legível do RG, com as quatro bordas visíveis."
+    },
+    {
+      "case": "three-pages.pdf",
+      "stage": "frontend classification",
+      "result": "Envie uma foto legível do RG, com as quatro bordas visíveis."
+    },
+    {
+      "case": "blank.png",
+      "stage": "frontend Cloudflare classification",
+      "result": "Envie uma foto legível do RG, com as quatro bordas visíveis."
+    },
+    {
+      "case": "illegible.png",
+      "stage": "frontend Cloudflare classification",
+      "result": "Envie uma foto legível do RG, com as quatro bordas visíveis."
+    },
+    {
+      "case": "CNH in student",
+      "stage": "frontend Cloudflare classification",
+      "result": "Para a matrícula de aluno, envie seu RG."
+    },
+    {
+      "case": "real RG with controlled mismatching profile name",
+      "stage": "frontend upload + asynchronous production OCR",
+      "result": "Não deu pra validar esse documento. Manda de novo: foto nítida, sem reflexo, com as quatro bordas aparecendo e o documento preenchendo a tela."
+    },
+    {
+      "case": "full RG PNG v88",
+      "stage": "asynchronous production OCR",
+      "result": "FAILED happy path: real unstructured OCR response; document sent to review safely",
+      "fixed_in": "0.0.0-sandbox.89"
+    },
+    {
+      "case": "full RG PNG v89",
+      "stage": "frontend upload + asynchronous production OCR",
+      "result": "RG aprovado; one file; no second side requested"
+    },
+    {
+      "case": "full RG PDF v89",
+      "stage": "frontend upload + asynchronous production OCR",
+      "result": "RG aprovado; no second side requested"
+    },
+    {
+      "case": "student.repeat_front_while_asking_back",
+      "result": "rejected",
+      "message": "Esse lado já foi recebido. Envie o verso do RG.",
+      "phase": "production-ui-v89"
+    },
+    {
+      "case": "student.front_first_reload",
+      "result": "front retained, back requested",
+      "phase": "production-ui-v89"
+    },
+    {
+      "case": "student.front_then_back",
+      "result": "approved",
+      "phase": "production-ui-v89",
+      "task": "400324ed53924cb2b1553bf503522e85",
+      "checks": [
+        "name match",
+        "cpf match",
+        "birth_date match"
+      ],
+      "reload": true
+    },
+    {
+      "case": "student.back_first",
+      "result": "back retained, front requested",
+      "phase": "production-ui-v89"
+    },
+    {
+      "case": "student.back_then_front",
+      "result": "approved",
+      "phase": "production-ui-v89",
+      "reload": true
+    },
+    {
+      "case": "promoter.empty.jpg",
+      "result": "rejected",
+      "message": "Selecione um arquivo para enviar.",
+      "phase": "production-ui-v89"
+    },
+    {
+      "case": "promoter.unsupported.txt",
+      "result": "rejected",
+      "message": "Envie JPG, PNG, WebP ou PDF.",
+      "phase": "production-ui-v89"
+    },
+    {
+      "case": "promoter.oversize.png",
+      "result": "rejected",
+      "message": "O arquivo deve ter no máximo 15 MB.",
+      "phase": "production-ui-v89"
+    },
+    {
+      "case": "promoter.corrupt.jpg",
+      "result": "rejected",
+      "message": "O arquivo não parece ser um documento.",
+      "phase": "production-ui-v89"
+    },
+    {
+      "case": "promoter.blank.png",
+      "result": "rejected",
+      "message": "O arquivo não parece ser um documento.",
+      "phase": "production-ui-v89"
+    },
+    {
+      "case": "promoter.illegible.png",
+      "result": "rejected",
+      "message": "O arquivo não parece ser um documento.",
+      "phase": "production-ui-v89"
+    },
+    {
+      "case": "promoter.corrupt.pdf",
+      "result": "rejected",
+      "message": "O arquivo não parece ser um documento.",
+      "phase": "production-ui-v89"
+    },
+    {
+      "case": "promoter.encrypted.pdf",
+      "result": "rejected",
+      "message": "O arquivo não parece ser um documento.",
+      "phase": "production-ui-v89"
+    },
+    {
+      "case": "promoter.three-pages.pdf",
+      "result": "rejected",
+      "message": "O arquivo não parece ser um documento.",
+      "phase": "production-ui-v89"
+    },
+    {
+      "case": "promoter.cnh_wrong_expected_name",
+      "result": "rejected",
+      "phase": "production-ui-v89",
+      "task": "02248608881a4040890ea496f12c544a",
+      "checks": [
+        "name mismatch"
+      ],
+      "document_unmodified": true,
+      "expected_name_restored": true
+    },
+    {
+      "case": "promoter.cnh_credentials_v89",
+      "result": "identity approved but incorrect registration/category",
+      "phase": "production-ui-v89",
+      "task": "a7602bae46e14bc391ca2c8f9a03594b",
+      "fixed_in": "v90",
+      "corrected_canary_pending": true
+    },
+    {
+      "case": "promoter.cnh_provider_timeout_v90",
+      "result": "review, no extracted identity or credential fields applied",
+      "phase": "production-ui-v90",
+      "task": "97875c27d5c24d08b76bfb4f44676201",
+      "model": "Cloudflare Scout",
+      "timeout_ms": 60089
+    },
+    {
+      "case": "promoter.mixed_rg_after_cnh",
+      "result": "rejected",
+      "message": "O arquivo parece ser RG, mas o tipo selecionado é CNH.",
+      "phase": "production-ui-v90",
+      "cnh_type_preserved": true
+    },
+    {
+      "case": "promoter-cnh-v91-reupload-over-old-fields",
+      "stage": "actual UI and async Cloudflare queue",
+      "release": ".91",
+      "result": "review; Scout OCR read timeout at 60086 ms, no identity extraction or replacement of seeded old credentials",
+      "task": "9a0c7fbbd4484e10bee07f37eb6ec40b",
+      "stopped_at": "2026-10-11T21:37:32.299410Z"
+    },
+    {
+      "case": "student-rg-full-original-jpg-v91",
+      "stage": "actual UI and async Cloudflare queue",
+      "release": ".91",
+      "result": "approved; full source only; name, CPF and birth date match; persisted number matches transcription",
+      "task": "fe98f9dc6f8348dfaba01c3805ca6353",
+      "stopped_at": "2026-10-12T01:50:08.123377Z"
+    },
+    {
+      "case": "promoter-cnh-v91-final-reupload",
+      "stage": "actual UI and async Cloudflare queue",
+      "release": ".91",
+      "result": "approved; full source only; name/CPF/birth date match; registration/category/expiry match original and replace old fields; uncertain RENACH cleared; UI shows identity checked",
+      "task": "765db6dc57d0467bb997c0098dfbece1",
+      "stopped_at": "2026-10-12T01:51:41.389052Z"
+    }
+  ]
+}

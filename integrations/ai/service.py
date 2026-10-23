@@ -27,6 +27,9 @@ from .models import AiCall
 
 logger = structlog.get_logger()
 
+# Identity capture has its own model: changing RG/CNH must not change selfies or receipts.
+DEFAULT_IDENTITY_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+
 # Modelos de raciocínio (MiniMax-M3 etc.) prefixam um bloco <think>...</think> no texto; o conteúdo
 # útil vem depois. Removemos o bloco antes de usar/parsear — robusto p/ qualquer modelo da cadeia.
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
@@ -181,10 +184,13 @@ def generate_json(
     temperature: float | None = None,
     max_tokens: int | None = None,
     model: str | None = None,
+    timeout: float | None = None,
 ) -> dict:
     """Gera JSON estruturado. Devolve o dict já parseado (erra não-retryável se fugir do contrato)."""
 
     async def attempt(client, m):
+        if timeout is not None:
+            client._timeout = timeout
         return await client.json(
             prompt,
             model=m,
@@ -402,6 +408,7 @@ def describe_image(
     prompt: str | None = None,
     timeout: float | None = None,
     fallback: bool = True,
+    identity_document: bool = False,
 ) -> str:
     """Visão: descreve/analisa uma imagem (selfie/documento/recibo). Devolve o texto.
 
@@ -410,6 +417,26 @@ def describe_image(
     por tentativa, pelo provider REAL que serviu.
     """
     import base64
+
+    from .cloudflare import CloudflareWorkersAIClient, cloudflare_model, DEFAULT_VISION_MODEL, cloudflare_only
+
+    if cloudflare_only():
+        image_bytes, mime_type = _prep_for_vision(image_bytes, mime_type)
+        model = (
+            cloudflare_model("CLOUDFLARE_IDENTITY_MODEL", DEFAULT_IDENTITY_MODEL)
+            if identity_document else cloudflare_model("CLOUDFLARE_VISION_MODEL", DEFAULT_VISION_MODEL)
+        )
+        client = CloudflareWorkersAIClient(timeout=timeout or settings.IA_TIMEOUT)
+        data_url = f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('ascii')}"
+
+        async def cloudflare_call():
+            result = await client.chat([{"role": "user", "content": [
+                {"type": "text", "text": prompt or "Descreva esta imagem."},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ]}], model=model, temperature=0, max_tokens=4096 if identity_document else (512 if prompt == _CLASSIFY_PROMPT else 4096))
+            return _strip_think(result.content)
+
+        return _media_call(operation=AiCall.Operation.VISION, provider="cloudflare", model=model, caller=caller, coro=cloudflare_call)
 
     from .minimax import MiniMaxClient
 
@@ -470,9 +497,8 @@ def describe_image(
 
 
 # Classificação RÁPIDA de documento (síncrona) — NÃO valida, só reconhece. É a IA "do front"
-# (via backend→OmniRoute): decide qual componente a tela mostra. A validação minuciosa (assinatura,
-# extração de dados) segue ASSÍNCRONA no pipeline de documento. `is_document=None` = indefinido → o
-# front cai no fluxo de confirmação manual (a pessoa diz o tipo), nunca bloqueia por erro da IA.
+# (via backend→Workers AI): decide o lado enviado pela tela. A validação minuciosa e a
+# extração de dados seguem ASSÍNCRONAS. Resultado indefinido pede nova tentativa, sem inventar lado.
 _CLASSIFY_PROMPT = (
     "Você é um classificador de documentos brasileiros. Olhe a imagem e responda SOMENTE um JSON "
     "(sem texto antes/depois) com as chaves: "
@@ -484,6 +510,10 @@ _CLASSIFY_PROMPT = (
     "`is_legible` (bool: dá para reconhecer o documento e ler os elementos principais sem corte, "
     "desfoque ou reflexo impeditivo?), `reason` (motivo curto em português ou null), "
     "`confidence` (0 a 1). NÃO valide autenticidade — faça apenas a pré-checagem visual rápida."
+    " Convenção obrigatória para RG antigo: front é o lado com FOTO, digital e assinatura; "
+    "back é o lado com NOME, FILIAÇÃO, NASCIMENTO e REGISTRO GERAL. Se ambos os lados "
+    "aparecem, mesmo girados ou em duas páginas, use full. Uma face física isolada não é full. "
+    "CNH digital completa (foto, dados, categoria, validade e QR/MRZ) pode ser full."
 )
 
 _CLASSIFY_ALLOWED_TYPE = {"rg", "cnh", "address_proof"}
@@ -508,6 +538,7 @@ def classify_document(
     image_bytes: bytes, *, caller: str, mime_type: str = "image/jpeg"
 ) -> dict:
     """RÁPIDA: classifica tipo/lado e legibilidade, sem validar autenticidade. Nunca levanta por parse."""
+    started = time.monotonic()
     if not image_bytes or len(image_bytes) == 0:
         return {
             "is_document": False,
@@ -522,13 +553,14 @@ def classify_document(
 
         try:
             image_bytes = render_pdf_to_jpeg(image_bytes)
-        except PdfRenderError:
+        except PdfRenderError as exc:
             return {
                 "is_document": False,
                 "doc_type": None,
                 "completeness": None,
                 "is_legible": False,
-                "reason": "Não foi possível abrir o PDF enviado.",
+                "reason": str(exc),
+                "error_code": exc.code,
                 "confidence": 0.0,
             }
         mime_type = "image/jpeg"
@@ -564,7 +596,9 @@ def classify_document(
             caller=caller,
             mime_type=mime_type,
             prompt=_CLASSIFY_PROMPT,
-            timeout=8.0,
+            # Includes the PDF subprocess budget; the browser allows 60 seconds.
+            timeout=min(45.0, max(1.0, 50.0 - (time.monotonic() - started))),
+            identity_document=True,
         )
     except Exception:
         raw = None
@@ -640,8 +674,17 @@ def transcribe(
     1. Cloudflare Workers AI (@cf/openai/whisper) — custo irrisório, latência ultrabaixa.
     2. Google Gemini STT (fallback).
     """
-    from .cloudflare import CloudflareWorkersAIClient, is_workers_ai_configured
+    from .cloudflare import CloudflareWorkersAIClient, is_workers_ai_configured, cloudflare_only, cloudflare_model, DEFAULT_WHISPER_MODEL
     from .gemini import GeminiClient
+
+    if cloudflare_only():
+        model = cloudflare_model("CLOUDFLARE_STT_MODEL", DEFAULT_WHISPER_MODEL)
+        client = CloudflareWorkersAIClient()
+
+        async def cloudflare_call():
+            return await client.transcribe(audio_bytes, mime_type=mime_type, model=model)
+
+        return _media_call(operation=AiCall.Operation.STT, provider="cloudflare", model=model, caller=caller, coro=cloudflare_call)
 
     attempts = []
 
@@ -663,11 +706,191 @@ def transcribe(
     return _media_chain(AiCall.Operation.STT, caller, attempts)
 
 
-def ocr(image_bytes: bytes, *, caller: str, document: bool = False) -> str:
+_IDENTITY_READ_TIMEOUT = 120.0
+
+
+def _identity_call_timeout(deadline: float | None, maximum: float) -> float:
+    remaining = maximum if deadline is None else min(maximum, deadline - time.monotonic())
+    if remaining <= 0:
+        raise LLMError("Prazo de análise da identidade atingido; documento requer revisão.", retryable=False)
+    return remaining
+
+
+def _read_cnh_credentials(images: list[bytes], *, caller: str, deadline: float | None = None) -> dict:
+    """Read registration/category from source pixels, separately from identity OCR.
+
+    Full-source context and four native-resolution tiles prevent a CNH-e PDF's QR
+    and margins from shrinking its printed fields. The saved document stays intact.
+    No account identity or expected credential is supplied to the model.
+    """
+    import base64
+    from io import BytesIO
+    from PIL import Image, ImageOps
+    from .cloudflare import CloudflareWorkersAIClient, cloudflare_model
+
+    content = [{"type": "text", "text": (
+        "As imagens são a mesma CNH completa e seus recortes para leitura ampliada, "
+        "não documentos diferentes. Leia APENAS os campos de habilitação. "
+        "O campo 5 N REGISTRO é o número da CNH: são 11 dígitos, preservando zeros. "
+        "O campo 4c DOC IDENTIDADE/ORG EMISSOR/UF NÃO é número da CNH. "
+        "Categoria é campo 9 CAT HAB (A, B, AB, C, AC, D, AD, E, AE ou ACC). "
+        "Não junte categoria ao registro. Nunca invente valores; ilegíveis=null. "
+        'Responda SOMENTE JSON: {"number": "registro de 11 dígitos ou null", '
+        '"category": "categoria impressa ou null"}.'
+    )}]
+    for source in images:
+        with Image.open(BytesIO(source)) as original:
+            image = ImageOps.exif_transpose(original).convert("RGB")
+            width, height = image.size
+            views = [image, image.crop((0, 0, width // 2, height // 2)),
+                     image.crop((0, height // 2, width // 2, height)),
+                     image.crop((width // 2, 0, width, height // 2)),
+                     image.crop((width // 2, height // 2, width, height))]
+            for view in views:
+                output = BytesIO()
+                view.save(output, "JPEG", quality=95)
+                content.append({"type": "image_url", "image_url": {
+                    "url": "data:image/jpeg;base64," + base64.b64encode(output.getvalue()).decode("ascii")
+                }})
+    model = cloudflare_model("CLOUDFLARE_IDENTITY_MODEL", DEFAULT_IDENTITY_MODEL)
+    client = CloudflareWorkersAIClient(timeout=90.0)
+
+    async def cloudflare_call():
+        for attempt in range(2):
+            try:
+                client._timeout = _identity_call_timeout(deadline, 30.0 if deadline is not None else 90.0)
+                result = await client.chat([{"role": "user", "content": content}], model=model,
+                                           temperature=0, max_tokens=512, json_mode=True)
+            except LLMError as exc:
+                if attempt or not exc.retryable:
+                    raise
+                continue
+            data = _extract_json(result.content)
+            if data is not None:
+                number = str(data.get("number") or "").strip()
+                category = str(data.get("category") or "").strip().upper()
+                if not re.fullmatch(r"[0-9]{11}", number) or not re.fullmatch(r"(?:A?[BCDE]|A|ACC)", category):
+                    raise LLMError("Não foi possível conferir registro e categoria da CNH.", retryable=False)
+                return {"number": number, "category": category}
+        raise LLMError("Não foi possível extrair dados estruturados da CNH.", retryable=False)
+
+    return _media_call(operation=AiCall.Operation.OCR, provider="cloudflare", model=model,
+                       caller=caller + ".credentials", coro=cloudflare_call)
+
+
+def read_identity_document(images: list[bytes], *, doc_type: str, schema: str, caller: str) -> dict:
+    """Transcribe identity fields through bounded Workers AI calls.
+
+    Four orientations are views of the same source, not independent documents. No expected
+    account name/CPF/date is sent: identity comparison happens after extraction, in domain code.
+    The original stored media is never modified by this operation.
+    """
+    import base64
+    from io import BytesIO
+
+    from PIL import Image, ImageOps
+
+    from .cloudflare import CloudflareWorkersAIClient, cloudflare_model
+
+    if doc_type not in {"rg", "cnh"} or not 1 <= len(images) <= 2:
+        raise ValueError("Expected RG/CNH with one complete source or two faces.")
+    if any(len(source) > 15 * 1024 * 1024 for source in images):
+        raise ValueError("Identity document exceeds 15 MB.")
+    deadline = time.monotonic() + _IDENTITY_READ_TIMEOUT
+    if doc_type == "cnh":
+        # Retain the verified Scout identity path. A focused visual read handles
+        # registration/category: free-form OCR confused DOC IDENTIDADE with REGISTRO.
+        text = "\n\n--- PRÓXIMA IMAGEM ---\n\n".join(ocr(source, caller=caller, document=True, deadline=deadline) for source in images)
+        data = generate_json(
+            "Transcreva os campos desta CNH a partir do OCR abaixo. Nunca use dados externos "
+            "nem invente o que não está legível. CPF é diferente de REGISTRO/RENACH e tem "
+            "11 dígitos, preservando zeros. Nascimento não é validade.\n\n" + text,
+            caller=caller, instruction="Responda somente o JSON pedido; campos ilegíveis = null.",
+            schema_description=schema, temperature=0, max_tokens=4096,
+            timeout=_identity_call_timeout(deadline, 20.0),
+        )
+        data["cpf_present"] = True
+        data["ocr_text"] = text
+        data.update(_read_cnh_credentials(images, caller=caller, deadline=deadline))
+        # A numeric security code or REGISTRO is not a state-prefixed RENACH.
+        renach = str(data.get("national_register") or "").strip().upper()
+        data["national_register"] = renach if re.fullmatch(r"[A-Z]{2}[0-9]{9}", renach) else None
+        return data
+    content = [{"type": "text", "text": (
+        f"Transcreva exatamente os dados impressos deste {doc_type.upper()} brasileiro. "
+        "Cada grupo de quatro imagens mostra a MESMA fonte em rotações 0, 90, 180 e 270 graus. "
+        "Use a vista na qual o texto fica em pé. Não confunda campos: CPF tem 11 dígitos, "
+        "preserve zeros iniciais e não use o número do RG; nascimento não é expedição nem validade. "
+        "NÃO invente nem complete texto ilegível. Dados ausentes ou ilegíveis devem ser null. "
+        "cpf_present é true se há campo CPF mesmo ilegível, false se não há, null se não é possível saber. "
+        "Retorne SOMENTE um objeto JSON conforme o schema: " + schema +
+        '. Inclua também "cpf_present": boolean ou null e "ocr_text": transcrição literal legível.'
+    )}]
+    for source in images:
+        with Image.open(BytesIO(source)) as original:
+            image = ImageOps.exif_transpose(original).convert("RGB")
+            image.thumbnail((2048, 2048))
+            for angle in (0, 90, 180, 270):
+                output = BytesIO()
+                image.rotate(angle, expand=True).save(output, "JPEG", quality=95)
+                encoded = base64.b64encode(output.getvalue()).decode("ascii")
+                content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded}"}})
+    model = cloudflare_model("CLOUDFLARE_IDENTITY_MODEL", DEFAULT_IDENTITY_MODEL)
+    client = CloudflareWorkersAIClient(timeout=90.0)
+
+    async def cloudflare_call():
+        for attempt in range(2):
+            try:
+                client._timeout = _identity_call_timeout(deadline, 90.0)
+                result = await client.chat([{"role": "user", "content": content}], model=model,
+                                           temperature=0, max_tokens=4096, json_mode=True)
+            except LLMError as exc:
+                if attempt or not exc.retryable:
+                    raise
+                logger.warning("ai.identity_retry", caller=caller, reason="transport")
+                continue
+            data = _extract_json(result.content)
+            if data is not None:
+                # Omitted presence is uncertainty, never evidence that CPF is absent.
+                data.setdefault("cpf_present", None)
+                return data
+            if not attempt:
+                logger.warning("ai.identity_retry", caller=caller, reason="unstructured_response")
+        raise LLMError("Não foi possível extrair dados estruturados do documento.", retryable=False)
+
+    return _media_call(operation=AiCall.Operation.OCR, provider="cloudflare", model=model,
+                       caller=caller, coro=cloudflare_call)
+
+
+def ocr(image_bytes: bytes, *, caller: str, document: bool = False, deadline: float | None = None) -> str:
     """Extrai texto de uma imagem com cadeia de fallback resiliente:
     1. OmniRoute AI Gateway (CT 135) com modelo multimodal (Gemini 2.5 Flash / MiniMax).
     2. Google Cloud Vision OCR (VisionOCRClient).
     """
+    from .cloudflare import CloudflareWorkersAIClient, cloudflare_model, DEFAULT_VISION_MODEL, cloudflare_only
+    if cloudflare_only():
+        import base64
+        image_bytes, mime_type = _prep_for_vision(image_bytes, "image/jpeg")
+        model = cloudflare_model("CLOUDFLARE_OCR_MODEL", DEFAULT_VISION_MODEL)
+        # Identity reads get one recovery for transient failures only. The shared
+        # deadline covers both faces, JSON extraction and credential verification.
+        for attempt in range(2 if deadline is not None else 1):
+            client = CloudflareWorkersAIClient(timeout=_identity_call_timeout(deadline, 60.0))
+
+            async def cloudflare_call():
+                result = await client.chat([{"role": "user", "content": [
+                    {"type": "text", "text": "Transcreva fielmente o texto visível neste documento. Não invente nem complete campos ilegíveis. Retorne somente o texto extraído."},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('ascii')}"}},
+                ]}], model=model, temperature=0, max_tokens=4096)
+                if result.finish_reason == "length" or not result.content.strip():
+                    raise LLMError("Texto do documento vazio ou incompleto; requer revisão.", retryable=False)
+                return _strip_think(result.content)
+
+            try:
+                return _media_call(operation=AiCall.Operation.OCR, provider="cloudflare", model=model, caller=caller, coro=cloudflare_call)
+            except LLMError as exc:
+                if deadline is None or attempt or not exc.retryable:
+                    raise
     from .omniroute_ocr import OmniRouteOCRClient
     from .vision_ocr import VisionOCRClient
     from core.system_config import get_setting

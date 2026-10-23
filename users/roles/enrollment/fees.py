@@ -11,7 +11,7 @@ from hub.models import Hub
 from users.profiles import interface as profiles
 from users.roles import interface as roles
 from users.roles.enrollment.models import Enrollment
-from users.exceptions import Conflict
+from users.exceptions import Conflict, NotFound
 from users.roles.enrollment.common import (
     EnrollmentError,
     _S,
@@ -134,12 +134,15 @@ def schedule_fee(
     (Victor 2026-06-12); QR já vencido → paga imediato (o vencimento chegou — semântica provada).
     NÃO depende da 1ª parcela estar paga — o que depende das duas é a CONCLUSÃO (palavra dele)."""
     enr = _enrollment_for_coordinator(
-        enrollment_external_id, coordinator, _S.AWAITING_RELEASE, _S.FEE_PAID
+        enrollment_external_id, coordinator, _S.AWAITING_RELEASE, _S.FEE_PAID, _S.FEE_SCHEDULED
     )
-    if fee_facts(enr)["second_scheduled"]:
+    facts = fee_facts(enr)
+    if facts["second_scheduled"]:
         raise Conflict(
             "A 2ª parcela desta taxa já está agendada.", code="FEE_ALREADY_SCHEDULED"
         )
+    if facts["second"] and facts["second"]["status"] != "failed":
+        raise Conflict("Consulte o financeiro antes de repetir esta programação.", code="FEE_RETRY_NOT_ALLOWED")
     plan = service._plan_fee_qr(qr_code, amount)
     if plan["due_date"] is None:
         raise EnrollmentError(
@@ -154,7 +157,7 @@ def schedule_fee(
         scheduled_for=plan["scheduled_for"],
         ref=_fee_due_ref(enr),
     )
-    _set_status(enr, _S.FEE_SCHEDULED)
+    service._set_status(enr, _S.FEE_SCHEDULED)
     _notify_fee_event(
         enr,
         "enrollment.fee_scheduled",

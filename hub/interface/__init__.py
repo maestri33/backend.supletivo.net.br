@@ -9,8 +9,10 @@ resolve o **hub padrão** (fallback de captação). A marca é validada contra o
 from __future__ import annotations
 
 import structlog
+from django.conf import settings
 from django.db import transaction
 
+from core.system_config import get_setting
 from hub import config
 from hub.models import Hub
 from users.auth.models import User
@@ -75,11 +77,15 @@ def _notify_coordinator_assigned(user: User) -> None:
 
     h = Hub.objects.filter(coordinator=user).first()
     polo_name = getattr(h, "brand", None) or "Polo Supletivo Brasil"
+    app_url = str(
+        get_setting("FRONTEND_URL", getattr(settings, "FRONTEND_URL", ""))
+        or "https://app.supletivo.net.br"
+    ).rstrip("/")
     try:
         send_event(
             "hub.coordinator_assigned",
             profile=p,
-            ctx={"polo_nome": polo_name},
+            ctx={"polo_nome": polo_name, "link_painel": f"{app_url}/hub/active"},
             idempotency_key=f"hub_coord_assigned_{user.external_id}",
         )
     except Exception as exc:  # noqa: BLE001
@@ -208,6 +214,10 @@ def hub_of(user) -> Hub | None:
     promoter = Promoter.objects.filter(user=user).select_related("hub").first()
     if promoter is not None:
         return promoter.hub
+    from users.roles.candidate.models import Candidate
+    candidate = Candidate.objects.filter(user=user).select_related("hub").first()
+    if candidate is not None:
+        return candidate.hub
     coordinated = (
         Hub.objects.select_related("coordinator")
         .filter(coordinator=user)

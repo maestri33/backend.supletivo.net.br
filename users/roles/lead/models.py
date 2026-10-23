@@ -153,6 +153,25 @@ class Lead(ExternalIdModel):
             "commission_bonus_threshold": fin_config.bonus_threshold(),
             "commission_coordinator": f"{fin_config.coordinator_amount():.2f}",
         }
+        from finance import canary
+        test_terms = canary.pricing_snapshot(self.user)
+        if test_terms:
+            if str(self.promoter.external_id) != test_terms["owner_external_id"] or self.self_study:
+                raise canary.CanaryError("canary_referral_mismatch")
+            self.pix_price = Decimal(test_terms["pix"])
+            self.card_price = Decimal(test_terms["card_total"])
+            self.card_installments = test_terms["card_installments"]
+            self.card_installment = self.card_price
+            self.anchor_price = self.pix_price
+            self.has_discount = False
+            self.pricing_snapshot.update({
+                "pix": test_terms["pix"],
+                "card": {"installments": self.card_installments, "installment": test_terms["card_total"], "total": test_terms["card_total"]},
+                "promo_pix": None, "promo_card": None, "has_discount": False,
+                "anchor_full": test_terms["pix"], "commission_direct": test_terms["direct"],
+                "commission_bonus_flat": test_terms["bonus"], "commission_bonus_threshold": test_terms["bonus_threshold"],
+                "commission_coordinator": test_terms["coordinator"], "canary": test_terms,
+            })
 
     def get_pricing_dict(self) -> dict:
         """Devolve o snapshot de preços travado do lead."""
@@ -210,6 +229,8 @@ class Checkout(models.Model):
     qrcode_image = models.URLField(max_length=500, null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
     is_paid = models.BooleanField(default=False, db_index=True)
+    # Immutable confirmation observed by the backend, independent of later metadata updates.
+    paid_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 
@@ -221,6 +242,44 @@ class Checkout(models.Model):
 
     def __str__(self) -> str:
         return f"checkout<{self.lead_id}:{self.payment_method}:{'pago' if self.is_paid else 'pendente'}>"
+
+
+class PaymentAttempt(ExternalIdModel):
+    """Immutable charge identity/history; Checkout is only the current UI projection.
+
+    Identity snapshots prevent an old payment from being attached to a recreated account.
+    Financial history survives deletion of test funnel users.
+    """
+
+    lead = models.ForeignKey(Lead, null=True, on_delete=models.SET_NULL, related_name="payment_attempts")
+    checkout = models.OneToOneField(Checkout, null=True, on_delete=models.SET_NULL, related_name="payment_attempt")
+    lead_external_id = models.UUIDField(db_index=True)
+    user_external_id = models.UUIDField(db_index=True)
+    provider = models.CharField(max_length=12)
+    payment_method = models.CharField(max_length=12)
+    provider_payment_id = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    paid_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True)
+    short_token = models.CharField(max_length=32, null=True, blank=True, db_index=True)
+    checkout_url = models.URLField(max_length=500, null=True, blank=True)
+    receipt_url = models.URLField(max_length=500, null=True, blank=True)
+    qrcode_payload = models.TextField(null=True, blank=True)
+    qrcode_image = models.URLField(max_length=500, null=True, blank=True)
+    due_date = models.DateField(null=True)
+    paid_at = models.DateTimeField(null=True)
+    superseded = models.BooleanField(default=False)
+    provider_confirmed = models.BooleanField(default=False)
+    app_applied = models.BooleanField(default=False)
+    creation_uncertain = models.BooleanField(default=False)
+    last_error = models.CharField(max_length=64, blank=True)
+    next_retry_at = models.DateTimeField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "users"
+        db_table = "users_payment_attempt"
+        constraints = [models.UniqueConstraint(fields=["provider", "provider_payment_id"], name="unique_lead_provider_attempt")]
 
 
 class LeadAttribution(models.Model):

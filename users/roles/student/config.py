@@ -10,21 +10,15 @@ from users.roles.student.models import StudentDocument
 
 _T = StudentDocument.Type
 
-# Documentos exigidos de TODO aluno (foto, validados por IA). O militar é condicional ao gênero
-# (só homens) — tratado no service, não aqui. Todos precisam estar APROVADOS pra liberar a prova.
-# Fotos exigidas (validadas por IA). O TIPO SANGUÍNEO obrigatório é o VALOR (`Student.blood_type`,
-# checado no `_maybe_release_exam`), não a foto — então BLOOD_TYPE NÃO entra aqui (spec: "obrigatório
-# especificar" = valor). A foto de tipo sanguíneo segue aceita como documento opcional.
+# Post-enrollment requirement confirmed by the owner: previous school history.
+# Personal identity/address were approved during enrollment. Certificates and
+# other supporting documents remain uploadable, without blocking the exam.
 REQUIRED_DOC_TYPES: tuple[str, ...] = (
-    _T.CERTIFICATE,  # certificado do último ano (obrigatório — spec)
-    _T.TRANSCRIPT,  # histórico (obrigatório — spec)
-    _T.ADDRESS_PROOF,  # comprovante de endereço (foto, validado por IA)
-    _T.ID_CARD,  # documento pessoal / RG (foto, obrigatório)
-    _T.BIRTH_CERTIFICATE,  # certidão
+    _T.TRANSCRIPT,
 )
 
 # Documento exigido só de homens (gate de gênero no service).
-MALE_ONLY_DOC_TYPES: tuple[str, ...] = (_T.MILITARY,)
+MALE_ONLY_DOC_TYPES: tuple[str, ...] = ()
 
 # Descrição por tipo usada na IA de visão.
 _DOC_DESC = {
@@ -105,6 +99,7 @@ _EXTRACT_SCHEMA_TRANSCRIPT = (
 
 _EXTRACT_SCHEMA_ADDRESS_PROOF = (
     "{"
+    '"holder_cpf": "CPF impresso no comprovante (somente dígitos) ou null", '
     '"holder_name": "nome do titular do endereço no documento, string ou null", '
     '"street": "rua/logradouro, string ou null", '
     '"number": "número, string ou null", '
@@ -195,6 +190,7 @@ EXTRACT_FIELDS: dict[str, tuple[str, ...]] = {
         "city",
     ),
     _T.ADDRESS_PROOF: (
+        "holder_cpf",
         "holder_name",
         "street",
         "number",

@@ -66,7 +66,7 @@ _environment = resolve_environment(
 )
 APP_ENV = _environment.app_env
 TEST_MODE = _environment.test_mode
-APP_VERSION = env("APP_VERSION", default="0.0.0-sandbox.56")
+APP_VERSION = env("APP_VERSION", default="0.0.1-beta")
 TEST_MODE_OTP_CODE = env("TEST_MODE_OTP_CODE", default="000000")
 TEST_DATA_TTL_HOURS = env.int("TEST_DATA_TTL_HOURS", default=24)
 TEST_COLLABORATOR_PHONE = env("TEST_COLLABORATOR_PHONE", default="5511999990001")
@@ -171,6 +171,8 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    # Suporte a upload de multipart/form-data em métodos PUT/PATCH no Ninja
+    "ninja.compatibility.files.fix_request_files_middleware",
     # Edge cache, ETag determinístico e validação HTTP 304 (Cloudflare-ready)
     "core.edge_cache.EdgeCacheMiddleware",
     # ponytail: logging estruturado (request_id + method/path/status/duration) — após Common.
@@ -452,6 +454,7 @@ for _ia_item in env.list("IA_FALLBACK_CHAIN", default=[]):
 IA_DEFAULT_TEMPERATURE = env.float("IA_DEFAULT_TEMPERATURE", default=0.3)
 IA_MAX_TOKENS = env.int("IA_MAX_TOKENS", default=0)
 IA_TIMEOUT = env.float("IA_TIMEOUT", default=60.0)
+IA_CLOUDFLARE_ONLY = env.bool("IA_CLOUDFLARE_ONLY", default=True)
 # Modelo multimodal do gateway OmniRoute para VISÃO (describe_image via /v1/chat/completions). Vazio
 # => o primário OmniRoute é pulado e a visão vai direto pro MiniMax-M3 (fallback sempre presente).
 IA_OMNIROUTE_VISION_MODEL = env("IA_OMNIROUTE_VISION_MODEL", default="")
@@ -662,7 +665,7 @@ ROLE_RULES = env.json(
 # nunca float; só o infinitepay usa centavos). Padrão alvo MVP Beta: 50/200/25/threshold 3 (§8/§10).
 COMMISSION_DIRECT = env("COMMISSION_DIRECT", default="100")
 COMMISSION_BONUS_FLAT = env("COMMISSION_BONUS_FLAT", default="500")
-COMMISSION_COORDINATOR = env("COMMISSION_COORDINATOR", default="25")
+COMMISSION_COORDINATOR = env("COMMISSION_COORDINATOR", default="50")
 COMMISSION_BONUS_THRESHOLD = env.int("COMMISSION_BONUS_THRESHOLD", default=5)
 # fechamento: dia (0=seg..4=sex) e hora em America/Sao_Paulo. O Schedule é WEEKLY (sem croniter).
 COMMISSION_CLOSING_WEEKDAY = env.int("COMMISSION_CLOSING_WEEKDAY", default=4)
@@ -670,13 +673,13 @@ COMMISSION_CLOSING_HOUR = env.int("COMMISSION_CLOSING_HOUR", default=18)
 
 # matrícula (funil do aluno, §4 itens 11/13) — preço por gateway. Victor 2026-06-07: o COBRADO é o MESMO
 # EXIBIDO na vitrine (GET /clients/pricing), uma fonte só. PIX em REAIS (valor cheio); CARTÃO em CENTAVOS
-# (total; o front mostra 12x de R$ 99). Padrão canônico: PIX R$ 999 / cartão R$ 1.188 (=118800 centavos).
-ENROLLMENT_PRICE_CARD_CENTS = env.int("ENROLLMENT_PRICE_CARD_CENTS", default=118800)
-ENROLLMENT_PRICE_PIX = env("ENROLLMENT_PRICE_PIX", default="999")
+# (total; o front mostra 12x). Padrão canônico sem indicação: PIX R$ 1.615 / cartão R$ 1.918,80 (=191880 centavos).
+ENROLLMENT_PRICE_CARD_CENTS = env.int("ENROLLMENT_PRICE_CARD_CENTS", default=191880)
+ENROLLMENT_PRICE_PIX = env("ENROLLMENT_PRICE_PIX", default="1615")
 # Preço PROMOCIONAL da matrícula (PIX e Cartão)
-ENROLLMENT_PROMO_PRICE_PIX = env("ENROLLMENT_PROMO_PRICE_PIX", default=ENROLLMENT_PRICE_PIX)
+ENROLLMENT_PROMO_PRICE_PIX = env("ENROLLMENT_PROMO_PRICE_PIX", default="999")
 ENROLLMENT_PROMO_PRICE_CARD_CENTS = env.int(
-    "ENROLLMENT_PROMO_PRICE_CARD_CENTS", default=ENROLLMENT_PRICE_CARD_CENTS
+    "ENROLLMENT_PROMO_PRICE_CARD_CENTS", default=118800
 )
 # Regras da BOLSA / AUTO-ESTUDO do promotor (o promotor não paga; atinge metas de indicações)
 # 3 indicações pagas: libera a auto-matrícula como bolsista
@@ -696,6 +699,7 @@ ENROLLMENT_DESCRIPTION = env("ENROLLMENT_DESCRIPTION", default="Matrícula Suple
 # treino (LMS do funil do colaborador, §4 item 7) — nota de corte (0–10) p/ aprovar uma submissão da IA.
 # Default 6 (palavra do dono). PROD = pedir ao Victor se mudar.
 TRAINING_PASS_SCORE = env("TRAINING_PASS_SCORE", default="6")
+TRAINING_ENABLED = env.bool("TRAINING_ENABLED", default=False)
 
 
 # hub (app hub) — o POLO (§4 item 5). Marca = catálogo no .env (HUB_BRANDS), igual às roles (§9):

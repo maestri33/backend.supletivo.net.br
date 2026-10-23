@@ -29,7 +29,7 @@ _MEM: list[dict] | None = None
 
 def _norm(s: str) -> str:
     s = unicodedata.normalize("NFD", (s or "").lower())
-    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return "".join(c for c in s if unicodedata.category(c) != "Mn").strip()
 
 
 def _uf_de(m: dict) -> str:

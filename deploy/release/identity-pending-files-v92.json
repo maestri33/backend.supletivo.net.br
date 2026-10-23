@@ -1,0 +1,7 @@
+[
+  "api/health/router.py",
+  "api/schemas/documents.py",
+  "core/pdf.py",
+  "integrations/ai/cloudflare.py",
+  "integrations/ai/service.py"
+]

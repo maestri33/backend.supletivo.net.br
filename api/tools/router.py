@@ -6,6 +6,7 @@ from api.base import COMMON_ERROR_REGISTRY, build_group
 from api.tools.schemas import (
     CronJobItemOut,
     CronRunOut,
+    CronTriggerIn,
     ToolLeadOut,
     ToolsNotifyIn,
     ToolsNotifySentOut,
@@ -207,8 +208,19 @@ def cron_finance_weekly_closing(request):
     """Gatilho semanal (sexta 18h): fecha a semana e cria as solicitações de pagamento."""
     from ninja.errors import HttpError
     from core.tasks import run_cron_job
+    from django.utils import timezone
+    import json
+    from pydantic import ValidationError as SchemaValidationError
 
-    res = run_cron_job("finance_weekly_closing")
+    instant = None
+    if request.body and request.content_type == "application/json":
+        try:
+            instant = CronTriggerIn.model_validate(json.loads(request.body)).scheduled_time
+        except (json.JSONDecodeError, SchemaValidationError) as exc:
+            raise ValidationError("Informe uma data com fuso horário para o fechamento.", code="DATE_INVALID") from exc
+    if instant and instant > timezone.now():
+        raise ValidationError("O fechamento não pode usar uma data futura.", code="DATE_INVALID")
+    res = run_cron_job("finance_weekly_closing", scheduled_time=instant)
     if res.get("status") == "failure":
         raise HttpError(500, res.get("error", "Erro no fechamento financeiro semanal"))
     return res
@@ -247,6 +259,24 @@ def cron_selfies_age_stale(request):
     res = run_cron_job("all_age_stale_selfies")
     if res.get("status") == "failure":
         raise HttpError(500, res.get("error", "Erro no envelhecimento de selfies"))
+    return res
+
+
+@api.post(
+    "/cron/executive-report",
+    response=CronRunOut,
+    auth=cron_secret_auth,
+    tags=["cron"],
+    summary="Webhook para Cloudflare Cron Trigger: Relatório executivo via WhatsApp com TTS",
+)
+def cron_executive_report(request):
+    """Gatilho diário/periódico: dispara relatório executivo de novidades com WhatsApp e áudio TTS."""
+    from ninja.errors import HttpError
+    from core.tasks import run_cron_job
+
+    res = run_cron_job("daily_executive_report")
+    if res.get("status") == "failure":
+        raise HttpError(500, res.get("error", "Erro na geração do relatório executivo"))
     return res
 
 

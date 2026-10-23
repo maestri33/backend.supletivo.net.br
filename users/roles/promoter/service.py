@@ -122,13 +122,15 @@ def validate_ref(ref: str):
     except (TypeError, ValueError):
         return None
     promoter = (
-        Promoter.objects.filter(
-            user__external_id=ref_uuid, status=Promoter.Status.ACTIVE
-        )
+        Promoter.objects.filter(user__external_id=ref_uuid)
         .select_related("user")
         .first()
     )
     if promoter is None:
+        from users.roles.candidate.models import Candidate
+        candidate = Candidate.objects.filter(user__external_id=ref_uuid).exclude(status=Candidate.Status.REJECTED).select_related("user").first()
+        return candidate.user if candidate else None
+    if promoter.status != Promoter.Status.ACTIVE:
         return None
     # promotor TRAVADO no treino obrigatório ainda NÃO capta (Victor 2026-06-16) — cai no padrão.
     from users.roles.training import service as training_iface
@@ -139,8 +141,9 @@ def validate_ref(ref: str):
 
 
 def ref_url(user) -> str:
+    from core.system_config import get_setting
     base = (
-        getattr(settings, "LANDING_BASE_URL", "") or settings.EXTERNAL_URL or ""
+        get_setting("LANDING_BASE_URL", default=getattr(settings, "LANDING_BASE_URL", "") or settings.EXTERNAL_URL or "")
     ).rstrip("/")
     return f"{base}/?ref={user.external_id}"
 
@@ -404,6 +407,38 @@ def list_commissions(user) -> list[dict]:
         }
         for row in rows
     ]
+
+
+def document_archive(user_external_id: str) -> dict:
+    """Read the authenticated collaborator's own submitted documents and signature."""
+    from users.documents.models import Document
+    from users.documents import service as documents
+    from users.roles.candidate.models import Candidate
+
+    candidate = Candidate.objects.filter(user__external_id=user_external_id).first()
+    if candidate is None and not Promoter.objects.filter(user__external_id=user_external_id).exists():
+        raise NotFound("Cadastro de promotor não encontrado.", code="PROMOTER_NOT_FOUND")
+    document = Document.objects.filter(user__external_id=user_external_id).select_related("user", "rg", "cnh", "certificate", "military", "address_proof").first()
+    items = []
+    if document is not None:
+        data = documents.as_dict(document)
+        for kind, label in (("rg", "RG"), ("cnh", "CNH")):
+            sub = data[kind]
+            for side, side_label in (("front", "frente"), ("back", "verso"), ("full", "completo")):
+                path = sub.get(f"{side}_photo")
+                if path:
+                    items.append({"kind": f"{kind}_{side}", "name": f"{label} — {side_label}", "path": path, "status": sub.get("validation_status")})
+        proof = document.address_proof
+        if proof.photo:
+            items.append({"kind": "address_proof", "name": "Comprovante de residência", "path": proof.photo, "status": proof.validation_status})
+    if candidate and candidate.selfie_image:
+        items.append({"kind": "selfie", "name": "Foto da assinatura", "path": candidate.selfie_image, "status": candidate.selfie_status})
+    return {
+        "documents": items,
+        "contract_version": candidate.contract_version if candidate else None,
+        "contract_hash": candidate.contract_hash if candidate else None,
+        "accepted_at": candidate.consent_accepted_at.isoformat() if candidate and candidate.consent_accepted_at else None,
+    }
 
 
 def summary(user) -> dict:

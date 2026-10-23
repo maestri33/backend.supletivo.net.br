@@ -16,7 +16,7 @@ pytestmark = pytest.mark.django_db
         ({}, "rg_front"),
         ({"rg_front": {"status": "approved"}}, "rg_back"),
         ({"rg_full": {"status": "rejected"}}, "rg_full"),
-        ({"rg_front": {"status": "pending"}}, None),
+        ({"rg_front": {"status": "pending"}}, "rg_back"),
         ({"rg_front": {"status": "approved"}, "rg_back": {"status": "approved"}}, None),
     ],
 )

@@ -1,0 +1,13 @@
+[
+  "api/health/router.py",
+  "core/settings.py",
+  "users/roles/student/config.py",
+  "users/roles/_address_proof.py",
+  "users/roles/candidate/address_proof.py",
+  "users/roles/candidate/service.py",
+  "users/roles/enrollment/address_proof.py",
+  "users/roles/enrollment/service.py",
+  "api/clients/schemas.py",
+  "api/clients/routers/enrollment.py",
+  "api/collaborators/routers/candidate.py"
+]

@@ -78,7 +78,7 @@ def run_rg_validation(enrollment_id: int, slot: str) -> None:
         photos[slot] = {"status": status, "reason": reason}
         result["photos"] = photos
         if status != doc_ai.APPROVED:
-            _finish_rg(enr, rg, status, reason, result)
+            service._finish_rg(enr, rg, status, reason, result)
             return
 
     images = _rg_approved_images(rg, photos)
@@ -87,7 +87,7 @@ def run_rg_validation(enrollment_id: int, slot: str) -> None:
         rg.validation_result = result
         rg.save(update_fields=["validation_result"])
         return
-    _rg_extract_and_finish(enr, rg, result, images)
+    service._rg_extract_and_finish(enr, rg, result, images)
 
 
 def _rg_approved_images(rg, photos: dict) -> list | None:

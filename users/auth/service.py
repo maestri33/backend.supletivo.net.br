@@ -24,7 +24,7 @@ from notify.sdk import client as notify_client
 from notify.sdk.client import NotifyServerError
 from integrations.tools.cpf.scripts import cpfhub
 from users.auth import validation
-from users.auth.models import User
+from users.auth.models import CpfHubLookup, User
 from users.auth.otp import service as otp_service
 from users.auth.otp.models import STATUS_SENT
 from users.auth.jwt import service as jwt_service
@@ -33,6 +33,7 @@ from users.exceptions import (
     Forbidden,
     IntegrationError,
     NotFound,
+    NotifyUnavailable,
     RateLimited,
     Unauthorized,
     ValidationError,
@@ -82,12 +83,11 @@ def _lookup_cpf(cpf: str):
     if getattr(settings, "TEST_MODE", False):
         logger.info("auth.test_mode.cpf_lookup_mock")
         return _synthetic_identity(cpf)
-    try:
-        return async_to_sync(cpfhub.lookup)(cpf)
-    except cpfhub.CpfHubError as exc:
-        raise IntegrationError(
-            "Serviço de validação de CPF indisponível.", code="CPF_SERVICE_DOWN"
-        ) from exc
+    from users.auth.tasks import enqueue_lookup
+    job = enqueue_lookup(cpf)
+    if job.status != "success":
+        return None
+    return cpfhub.CpfIdentity(cpf=cpf, name=job.identity_name, gender=job.identity_gender, birth_date=job.identity_birth_date)
 
 
 # Cache do phone/check remoto: phone → (resolvido|None, monotonic_ts).
@@ -410,6 +410,8 @@ def _send_or_wait(user, channel: str | None = None) -> dict:
         otp = otp_service.generate_and_send(user, channel=channel)
     except RateLimited as exc:
         return {"otp_sent": False, "otp_wait": exc.retry_after_s}
+    except NotifyUnavailable:
+        raise  # interactive login must expose provider failure as a retryable 503
     except Exception as exc:  # noqa: BLE001 — falha de dispatch não pode virar sucesso silencioso
         logger.warning(
             "auth.otp_send_failed",
@@ -900,7 +902,7 @@ def confirm_identity(*, user_external_id: str, cpf: str) -> dict:
         raise ValidationError("CPF inválido (dígito verificador).", code="CPF_INVALID")
 
     own = profiles.get(user)
-    if own is not None and own.cpf == cpf:
+    if own is not None and own.cpf == cpf and not CpfHubLookup.objects.filter(cpf=cpf).exclude(status="success").exists():
         return {  # re-confirmação (ex.: retry do front) — devolve o que já temos
             "cpf": cpf,
             "name": own.name,
@@ -908,7 +910,7 @@ def confirm_identity(*, user_external_id: str, cpf: str) -> dict:
             "sex": own.gender,
             "photo": own.whatsapp_photo_url or None,
         }
-    if own is not None and own.cpf:
+    if own is not None and own.cpf and own.cpf != cpf:
         # conta JÁ tem identidade confirmada — não deixa trocar por aqui (suporte resolve).
         raise Conflict("Esta conta já tem um CPF confirmado.", code="CPF_ALREADY_SET")
 
@@ -931,50 +933,77 @@ def confirm_identity(*, user_external_id: str, cpf: str) -> dict:
         # SEM vazar nome/dados do titular (proteção de identidade do protótipo).
         raise Conflict("Este CPF já está vinculado a outra conta.", code="CPF_CONFLICT")
 
-    try:
-        identity = _lookup_cpf(cpf)
-    except Exception as exc:
-        logger.warning(
-            "auth.cpf_lookup_failed",
-            cpf_mask=cpf[:3] + "***" if len(cpf) >= 3 else "",
-            error=type(exc).__name__,
-        )
-        identity = None
+    # A consulta externa é sempre enfileirada. O cliente acompanha o job pelo
+    # endpoint de status; nenhuma chamada ao CPFHub bloqueia a requisição HTTP.
+    if own is None:
+        raise NotFound("Perfil não encontrado.", code="PROFILE_NOT_FOUND")
+    # Reserve the CPF under the profile's database uniqueness constraint.
+    if not own.cpf:
+        try:
+            own.cpf = cpf
+            own.save(update_fields=["cpf"])
+        except IntegrityError as exc:
+            raise Conflict("Este CPF já está vinculado a outra conta.", code="CPF_CONFLICT") from exc
+    from users.auth.tasks import enqueue_lookup
+    lookup = enqueue_lookup(cpf, user)
+    if getattr(settings, "TEST_MODE", False) and lookup.status == "pending":
+        from users.auth.tasks import lookup_cpfhub
+        lookup_cpfhub(lookup.pk)
+        lookup.refresh_from_db()
+    if lookup.status == CpfHubLookup.Status.NOT_FOUND:
+        raise ValidationError("CPF não encontrado.", code="CPF_NOT_FOUND")
+    if lookup.status != CpfHubLookup.Status.SUCCESS:
+        return {
+            "cpf": cpf,
+            "status": "pending",
+            "pending": True,
+            "name": None,
+            "birth_date": None,
+            "sex": None,
+            "photo": own.whatsapp_photo_url if own else None,
+            "lookup_id": str(lookup.external_id),
+        }
 
-    if identity is None:
-        if validation.cpf_check_digits_ok(cpf):
-            identity = _synthetic_identity(cpf)
-            if own and own.name and own.name.strip():
-                from integrations.tools.cpf.scripts.cpfhub import CpfIdentity
-
-                identity = CpfIdentity(
-                    cpf=cpf,
-                    name=own.name,
-                    name_upper=own.name.upper(),
-                    gender=identity.gender,
-                    birth_date=identity.birth_date,
-                )
-        else:
-            raise ValidationError("CPF não encontrado.", code="CPF_NOT_FOUND")
-
-    profile = profiles.set_cpf_identity(
-        user,
-        cpf=cpf,
-        name=identity.name,
-        gender=identity.gender,
-        birth_date=identity.birth_date,
-    )
+    profile = profiles.set_cpf_identity(user, cpf=cpf, name=lookup.identity_name,
+                                        gender=lookup.identity_gender, birth_date=lookup.identity_birth_date)
     if profile is None:
         raise NotFound("Perfil não encontrado.", code="PROFILE_NOT_FOUND")
-    logger.info("auth.identity_confirmed", external_id=str(user.external_id))
     return {
         "cpf": cpf,
+        "status": "success",
+        "pending": False,
         "name": profile.name,
         "birth_date": profile.birth_date.isoformat() if profile.birth_date else None,
         "sex": profile.gender,
-        # Foto do WhatsApp capturada em task async na criação da conta (lead.tasks).
-        # Ausente/expirada → o front usa o monograma; nunca é erro.
         "photo": profile.whatsapp_photo_url or None,
+        "lookup_id": str(lookup.external_id),
+    }
+
+
+def get_identity_lookup(*, user_external_id: str, lookup_external_id: str | None = None) -> dict:
+    user = User.objects.filter(external_id=user_external_id).first()
+    if user is None:
+        raise NotFound("Usuário não encontrado.", code="USER_NOT_FOUND")
+    query = CpfHubLookup.objects.filter(user=user)
+    if lookup_external_id:
+        query = query.filter(external_id=lookup_external_id)
+    lookup = query.order_by("-updated_at").first()
+    if lookup is None:
+        raise NotFound("Consulta de identidade não encontrada.", code="IDENTITY_LOOKUP_NOT_FOUND")
+    profile = profiles.get(user)
+    if lookup.status == CpfHubLookup.Status.NOT_FOUND:
+        raise ValidationError("CPF não encontrado.", code="CPF_NOT_FOUND")
+    return {
+        "cpf": lookup.cpf,
+        "status": "success" if lookup.status == CpfHubLookup.Status.SUCCESS else "pending",
+        "pending": lookup.status != CpfHubLookup.Status.SUCCESS,
+        "name": profile.name if profile and lookup.status == CpfHubLookup.Status.SUCCESS else None,
+        "birth_date": profile.birth_date.isoformat() if profile and profile.birth_date and lookup.status == CpfHubLookup.Status.SUCCESS else None,
+        "sex": profile.gender if profile and lookup.status == CpfHubLookup.Status.SUCCESS else None,
+        "photo": profile.whatsapp_photo_url if profile else None,
+        "lookup_id": str(lookup.external_id),
+        "attempts": lookup.attempts,
+        "last_error": lookup.last_error or None,
     }
 
 

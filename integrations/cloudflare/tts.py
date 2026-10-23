@@ -1,14 +1,9 @@
 """Módulo de Síntese de Voz (TTS) via Cloudflare Workers AI & R2 Storage.
 
-Diretivas Canônicas do Projeto (Victor Maestri):
-- Regra Cruzada de Gênero:
-    * Destinatário Masculino (M) -> Voz Feminina ('carina' / 'asteria' / 'Portuguese_SereneWoman')
-    * Destinatário Feminino (F)  -> Voz Masculina ('alvaro' / 'orion' / 'Portuguese_GentleTeacher')
-    * Desconhecido (None)        -> Voz Masculina fallback ('alvaro' / 'Portuguese_GentleTeacher')
-- Provedor Principal: Cloudflare Workers AI (@cf/deepgram/aura-2-es e @cf/deepgram/aura-1)
-- Fallback em Alta Disponibilidade: OmniRoute (10.0.1.35)
-- Armazenamento e Distribuição: Cloudflare R2 com CDN Global + Fallback em storage local.
-- Cache SHA-256 com zero reprocessamento de textos já sintetizados.
+TTS provider order: ElevenLabs Turbo via OmniRoute, ElevenLabs Multilingual,
+then Brazilian Edge-TTS. Cloudflare Aura Spanish is skipped for pt-BR.
+Male recipient -> female voice; female/unknown recipient -> male voice.
+Audio storage remains Cloudflare R2 with local storage fallback.
 """
 
 from __future__ import annotations
@@ -38,11 +33,6 @@ _BULLET_RE = re.compile(r"[•●▪▫◦★☆]")
 _EMOJI_RE = re.compile(r"[\U00010000-\U0010ffff]|[\u2600-\u27bf]|[\u2300-\u23ff]|[\u2b50-\u2b55]")
 _MD_STRIP_RE = re.compile(r"[*_~`#>]")
 _SPACE_CLEAN_RE = re.compile(r"\s+")
-
-# Fallback token do Wrangler caso não esteja no settings/env
-_WRANGLER_FALLBACK_TOKEN = "cfoat_8eEIIwkVr-Olz2tnyeV6NCJUq6W4wjlT2d8GXdgdHdI.LU6JpZ0BDNLK3fnCPBfN-WNGmMixqf3NzUZF70a2YGM"
-_WRANGLER_FALLBACK_ACCOUNT = "e0814c592e43284a2f6f9984bef32631"
-
 
 class CloudflareTtsError(Exception):
     """Erro na geração de áudio TTS."""
@@ -109,12 +99,10 @@ def _get_cf_credentials() -> tuple[str, str]:
     token = (
         get_setting("CLOUDFLARE_API_TOKEN", "")
         or getattr(settings, "CLOUDFLARE_API_TOKEN", "")
-        or _WRANGLER_FALLBACK_TOKEN
     )
     account = (
         get_setting("CLOUDFLARE_ACCOUNT_ID", "")
         or getattr(settings, "CLOUDFLARE_ACCOUNT_ID", "")
-        or _WRANGLER_FALLBACK_ACCOUNT
     )
     return token, account
 
@@ -124,17 +112,19 @@ def _get_omniroute_credentials() -> tuple[str, str]:
         get_setting("OMNIROUTER_URL", "")
         or getattr(settings, "OMNIROUTER_URL", "")
         or getattr(settings, "OMNIROUTE_BASE_URL", "")
-        or "http://10.0.1.35/v1"
+        or ""
     ).rstrip("/")
-    if not url.endswith("/v1"):
+    if url and not url.endswith("/v1"):
         endpoint = f"{url}/v1"
     else:
         endpoint = url
     token = (
-        get_setting("OMNIROUTER_API_KEY", "")
+        get_setting("OMNIROUTE_API_KEY", "")
+        or get_setting("OMNIROUTER_API_KEY", "")
+        or getattr(settings, "OMNIROUTE_API_KEY", "")
         or getattr(settings, "OMNIROUTER_API_KEY", "")
         or getattr(settings, "OPENCODE_API_KEY", "")
-        or "sk-K24JZCN5VGMu2yXL9ItYOO8F9Xp9aaVtkhr5tUyjzYi98D3WeTk8EADVEtsF5VFo"
+        or ""
     )
     return endpoint, token
 
@@ -155,6 +145,13 @@ def synthesize_speech(
     chosen_model = voice_cfg["eleven_model"]
     chosen_voice = voice_cfg["eleven_voice"]
 
+    direct_key = get_setting("ELEVENLABS_API_KEY", "") or getattr(settings, "ELEVENLABS_API_KEY", "")
+    if direct_key:
+        voice_setting = "ELEVENLABS_VOICE_FEMALE" if voice_cfg["voice_gender"] == "female" else "ELEVENLABS_VOICE_MALE"
+        chosen_voice = get_setting(voice_setting, "") or getattr(settings, voice_setting, "")
+        if not re.fullmatch(r"[a-zA-Z0-9]{20}", chosen_voice):
+            raise CloudflareTtsError("Configure a voz brasileira do ElevenLabs para este destinatário.")
+
     # Identificador de cache SHA-256
     cache_key = f"tts:{chosen_model}:{chosen_voice}:{spoken_text}"
     audio_hash = hashlib.sha256(cache_key.encode("utf-8")).hexdigest()[:24]
@@ -170,90 +167,40 @@ def synthesize_speech(
     if default_storage.exists(rel_path):
         logger.info("tts.cache_hit", hash=audio_hash, caller=caller)
         if is_r2_configured():
-            from integrations.cloudflare.r2 import get_r2_public_url
             return get_r2_public_url(rel_path)
         return local_public_url
 
     audio_bytes: bytes | None = None
     failures: list[str] = []
 
-    # 2. Tentativa 1: ElevenLabs Turbo v2.5 via OmniRoute (Nativo Brasileiro, ~0.3s)
     omni_base, omni_token = _get_omniroute_credentials()
-    try:
-        url = f"{omni_base}/audio/speech"
-        headers = {
-            "Authorization": f"Bearer {omni_token}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": "elevenlabs/eleven_turbo_v2_5",
-            "input": spoken_text,
-            "voice": chosen_voice,
-        }
-        with httpx.Client(timeout=timeout) as client:
-            resp = client.post(url, json=payload, headers=headers)
-            if resp.status_code == 200 and resp.content:
-                audio_bytes = resp.content
-                logger.info(
-                    "tts.success",
-                    provider="omniroute_elevenlabs_turbo",
-                    model="elevenlabs/eleven_turbo_v2_5",
-                    voice=chosen_voice,
-                )
-            else:
-                failures.append(f"omni/eleven-turbo ({resp.status_code}): {resp.text[:100]}")
-    except Exception as exc:
-        failures.append(f"omni/eleven-turbo: {exc}")
-        logger.warning("tts.provider_failed", provider="omniroute_elevenlabs_turbo", error=str(exc))
-
-    # 3. Tentativa 2: ElevenLabs Multilingual v2 via OmniRoute
-    if not audio_bytes:
+    for model in ("eleven_turbo_v2_5", "eleven_multilingual_v2"):
         try:
-            url = f"{omni_base}/audio/speech"
-            headers = {
-                "Authorization": f"Bearer {omni_token}",
-                "Content-Type": "application/json",
-            }
-            payload = {
-                "model": "elevenlabs/eleven_multilingual_v2",
-                "input": spoken_text,
-                "voice": chosen_voice,
-            }
+            if direct_key:
+                url = f"https://api.elevenlabs.io/v1/text-to-speech/{chosen_voice}"
+                headers = {"xi-api-key": direct_key}
+                payload = {"text": spoken_text, "model_id": model, "language_code": "pt"}
+            elif omni_token:
+                url = f"{omni_base}/audio/speech"
+                headers = {"Authorization": f"Bearer {omni_token}"}
+                payload = {"model": f"elevenlabs/{model}", "input": spoken_text, "voice": chosen_voice}
+            else:
+                failures.append("ElevenLabs: credencial direta ou OmniRoute não configurada.")
+                break
             with httpx.Client(timeout=timeout) as client:
                 resp = client.post(url, json=payload, headers=headers)
-                if resp.status_code == 200 and resp.content:
-                    audio_bytes = resp.content
-                    logger.info(
-                        "tts.success",
-                        provider="omniroute_elevenlabs_v2",
-                        model="elevenlabs/eleven_multilingual_v2",
-                        voice=chosen_voice,
-                    )
-                else:
-                    failures.append(f"omni/eleven-v2 ({resp.status_code}): {resp.text[:100]}")
+            if resp.status_code == 200 and resp.content and resp.headers.get("content-type", "audio/mpeg").startswith("audio/"):
+                audio_bytes = resp.content
+                logger.info("tts.success", provider="elevenlabs_direct" if direct_key else "omniroute", model=model, voice=chosen_voice)
+                break
+            failures.append(f"{model}: HTTP {resp.status_code}")
         except Exception as exc:
-            failures.append(f"omni/eleven-v2: {exc}")
-            logger.warning("tts.provider_failed", provider="omniroute_elevenlabs_v2", error=str(exc))
+            failures.append(f"{model}: {type(exc).__name__}")
 
-    # 4. Tentativa 3: Fallback Cloudflare Workers AI - Deepgram Aura-2
+    # Aura's Spanish voices cannot satisfy Brazilian Portuguese notifications.
+    # Keep the legacy slot explicit, then proceed to the Brazilian fallback.
     if not audio_bytes:
-        token, account_id = _get_cf_credentials()
-        cf_headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        }
-        try:
-            url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/deepgram/aura-2-es"
-            payload = {"text": spoken_text, "speaker": voice_cfg["aura2_speaker"]}
-            with httpx.Client(timeout=timeout) as client:
-                resp = client.post(url, json=payload, headers=cf_headers)
-                if resp.status_code == 200 and resp.content:
-                    audio_bytes = resp.content
-                    logger.info("tts.cf_fallback_success", model="@cf/deepgram/aura-2-es")
-                else:
-                    failures.append(f"cf/aura-2-es ({resp.status_code}): {resp.text[:100]}")
-        except Exception as exc:
-            failures.append(f"cf/aura-2-es: {exc}")
+        failures.append("cf/aura-2-es: Portuguese Brazilian voice unsupported")
 
     # 5. Tentativa 4: Edge-TTS Neural (pt-BR-AntonioNeural / pt-BR-FranciscaNeural)
     if not audio_bytes:

@@ -1,0 +1,25 @@
+services:
+  biometric:
+    image: v7m-biometric:selfie-recovery-v97
+    container_name: v7m-biometric
+    restart: unless-stopped
+    mem_limit: 2g
+    cpus: 1.0
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - biometric-models:/models
+    networks:
+      - v7m-net
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+volumes:
+  biometric-models:
+networks:
+  v7m-net:
+    external: true
+    name: v7m-platform_v7m-net

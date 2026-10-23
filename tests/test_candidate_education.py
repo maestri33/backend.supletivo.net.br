@@ -40,6 +40,7 @@ def test_primeiro_medio_concluido_nao_vira_medio_completo():
     user = _candidate_at_pix()
     service.set_education(
         user_external_id=str(user.external_id),
+        declaration_accepted=True,
         level="medio",
         grade=1,
         last_completed_grade=1,
@@ -47,6 +48,7 @@ def test_primeiro_medio_concluido_nao_vira_medio_completo():
         completed=False,
         year=2026,
         city=" Ponta Grossa ",
+        state="PR",
         school=" Colégio Exemplo ",
     )
 
@@ -67,6 +69,7 @@ def test_terceiro_medio_concluido_vira_medio_completo():
     user = _candidate_at_pix()
     service.set_education(
         user_external_id=str(user.external_id),
+        declaration_accepted=True,
         level="medio",
         grade=3,
         last_completed_grade=3,
@@ -86,7 +89,8 @@ def test_serie_incompativel_retorna_erro_recuperavel():
     with pytest.raises(service.CandidateError) as exc:
         service.set_education(
             user_external_id=str(user.external_id),
-            level="medio",
+            declaration_accepted=True,
+        level="medio",
             grade=8,
             education_status="stopped",
             completed=False,
@@ -104,6 +108,7 @@ def test_serie_interrompida_guarda_ultimo_ano_realmente_concluido():
     user = _candidate_at_pix()
     service.set_education(
         user_external_id=str(user.external_id),
+        declaration_accepted=True,
         level="fundamental",
         grade=7,
         last_completed_grade=5,
@@ -126,7 +131,8 @@ def test_serie_interrompida_rejeita_conclusao_impossivel():
     with pytest.raises(service.CandidateError) as exc:
         service.set_education(
             user_external_id=str(user.external_id),
-            level="fundamental",
+            declaration_accepted=True,
+        level="fundamental",
             grade=7,
             last_completed_grade=7,
             education_status="stopped",
@@ -146,6 +152,7 @@ def test_superior_incompleto_comprova_medio_e_guarda_formacao():
     user = _candidate_at_pix()
     service.set_education(
         user_external_id=str(user.external_id),
+        declaration_accepted=True,
         level="superior",
         qualification="graduacao",
         last_completed_qualification=None,
@@ -170,6 +177,7 @@ def test_mestrado_interrompido_guarda_graduacao_concluida():
     user = _candidate_at_pix()
     service.set_education(
         user_external_id=str(user.external_id),
+        declaration_accepted=True,
         level="superior",
         qualification="mestrado",
         last_completed_qualification="graduacao",
@@ -192,6 +200,7 @@ def test_doutorado_concluido_guarda_formacao_maxima():
     user = _candidate_at_pix()
     service.set_education(
         user_external_id=str(user.external_id),
+        declaration_accepted=True,
         level="superior",
         qualification="doutorado",
         last_completed_qualification="doutorado",
@@ -215,7 +224,8 @@ def test_superior_rejeita_formacao_concluida_posterior():
     with pytest.raises(service.CandidateError) as exc:
         service.set_education(
             user_external_id=str(user.external_id),
-            level="superior",
+            declaration_accepted=True,
+        level="superior",
             qualification="graduacao",
             last_completed_qualification="mestrado",
             education_status="stopped",

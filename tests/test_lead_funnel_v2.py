@@ -835,14 +835,14 @@ def test_pix_webhook_casa_pelo_pix_qr_code_id_e_paga_o_lead(
                 "pixQrCodeId": QR_ASAAS_ID,
                 "value": float(c.amount),
                 "billingType": "PIX",
-                "transactionReceiptUrl": "https://asaas.test/recibo/1",
+                "transactionReceiptUrl": "https://www.asaas.com/recibo/1",
             },
         }
     )
 
     c.refresh_from_db()
     assert c.is_paid is True
-    assert c.receipt_url == "https://asaas.test/recibo/1"
+    assert c.receipt_url == "https://www.asaas.com/recibo/1"
     assert Lead.objects.get(pk=c.lead_id).status == Lead.Status.PAID
 
 

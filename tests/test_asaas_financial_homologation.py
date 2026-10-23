@@ -19,6 +19,7 @@ import uuid
 import pytest
 from django.conf import settings
 from django.test import Client
+from django.utils import timezone
 
 from finance import config as finance_config
 from finance.interface import commissions as finance_commissions
@@ -99,6 +100,7 @@ def hub_and_promoter(db):
         user=prom_user,
         hub=hub,
         status=Promoter.Status.ACTIVE,
+        activated_at=timezone.now() - timedelta(days=14),
     )
     return hub, prom_user, coord_user
 
@@ -451,7 +453,7 @@ def test_webhook_payment_overdue_and_anti_downgrade(lead_with_checkout):
 
     payload_paid = {
         "event": "PAYMENT_RECEIVED",
-        "payment": {"id": payment.asaas_id, "externalReference": payment.payment_id},
+        "payment": {"id": payment.asaas_id, "externalReference": payment.payment_id, "value": str(payment.amount)},
     }
     asaas_webhooks.handle_event(payload_paid)
     payment.refresh_from_db()
@@ -554,11 +556,12 @@ def test_commission_split_and_weekly_bonus(hub_and_promoter):
         source_external_id=vet_id,
     )
 
-    sim = finance_commissions.simulate_weekly_closing()
+    closing = finance_commissions.next_closing_at()
+    sim = finance_commissions.simulate_weekly_closing(reference_date=closing)
     assert sim["commissions_count"] == 6
     assert sim["bonuses_count"] == 1
 
-    res = finance_commissions.run_weekly_closing()
+    res = finance_commissions.run_weekly_closing(reference_date=closing)
     assert res["bonuses_created"] == 1
     assert res["payment_requests_created"] == 2
 

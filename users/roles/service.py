@@ -7,6 +7,7 @@ qual role agora + histórico (ativa = `revoked_at` nulo). Referência por FK ao 
 from __future__ import annotations
 
 from django.db import IntegrityError, transaction
+from django.conf import settings
 from django.utils import timezone
 
 from users.exceptions import Conflict, Forbidden, NotFound, ValidationError
@@ -247,9 +248,10 @@ def resolve_user_roles_and_statuses(
     - hub: 'active' | 'review'
     - admin: 'active'
     """
-    raw = set(raw_roles or [])
+    # Claims can retain overlays revoked without a token-version bump. An existing
+    # user's current roles come only from the database; claims are a fallback.
+    raw = set(active_roles(user) if user else raw_roles or [])
     if user:
-        raw.update(active_roles(user))
         if getattr(user, "is_superuser", False):
             raw.add("admin")
             raw.add("staff")
@@ -269,11 +271,16 @@ def resolve_user_roles_and_statuses(
     student_obj = _rel("student")
     enrollment_obj = _rel("enrollment")
     lead_obj = _rel("lead")
+    student_role_names = ("lead", "enrollment", "student", "veteran", "aluno")
+    has_student_role = any(r in raw for r in student_role_names)
+    retired_student = bool(user and not has_student_role and user.roles.filter(
+        role__in=student_role_names, revoked_at__isnull=False
+    ).exists())
     is_student = (
-        student_obj is not None
-        or enrollment_obj is not None
-        or lead_obj is not None
-        or any(r in raw for r in ("lead", "enrollment", "student", "veteran", "aluno"))
+        has_student_role
+        or (not retired_student and (
+            student_obj is not None or enrollment_obj is not None or lead_obj is not None
+        ))
     )
 
     if is_student:
@@ -295,20 +302,24 @@ def resolve_user_roles_and_statuses(
     # 2. Promotor (promoter)
     promoter_obj = _rel("promoter")
     candidate_obj = _rel("candidate")
+    promoter_role_names = ("candidate", "training", "promoter", "promotor")
+    has_promoter_role = any(r in raw for r in promoter_role_names)
+    retired_promoter = bool(user and not has_promoter_role and user.roles.filter(
+        role__in=promoter_role_names, revoked_at__isnull=False
+    ).exists())
     is_promoter = (
-        promoter_obj is not None
-        or candidate_obj is not None
-        or any(r in raw for r in ("candidate", "training", "promoter", "promotor"))
+        has_promoter_role
+        or (not retired_promoter and (promoter_obj is not None or candidate_obj is not None))
     )
 
     if is_promoter:
         roles.append("promoter")
-        if "training" in raw:
+        if promoter_obj is not None and promoter_obj.status == "suspended":
+            statuses["promoter"] = "suspended"
+        elif "training" in raw and settings.TRAINING_ENABLED:
             statuses["promoter"] = "training"
         elif promoter_obj is not None:
-            statuses["promoter"] = (
-                "active" if getattr(promoter_obj, "is_active", True) else "suspended"
-            )
+            statuses["promoter"] = "active"
         elif "promoter" in raw or "promotor" in raw:
             statuses["promoter"] = "active"
         elif candidate_obj is not None or "candidate" in raw:

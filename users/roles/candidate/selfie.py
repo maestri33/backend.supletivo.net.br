@@ -12,6 +12,7 @@ from users.roles import _address_proof, _document_ai, _selfie
 from users.roles.candidate.models import Candidate
 from users.roles.candidate.common import (
     CandidateError,
+    _ACTIVE_COLLECTION_STATUSES,
     _S,
     _SELFIE_EXT,
     _MIME_BY_EXT,
@@ -58,8 +59,8 @@ def set_selfie(
     from users.consent import PROMOTER_CONTRACT
     from users.roles import _selfie
 
-    cand = _require(user_external_id, _S.EDUCATION, _S.SELFIE)
-    cand.selfie_image = _save_selfie(cand, image_bytes, content_type)
+    cand = _require(user_external_id, *_ACTIVE_COLLECTION_STATUSES)
+    cand.selfie_image = service._save_selfie(cand, image_bytes, content_type)
     cand.selfie_taken_at = timezone.now()
     cand.selfie_status = _selfie.SelfieStatus.PENDING
     cand.selfie_verified = False
@@ -74,7 +75,7 @@ def set_selfie(
     # BUG-4 (M2c FE-painel, 2026-06-16): worker exige `status==SELFIE` (`run_selfie_validation`
     # linha 1120) — se não avançar, bail-out silencioso e o pending vira review via TTL reconcile.
     # Espelha o `enrollment.set_selfie` (gate em `_S.SELFIE`, advance feito no `set_education`).
-    if cand.status == _S.EDUCATION:
+    if cand.status in _ACTIVE_COLLECTION_STATUSES:
         _set_status(cand, _S.SELFIE)
     cand.save()
     from core.tasks import async_task

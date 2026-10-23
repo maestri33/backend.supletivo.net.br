@@ -1,0 +1,44 @@
+{
+  "scope": "Actual UI checks with original identity files. Review presentation used an explicitly controlled state. Invalid PDFs exercised real decoder; no AI responses mocked. Backend .93 preserved the five .92 overlay file hashes.",
+  "events": [
+    {
+      "case": "candidate-review-state",
+      "setup": "controlled UI review state of existing authorized original CNH; no fabricated OCR",
+      "review_message": true,
+      "old_address_error_hidden": true,
+      "ongoing_ocr_text_hidden": true
+    },
+    {
+      "case": "promoter-password-pdf",
+      "actual_upload": true,
+      "passed": true
+    },
+    {
+      "case": "promoter-excessive-pages-pdf",
+      "actual_upload": true,
+      "passed": true
+    },
+    {
+      "case": "student-password-pdf",
+      "actual_upload": true,
+      "passed": true
+    },
+    {
+      "case": "student-excessive-pages-pdf",
+      "actual_upload": true,
+      "passed": true
+    },
+    {
+      "case": "student-original-full-rg-happy",
+      "actual_upload": true,
+      "passed": true,
+      "task": "91dbc7ca941e45f3b17e0ece32cca20f"
+    },
+    {
+      "case": "promoter-original-full-cnh-happy",
+      "actual_upload": true,
+      "passed": true,
+      "task": "c5f4ac1d1c39483fb7e93673660a5037"
+    }
+  ]
+}

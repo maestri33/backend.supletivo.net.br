@@ -46,6 +46,6 @@
   "vars": {
     "BACKEND_ASAAS_URL": "https://backend.supletivo.net.br/integrations/asaas/webhook/",
     "BACKEND_INFINITEPAY_URL": "https://backend.supletivo.net.br/integrations/infinitepay/webhook/",
-    "BACKEND_HEALTH_URL": "https://backend.supletivo.net.br/api/v1/health/"
+    "BACKEND_HEALTH_URL": "https://backend.supletivo.net.br/api/v1/health/healthz"
   }
 }

@@ -10,6 +10,7 @@ Convenções (CONVENTION §4/§6/§8):
 """
 
 from django.db import models
+from django.utils import timezone
 
 from core.models import ExternalIdModel
 
@@ -21,8 +22,19 @@ class Checkout(ExternalIdModel):
         PENDING = "PENDING"
         PAID = "PAID"
 
+    class CreationState(models.TextChoices):
+        PENDING = "pending"
+        CREATING = "creating"
+        READY = "ready"
+        UNCERTAIN = "uncertain"
+
     # external_id (herdado de ExternalIdModel) = borda (CONVENTION §4) E o order_nsu enviado à InfinitePay.
     checkout_url = models.TextField(null=True, blank=True)
+    creation_state = models.CharField(
+        max_length=12, choices=CreationState.choices, default=CreationState.PENDING,
+        db_index=True,
+    )
+    creation_started_at = models.DateTimeField(null=True, blank=True)
     slug = models.CharField(
         max_length=128, null=True, blank=True, db_index=True
     )  # invoice_slug do lado da InfinitePay
@@ -45,6 +57,7 @@ class Checkout(ExternalIdModel):
     receipt_url = models.TextField(null=True, blank=True)
     request_payload = models.JSONField(default=dict)
     response_payload = models.JSONField(default=dict)
+    payment_check_payload = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -64,6 +77,13 @@ class WebhookEvent(models.Model):
     payload = models.JSONField(default=dict)
     forwarded_ok = models.BooleanField(default=False)
     forwarded_at = models.DateTimeField(null=True, blank=True)
+    processing_state = models.CharField(max_length=12, default="pending", db_index=True)
+    attempts = models.PositiveIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(default=timezone.now, db_index=True)
+    lease_until = models.DateTimeField(null=True, blank=True)
+    lease_token = models.UUIDField(null=True, blank=True)
+    last_error_code = models.CharField(max_length=64, blank=True, default="")
+    processed_at = models.DateTimeField(null=True, blank=True)
     source_ip = models.CharField(max_length=64, null=True, blank=True)
     user_agent = models.TextField(null=True, blank=True)
 

@@ -6,6 +6,7 @@ from users.roles.candidate.models import Candidate
 from users.roles.candidate.common import (
     CandidateError,
     _S,
+    _ACTIVE_COLLECTION_STATUSES,
     _EDU_LEVELS,
     _EDU_QUALIFICATIONS,
     _require,
@@ -21,7 +22,7 @@ def set_pix(*, user_external_id, key: str, key_type: str) -> dict:
     # apelidos PT do front (celular/aleatoria/…) → tipo canônico do DICT (PHONE/EVP/…); o Profile
     # guarda SEMPRE o canônico.
     key_type = pixkey.normalize_key_type(key_type)
-    cand = _require(user_external_id, _S.DOCUMENTS, _S.PIX)
+    cand = _require(user_external_id, *_ACTIVE_COLLECTION_STATUSES)
     profile = profiles.find_by_external_id(user_external_id)
     if profile is None or not profile.cpf:
         raise CandidateError(
@@ -42,7 +43,7 @@ def set_pix(*, user_external_id, key: str, key_type: str) -> dict:
     profiles.set_pix(user_external_id, key.strip(), key_type)
     cand.pix_validated = True
     cand.save(update_fields=["pix_validated", "updated_at"])
-    if cand.status == _S.DOCUMENTS:
+    if cand.status in (_S.STARTED, _S.PROFILE, _S.ADDRESS, _S.DOCUMENTS):
         _set_status(cand, _S.PIX)
     logger.info("candidate.pix_validated", external_id=str(cand.external_id))
     return me_dict(cand)
@@ -68,9 +69,32 @@ def set_education(
     education_status: str | None = None,
     year: int | None = None,
     city: str | None = None,
+    state: str | None = None,
     school: str | None = None,
+    declaration_accepted: bool = False,
+    declaration_ip: str | None = None,
+    declaration_user_agent: str | None = None,
 ) -> dict:
-    cand = _require(user_external_id, _S.PIX, _S.EDUCATION)
+    cand = _require(user_external_id, *_ACTIVE_COLLECTION_STATUSES)
+    if not declaration_accepted:
+        raise CandidateError(
+            "Confirme a declaração de veracidade antes de continuar.",
+            code="EDUCATION_DECLARATION_REQUIRED",
+        )
+    city = (city or "").strip()
+    state = (state or "").strip().upper()
+    if city and state:
+        from integrations.tools.ibge.service import existe
+        if existe(city, state) is None:
+            raise CandidateError(
+                "Selecione uma cidade válida para o estado informado.",
+                code="EDUCATION_CITY_INVALID",
+            )
+    elif city or state:
+        raise CandidateError(
+            "Informe estado e cidade da escola.",
+            code="EDUCATION_LOCATION_INCOMPLETE",
+        )
     if level not in _EDU_LEVELS:
         raise CandidateError(
             "Nível de ensino inválido.",
@@ -186,10 +210,18 @@ def set_education(
         last_completed_qualification=last_completed_qualification,
         education_status=education_status,
         year=year,
-        city=(city or "").strip() or None,
+        city=city or None,
+        state=state or None,
         school=(school or "").strip() or None,
     )
-    if cand.status == _S.PIX:
+    from django.utils import timezone
+    cand.education_declaration_accepted = True
+    cand.education_declaration_version = "education-v1"
+    cand.education_declaration_ip = declaration_ip
+    cand.education_declaration_user_agent = declaration_user_agent
+    cand.education_declaration_at = timezone.now()
+    cand.save(update_fields=["education_declaration_accepted", "education_declaration_version", "education_declaration_ip", "education_declaration_user_agent", "education_declaration_at", "updated_at"])
+    if cand.status in (_S.STARTED, _S.PROFILE, _S.ADDRESS, _S.DOCUMENTS, _S.PIX):
         _set_status(cand, _S.EDUCATION)
     logger.info(
         "candidate.education_set",

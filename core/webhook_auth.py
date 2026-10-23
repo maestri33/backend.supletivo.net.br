@@ -39,7 +39,9 @@ def cron_secret_ok(request) -> bool:
     Segregação de privilégios: verifica CRON_SERVICE_SECRET via CRON_SERVICE_HEADER.
     Fallback seguro: se CRON_SERVICE_SECRET não estiver configurado, aceita BOT_SERVICE_SECRET.
     """
-    cron_secret = getattr(settings, "CRON_SERVICE_SECRET", None) or getattr(
+    from core.system_config import get_setting
+
+    cron_secret = get_setting("CRON_SERVICE_SECRET", getattr(settings, "CRON_SERVICE_SECRET", "")) or getattr(
         settings, "BOT_SERVICE_SECRET", ""
     )
     cron_header = getattr(settings, "CRON_SERVICE_HEADER", "x-cron-secret")

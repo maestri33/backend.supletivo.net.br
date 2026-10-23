@@ -20,9 +20,12 @@ import asyncio
 import os
 import uuid
 from decimal import Decimal, InvalidOperation
+from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 import structlog
 from django.conf import settings
+from django.db import transaction
 
 from .client import AsaasError, get_client
 from .models import Payment
@@ -106,6 +109,58 @@ def get_payout(payment_id: str) -> Payment:
     if row is None:
         raise PayoutError("not_found")
     return row
+
+
+def refresh_payout(payment_id: str) -> Payment:
+    """Recover a missed callback through GET only; never resend uncertain money."""
+    row = get_payout(payment_id)
+    if row.status in ("PAID", "FAILED", "CANCELLED") or settings.TEST_EXTERNAL_ADAPTERS or settings.APP_ENV == "test":
+        return row
+    try:
+        data = asyncio.run(_lookup_transfer(row))
+    except AsaasError as exc:
+        raise PayoutError(f"reconcile_http_{exc.status_code}") from exc
+    except PayoutError:
+        raise
+    except Exception as exc:
+        raise PayoutError("reconcile_unavailable") from exc
+    if Decimal(str(data.get("value", "0"))).quantize(Decimal("0.01")) != row.amount:
+        raise PayoutError("transfer_amount_mismatch")
+    mapping = {"DONE": "PAID", "FAILED": "FAILED", "CANCELLED": "CANCELLED", "PENDING": "SUBMITTED", "IN_BANK_PROCESSING": "SUBMITTED", "BLOCKED": "SUBMITTED"}
+    status = mapping.get(data.get("status"))
+    if status is None:
+        raise PayoutError("transfer_unknown_status")
+    with transaction.atomic():
+        row = Payment.objects.select_for_update().get(pk=row.pk)
+        if row.status not in ("PAID", "FAILED", "CANCELLED"):
+            row.asaas_id = data["id"]
+            row.status = status
+            row.last_error = data.get("failReason") or None
+            row.save(update_fields=["asaas_id", "status", "last_error", "updated_at"])
+    return row
+
+
+async def _lookup_transfer(row: Payment) -> dict:
+    async with get_client() as client:
+        if row.asaas_id:
+            data = await client.get_transfer(row.asaas_id)
+            if data.get("id") != row.asaas_id or data.get("externalReference") not in (None, "", row.payment_id):
+                raise PayoutError("transfer_reference_mismatch")
+            return data
+        # The documented listing supports date filters, not reference filters.
+        # Filter the bounded pages locally by our exact immutable reference.
+        day = row.created_at.astimezone(ZoneInfo("America/Sao_Paulo")).date()
+        matches = []
+        for offset in range(0, 1000, 100):
+            response = await client.list_transfers({"dateCreated[ge]": (day-timedelta(days=1)).isoformat(), "dateCreated[le]": (day+timedelta(days=1)).isoformat(), "limit": 100, "offset": offset})
+            matches.extend(item for item in response.get("data", []) if item.get("externalReference") == row.payment_id)
+            if not response.get("hasMore"):
+                break
+        else:
+            raise PayoutError("transfer_search_incomplete")
+        if len(matches) != 1:
+            raise PayoutError("transfer_not_found" if not matches else "transfer_ambiguous")
+        return matches[0]
 
 
 def to_dict(row: Payment) -> dict:

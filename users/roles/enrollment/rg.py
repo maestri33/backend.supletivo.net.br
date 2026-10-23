@@ -48,7 +48,7 @@ def _reconcile_stale_analyses(enr: Enrollment) -> None:
             enrollment=str(getattr(enr, "external_id", None)),
             kind="rg",
         )
-        _finish_rg(
+        service._finish_rg(
             enr,
             rg,
             _analysis.REVIEW,
@@ -127,7 +127,7 @@ def _rg_section_dict(enr: Enrollment) -> dict:
             k for k in (*_RG_DOC_FIELDS, *_RG_PROFILE_FIELDS) if not fields[k]
         ],
         # next_slot: qual foto o front deve pedir AGORA (sequencial: frente→verso)
-        "next_slot": _analysis.next_document_slot("rg", photos),
+        "next_slot": _analysis.next_document_slot("rg", photos, rg.validation_status if rg else None),
         # photos por slot individual (front precisa saber o status de cada foto)
         # Por slot, o cliente recebe SÓ o status — o `reason` de cada foto é o critério cru da
         # visão ("mostra os dois lados", "lado trocado") e vaza a régua do mesmo jeito que o
@@ -166,7 +166,7 @@ def patch_rg_section(*, user_external_id: str, **fields) -> dict:
     from users.roles import _selfie
 
     if enr.status == _S.SELFIE and enr.selfie_status == _selfie.APPROVED:
-        _advance_to_release(enr)
+        service._advance_to_release(enr)
     return me_dict(
         enr
     )  # resposta canônica (proposta #3): o rg detalhado segue no GET da seção
@@ -241,7 +241,12 @@ def _reset_rg_validation(user_external_id: str, slot: str) -> None:
     result = rg.validation_result or {}
     photos = dict(result.get("photos") or {})
     photos.pop(slot, None)
-    for key in ("extracted", "name_match", "reason", "human"):
+    pointer_fields = []
+    for side in (("front", "back") if slot == "rg_full" else ("full",)):
+        photos.pop(f"rg_{side}", None)
+        setattr(rg, f"{side}_photo", None)
+        pointer_fields.append(f"{side}_photo")
+    for key in ("extracted", "name_match", "reason", "human", "identity_checks", "identity_reason"):
         result.pop(key, None)
     result["photos"] = photos
     # marca o INÍCIO da análise (proposta #2): o re-upload reinicia o relógio do TTL. Guardado no
@@ -250,7 +255,7 @@ def _reset_rg_validation(user_external_id: str, slot: str) -> None:
     rg.validation_status = doc_ai.PENDING
     rg.validation_result = result
     rg.validated_at = None
-    rg.save(update_fields=["validation_status", "validation_result", "validated_at"])
+    rg.save(update_fields=["validation_status", "validation_result", "validated_at", *pointer_fields])
     # ponytail: re-upload resolve o bloco imediatamente — nova análise roda em background
     blocks.resolve_for_source(user=rg.document.user, source_type="rg_photo")
 

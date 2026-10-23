@@ -18,6 +18,15 @@ from django.core.checks import Error, Warning
 
 def check_ia_config(app_configs, **kwargs):
     errors = []
+    from .cloudflare import cloudflare_only, is_workers_ai_configured
+    if cloudflare_only():
+        if not is_workers_ai_configured():
+            return [Error(
+                "Cloudflare Workers AI não configurado.",
+                hint="Configure WORKERS_AI_GATEWAY_URL e WORKERS_AI_GATEWAY_TOKEN no servidor.",
+                id="ai.E004",
+            )]
+        return []
     providers = getattr(settings, "IA_PROVIDERS", {})
     chain = getattr(settings, "IA_FALLBACK_CHAIN", [])
 

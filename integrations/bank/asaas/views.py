@@ -18,8 +18,8 @@ from core.net import source_ip as _source_ip
 
 from . import transfer_validation as tv
 from . import url_verify
-from . import webhooks
-from .security import check_access_token
+from integrations.bank import recovery
+from .security import check_access_token, check_transfer_validation_token
 
 
 @require_GET
@@ -44,8 +44,8 @@ def webhook(request):
     if not check_access_token(request):
         return JsonResponse({"detail": "invalid_token"}, status=401)
     payload = _parse_json(request)
-    webhooks.handle_event(
-        payload,
+    recovery.receive(
+        "asaas", payload,
         source_ip=_source_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
@@ -55,12 +55,12 @@ def webhook(request):
 @csrf_exempt
 @require_POST
 def transfer_validation(request):
-    """Mecanismo de validação de saque do Asaas (PÚBLICO). Auth: asaas-access-token == .env.
+    """Validação de saque com credencial própria ou o token compartilhado legado.
 
     Token inválido/ausente → 401 (Asaas cancela a saída após 3 falhas = seguro). Autenticado →
     decide APPROVED/REFUSED contra o nosso DB.
     """
-    if not check_access_token(request):
+    if not check_transfer_validation_token(request):
         return JsonResponse({"detail": "invalid_token"}, status=401)
     return JsonResponse(tv.decide(_parse_json(request)))
 

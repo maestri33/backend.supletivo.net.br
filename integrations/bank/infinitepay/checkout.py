@@ -13,8 +13,9 @@ import asyncio
 from decimal import Decimal, InvalidOperation
 
 import structlog
-import httpx
 from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
 
 from .client import InfinitePayError, get_client
 from .models import Checkout
@@ -57,6 +58,7 @@ def create_checkout(
     description=None,
     customer=None,
     redirect_url=None,
+    external_id=None,
 ) -> Checkout:
     """Cria um link de checkout InfinitePay. Retorna o Checkout persistido (status PENDING)."""
     cents = _normalize_amount_cents(amount_cents, amount)
@@ -73,10 +75,25 @@ def create_checkout(
     if not ext_url:
         raise CheckoutError("external_url_not_configured")
 
-    # 1. intenção persiste primeiro (§8): external_id = order_nsu (UUID opaco)
-    row = Checkout.objects.create(
-        amount_cents=cents, description=description, status=Checkout.Status.PENDING
-    )
+    # Reserve the stable local intent before contacting a provider without a documented
+    # remote idempotency guarantee. The caller persists this UUID on its own attempt first.
+    with transaction.atomic():
+        if external_id is None:
+            row = Checkout.objects.create(amount_cents=cents, description=description)
+        else:
+            row, _ = Checkout.objects.get_or_create(
+                external_id=external_id,
+                defaults={"amount_cents": cents, "description": description},
+            )
+            row = Checkout.objects.select_for_update().get(pk=row.pk)
+        if row.amount_cents != cents:
+            raise CheckoutError("checkout_amount_mismatch")
+        if row.checkout_url:
+            return row
+        if row.creation_state == Checkout.CreationState.UNCERTAIN:
+            raise CheckoutError("checkout_creation_uncertain")
+        if row.creation_state == Checkout.CreationState.CREATING:
+            raise CheckoutError("checkout_creation_in_progress")
     order_nsu = str(row.external_id)
 
     raw_redirect = (
@@ -114,7 +131,7 @@ def create_checkout(
 
     payload = {
         "handle": handle,
-        "items": [{"quantity": 1, "price": cents, "description": description}],
+        "items": [{"quantity": 1, "price": cents, "description": row.description}],
         "order_nsu": order_nsu,
         "redirect_url": redirect,
         "webhook_url": webhook_url,
@@ -122,24 +139,45 @@ def create_checkout(
     if cleaned_customer:
         payload["customer"] = cleaned_customer
 
+    with transaction.atomic():
+        row = Checkout.objects.select_for_update().get(pk=row.pk)
+        if row.checkout_url:
+            return row
+        if row.creation_state == Checkout.CreationState.UNCERTAIN:
+            raise CheckoutError("checkout_creation_uncertain")
+        if row.creation_state == Checkout.CreationState.CREATING:
+            raise CheckoutError("checkout_creation_in_progress")
+        row.creation_state = Checkout.CreationState.CREATING
+        row.creation_started_at = timezone.now()
+        row.request_payload = payload
+        row.save(update_fields=["creation_state", "creation_started_at", "request_payload", "updated_at"])
+
     try:
         resp = asyncio.run(_create_link(payload))
-    except (InfinitePayError, httpx.HTTPError) as e:
-        # mantém a intenção (PENDING) como registro auditável da tentativa que falhou
-        payload_err = getattr(e, "payload", None)
-        row.request_payload = payload
-        row.response_payload = {"error": f"{type(e).__name__}: {e}", "payload": payload_err}
-        row.save(update_fields=["request_payload", "response_payload", "updated_at"])
-        logger.warning(
-            "checkout_create_failed", external_id=order_nsu, body=str(payload_err or e)
+        if not isinstance(resp, dict) or not (resp.get("url") or resp.get("checkout_url") or resp.get("link")):
+            raise CheckoutError("invalid_checkout_response")
+    except Exception as exc:
+        # An explicit 4xx rejection is retryable locally. Timeout, crash or malformed success
+        # may have created a live link: never issue another POST blindly.
+        rejected = (
+            isinstance(exc, InfinitePayError)
+            and exc.status_code is not None
+            and 400 <= exc.status_code < 500
+            and exc.status_code not in (408, 409)
         )
-        raise CheckoutError(f"infinitepay_create_link_failed: {payload_err or e}") from e
+        code = "infinitepay_create_rejected" if rejected else "checkout_creation_uncertain"
+        row.creation_state = Checkout.CreationState.PENDING if rejected else Checkout.CreationState.UNCERTAIN
+        row.response_payload = {"error_code": code}
+        row.save(update_fields=["creation_state", "response_payload", "updated_at"])
+        logger.warning("checkout_create_failed", external_id=order_nsu, code=code)
+        raise CheckoutError(code) from exc
 
     row.checkout_url = resp.get("url") or resp.get("checkout_url") or resp.get("link")
     row.slug = resp.get("slug")
     row.request_payload = payload
     row.response_payload = resp
-    row.save()
+    row.creation_state = Checkout.CreationState.READY
+    row.save(update_fields=["checkout_url", "slug", "request_payload", "response_payload", "creation_state", "updated_at"])
     logger.info(
         "checkout_created", external_id=order_nsu, slug=row.slug, amount_cents=cents
     )

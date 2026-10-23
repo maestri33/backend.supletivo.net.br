@@ -123,6 +123,17 @@ class LeadPromoterOut(Schema):
         description="external_id do USER do promotor (o mesmo do `?ref=` da landing)"
     )
     name: str | None = None
+    contact_url: str | None = Field(
+        None, description="WhatsApp do promotor responsável, quando o número está disponível."
+    )
+
+
+class LeadHubOut(Schema):
+    name: str | None = None
+    coordinator_name: str | None = None
+    contact_url: str | None = Field(
+        None, description="WhatsApp do coordenador do polo, quando o número está disponível."
+    )
 
 
 class LeadSelfCheckoutOut(Schema):
@@ -130,12 +141,20 @@ class LeadSelfCheckoutOut(Schema):
     provider: str
     amount: str
     is_paid: bool
+    paid_at: str | None = None
     checkout_url: str | None = None
     url: str | None = None
     receipt_url: str | None = None
     qrcode_payload: str | None = None
     qrcode_image: str | None = None
     due_date: str | None = None
+
+
+class LeadPaymentStatusOut(Schema):
+    stage: str
+    continuation_url: str | None = None
+    actual_capture_method: str | None = None
+    paid_amount: str | None = None
 
 
 class LeadMeOut(Schema):
@@ -147,8 +166,10 @@ class LeadMeOut(Schema):
     created_at: str
     customer: LeadCustomerOut
     promoter: LeadPromoterOut
+    hub: LeadHubOut | None = None
     checkout: LeadSelfCheckoutOut | None = None
     pricing: PricingOut | None = None
+    payment_status: LeadPaymentStatusOut | None = None
 
 
 class AddressProofSectionOut(Schema):
@@ -157,6 +178,9 @@ class AddressProofSectionOut(Schema):
     exists: bool = False
     photo: str | None = None
     status: str | None = None
+    analysis_started_at: str | None = None
+    poll_after_ms: int | None = None
+    expires_at: str | None = None
     reason: str | None = Field(
         None,
         description="Orientação PÚBLICA (o que fazer).",
@@ -167,6 +191,7 @@ class AddressProofSectionOut(Schema):
         description="Com needs_kinship: 'confirm' = sobrenome em comum · 'justify' = sem relação.",
     )
     kinship_relation: str | None = None
+    holder_name: str | None = None
     needs_new_proof: bool = Field(
         False,
         description="Coordenador rejeitou a justificativa: pede outro documento.",
@@ -177,6 +202,7 @@ class StudentDocumentOut(Schema):
     doc_type: str
     validation_status: str
     has_photo: bool
+    photo: str | None = None
     analysis_status: AnalysisStatus | None = Field(
         None,
         description="pending | approved | rejected | review",
@@ -211,6 +237,22 @@ class BlockOut(Schema):
 class StudentDiplomaOut(Schema):
     issued_at: str | None = None
     picked_up: bool
+    diploma_file: str | None = None
+    transcript_file: str | None = None
+
+
+class StudentPartnerFeeOut(Schema):
+    status: str
+    amount: str
+    scheduled_for: str | None = None
+    paid: bool = False
+
+
+class StudentPartnerFeesOut(Schema):
+    first: StudentPartnerFeeOut | None = None
+    second: StudentPartnerFeeOut | None = None
+    first_paid: bool = False
+    second_scheduled: bool = False
 
 
 class StudentMeOut(Schema):
@@ -224,7 +266,15 @@ class StudentMeOut(Schema):
     )
     hub_external_id: str
     blood_type: str | None = None
+    exam_available_at: str | None = None
+    exam_can_schedule: bool = False
+    exam_block_reason: str | None = None
+    exams: list[dict[str, Any]] = Field(default_factory=list)
     platform: StudentPlatformFields
+    partner_fees: StudentPartnerFeesOut | None = Field(
+        None,
+        description="As duas taxas reais pagas/agendadas pelo polo para a instituição parceira.",
+    )
     documents: list[StudentDocumentOut]
     pendencies: list[StudentPendencyOut]
     diploma: StudentDiplomaOut | None = None
@@ -243,6 +293,11 @@ class IdentityIn(Schema):
 
 class IdentityOut(Schema):
     cpf: str
+    status: str = "success"
+    pending: bool = False
+    lookup_id: str | None = None
+    attempts: int = 0
+    last_error: str | None = None
     name: str | None = None
     birth_date: str | None = Field(
         None, description="ISO YYYY-MM-DD — o front calcula a idade"
@@ -292,6 +347,7 @@ class EducationIn(Schema):
     city: str
     state: str
     last_year_when: str | None = None
+    declaration_accepted: bool
 
 
 class EnrollmentOut(Schema):
@@ -402,6 +458,18 @@ class EducationOut(Schema):
     last_year_when: str | None = None
 
 
+class EnrollmentReleaseOut(Schema):
+    stage: Literal["document_review", "partner_setup", "access_preparation", "ready"]
+    next_action: str
+    hub_name: str
+    coordinator_name: str | None = None
+    contact_url: str | None = None
+    updated_at: str | None = None
+    payment_confirmed: bool = False
+    action_required: bool = False
+    action_route: str | None = None
+
+
 class EnrollmentMeOut(EnrollmentOut):
     profile: EnrollmentProfileOut | None = None
     address_complete: bool = False
@@ -411,6 +479,7 @@ class EnrollmentMeOut(EnrollmentOut):
     education: EducationOut | None = None
     selfie: SelfieOut | None = None
     blocks: list[dict[str, Any]] | None = None
+    release: EnrollmentReleaseOut | None = None
 
 
 class RgUploadAck(Schema):
@@ -469,6 +538,7 @@ class VeteranMeOut(Schema):
     status: str | None = None
     hub_external_id: str | None = None
     blood_type: str | None = None
+    exams: list[dict[str, Any]] = Field(default_factory=list)
     platform: StudentPlatformFields | None = None
     user: VeteranUserOut | None = None
     documents: list[VeteranDocumentItemOut] = Field(default_factory=list)

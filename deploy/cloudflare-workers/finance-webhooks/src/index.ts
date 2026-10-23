@@ -1,16 +1,9 @@
 /**
  * Cloudflare Edge Webhook Worker: Financial Gateways (Asaas & InfinitePay).
  *
- * Arquitetura de Borda Canônica (Zero-Loss / Zero-Timeout / D1 + KV):
- * 1. Terminação Imediata (<15ms): Responde HTTP 200 OK instantaneamente ao gateway bancário,
- *    eliminando tempestades de retry, bloqueios de webhook e esgotamento do pool do Django.
- * 2. Auditoria SQL Estruturada (Cloudflare D1): Registra todo webhook recebido com IP, URL e payload
- *    para rastreabilidade forense imutável.
- * 3. Despacho Assíncrono Seguro (ctx.waitUntil): Encaminha o webhook em segundo plano
- *    diretamente para o endpoint do backend Django, com X-Edge-Delivery-Id e X-Original-User-Agent.
- * 4. Buffer de Contingência Distribuído (Workers KV): Se o backend estiver indisponível ou reiniciando,
- *    o evento é persistido no KV e reprocessado automaticamente via trigger cron a cada 5 minutos.
- * 5. 100% Free Tier: Operando de forma resiliente e com cotas controladas na Cloudflare.
+ * Acknowledge only after Queue or KV confirms storage. Backend processing is
+ * asynchronous and idempotent; a storage failure must let the gateway retry.
+ * Authentication secrets stay in Worker bindings, never in persisted messages.
  */
 
 export interface Env {
@@ -147,7 +140,9 @@ async function dispatchWebhook(msg: WebhookMessage, env: Env): Promise<boolean> 
       "X-CF-Connecting-IP": msg.clientIp,
       "X-Edge-Delivery-Id": msg.id,
       "X-Original-User-Agent": msg.headers["user-agent"] || "",
-      ...(msg.headers["asaas-access-token"] ? { "asaas-access-token": msg.headers["asaas-access-token"] } : {}),
+      ...(msg.provider === "asaas" && env.ASAAS_WEBHOOK_SECRET
+        ? { "asaas-access-token": env.ASAAS_WEBHOOK_SECRET }
+        : {}),
       ...(env.INTERNAL_SERVICE_SECRET ? { "X-Service-Secret": env.INTERNAL_SERVICE_SECRET } : {}),
     };
 
@@ -177,6 +172,24 @@ async function dispatchWebhook(msg: WebhookMessage, env: Env): Promise<boolean> 
     await updateD1Status(env, msg.id, "RETRYING", String(err?.message || err));
     return false;
   }
+}
+
+async function acceptWebhook(msg: WebhookMessage, env: Env, ctx: ExecutionContext): Promise<void> {
+  await logToD1(env, msg.id, msg.provider, msg.orderNsu || "", msg.url, msg.clientIp, msg.payload, "RECEIVED");
+  if (env.FINANCE_WEBHOOKS_QUEUE) {
+    try {
+      await env.FINANCE_WEBHOOKS_QUEUE.send(msg);
+      return;
+    } catch {
+      // The KV buffer is independently drained by cron if Queue is unavailable.
+    }
+  }
+  await env.FINANCE_WEBHOOKS_KV.put(`pending:${msg.id}`, JSON.stringify(msg), { expirationTtl: 604800 });
+  ctx.waitUntil((async () => {
+    if (await dispatchWebhook(msg, env)) {
+      await env.FINANCE_WEBHOOKS_KV.delete(`pending:${msg.id}`);
+    }
+  })());
 }
 
 export default {
@@ -279,6 +292,12 @@ export default {
 
     // 3. Webhook Asaas (/bank/asaas) - Normalização de trailing slash e autenticação segura
     if (pathname === "/bank/asaas" || pathname.endsWith("/bank/asaas")) {
+      if (!env.ASAAS_WEBHOOK_SECRET) {
+        return new Response(JSON.stringify({ error: "Asaas webhook authentication is not configured" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       const token = request.headers.get("asaas-access-token");
       if (!token) {
         return new Response(JSON.stringify({ error: "Missing asaas-access-token header" }), {
@@ -286,7 +305,7 @@ export default {
           headers: { "Content-Type": "application/json" },
         });
       }
-      if (env.ASAAS_WEBHOOK_SECRET && !timingSafeCompare(token, env.ASAAS_WEBHOOK_SECRET)) {
+      if (!timingSafeCompare(token, env.ASAAS_WEBHOOK_SECRET)) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401,
           headers: { "Content-Type": "application/json" },
@@ -305,7 +324,6 @@ export default {
           receivedAt: new Date().toISOString(),
           url: request.url,
           headers: {
-            "asaas-access-token": token || "",
             "content-type": request.headers.get("content-type") || "application/json",
             "user-agent": request.headers.get("user-agent") || "",
           },
@@ -314,26 +332,15 @@ export default {
           attempts: 1,
         };
 
-        // Grava no D1 e despacha assincronamente (<15ms)
-        ctx.waitUntil(
-          (async () => {
-            await logToD1(env, msgId, "asaas", orderNsu, request.url, clientIp, payload, "RECEIVED");
-            const ok = await dispatchWebhook(msg, env);
-            if (!ok) {
-              await env.FINANCE_WEBHOOKS_KV.put(`pending:${msgId}`, JSON.stringify(msg), {
-                expirationTtl: 604800,
-              });
-            }
-          })()
-        );
+        await acceptWebhook(msg, env, ctx);
 
         return new Response(JSON.stringify({ ok: true, received: true, id: msgId }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
       } catch (err: any) {
-        return new Response(JSON.stringify({ error: "Invalid JSON payload", detail: String(err) }), {
-          status: 400,
+        return new Response(JSON.stringify({ error: err instanceof SyntaxError ? "Invalid JSON payload" : "Webhook storage unavailable" }), {
+          status: err instanceof SyntaxError ? 400 : 503,
           headers: { "Content-Type": "application/json" },
         });
       }
@@ -361,26 +368,15 @@ export default {
           attempts: 1,
         };
 
-        // Grava no D1 e despacha assincronamente (<15ms)
-        ctx.waitUntil(
-          (async () => {
-            await logToD1(env, msgId, "infinitepay", orderNsu, request.url, clientIp, payload, "RECEIVED");
-            const ok = await dispatchWebhook(msg, env);
-            if (!ok) {
-              await env.FINANCE_WEBHOOKS_KV.put(`pending:${msgId}`, JSON.stringify(msg), {
-                expirationTtl: 604800,
-              });
-            }
-          })()
-        );
+        await acceptWebhook(msg, env, ctx);
 
         return new Response(JSON.stringify({ ok: true, received: true, id: msgId }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
       } catch (err: any) {
-        return new Response(JSON.stringify({ error: "Invalid JSON payload", detail: String(err) }), {
-          status: 400,
+        return new Response(JSON.stringify({ error: err instanceof SyntaxError ? "Invalid JSON payload" : "Webhook storage unavailable" }), {
+          status: err instanceof SyntaxError ? 400 : 503,
           headers: { "Content-Type": "application/json" },
         });
       }

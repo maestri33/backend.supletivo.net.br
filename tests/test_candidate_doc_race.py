@@ -88,6 +88,9 @@ class _Img:
 
 
 def _run_extract(monkeypatch, *, rearmed: bool):
+    from datetime import date
+    from types import SimpleNamespace
+
     from users.roles import _document_ai as doc_ai
     from users.roles.candidate import service as cs
 
@@ -96,6 +99,9 @@ def _run_extract(monkeypatch, *, rearmed: bool):
     class _Sub:
         validation_status = doc_ai.PENDING
         validation_result = {}
+        front_photo = None
+        back_photo = None
+        full_photo = "document.jpg"
 
         def refresh_from_db(self, fields=None):
             if rearmed:
@@ -107,12 +113,16 @@ def _run_extract(monkeypatch, *, rearmed: bool):
         external_id = "c1"
         user = type("U", (), {"external_id": "u1"})()
 
-    monkeypatch.setattr(cs.profiles, "get", lambda u: None)
-    monkeypatch.setattr(doc_ai, "ocr_images", lambda *a, **k: "texto")
+    profile = SimpleNamespace(
+        name="Offline Candidate", cpf="52998224725", birth_date=date(1990, 1, 1)
+    )
+    monkeypatch.setattr(cs.profiles, "get", lambda u: profile)
     monkeypatch.setattr(
         doc_ai,
-        "extract_document",
-        lambda *a, **k: {"name_match": "sim", "name_reason": "ok"},
+        "read_identity_images",
+        lambda *a, **k: {
+            "name": profile.name, "cpf": profile.cpf, "birth_date": "1990-01-01"
+        },
     )
     monkeypatch.setattr(cs, "_apply_doc_extracted", lambda *a, **k: None)
     monkeypatch.setattr(cs, "_doc_post_approval", lambda *a, **k: None)

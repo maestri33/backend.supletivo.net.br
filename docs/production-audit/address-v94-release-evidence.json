@@ -1,0 +1,195 @@
+{
+  "version": "0.0.0-sandbox.94",
+  "release": "address-recovery-20261012-v94",
+  "backend": {
+    "http_status": 200,
+    "health": {
+      "status": "ok",
+      "version": "0.0.0-sandbox.94",
+      "db": true,
+      "migrations_pending": 0,
+      "sha": "52c7bd43166f07e1326715639a11f6c1d22d17943f397c10828a0797eee1b986",
+      "built_at": "2026-10-12T03:08:12.523563+00:00"
+    },
+    "original_source_sha256": "3775f14afd3b7801d34a3011f3f4837e65ae1d4fe3a4e332d8ec785a3eaba061"
+  },
+  "worker": "baf785a0-af70-4c07-a31b-453426676a7a",
+  "backend_image": "sha256:b922b5780c3ff38eb952a1e01247ef926e0e44a2bf1d08693dff972b53a624b8",
+  "artifact_sha256": "52c7bd43166f07e1326715639a11f6c1d22d17943f397c10828a0797eee1b986",
+  "source_dirty": true,
+  "tests": {
+    "backend": 138,
+    "frontend": 33,
+    "astro_files": 119,
+    "astro_errors": 0,
+    "astro_warnings": 0,
+    "local_regressions_are_not_real_canaries": true
+  },
+  "real_uploads": [
+    {
+      "role": "student",
+      "format": "original_pdf",
+      "task_id": "e311733efe534aacb89dde2eb4542564",
+      "approved_at": "2026-10-12T03:13:09.419670Z",
+      "stored_address_original_matches": 6
+    },
+    {
+      "role": "promoter_candidate",
+      "format": "faithful_page_png",
+      "task_id": "466235cac4d5492c8cb2558cafdcfcf7",
+      "approved_at": "2026-10-12T03:23:54.845035Z",
+      "stored_address_original_matches": 6
+    },
+    {
+      "role": "student",
+      "format": "faithful_page_jpeg",
+      "task_id": "37456a0e1ef342058386d547d3661c6e",
+      "approved_at": "2026-10-12T03:27:14.873309Z",
+      "stored_address_original_matches": 6,
+      "real_pending_reload": true,
+      "automatic_final_verdict": true
+    }
+  ],
+  "last_business_snapshot": {
+    "version": "0.0.0-sandbox.94",
+    "proof_status": "approved",
+    "proof_generation": "2026-10-12T03:26:45.012557+00:00",
+    "validated_at": "2026-10-12T03:27:14.873309+00:00",
+    "enrollment_status": "education",
+    "address_complete": true,
+    "stored_address_matches_original": {
+      "street": true,
+      "number": true,
+      "neighborhood": true,
+      "city": true,
+      "state": true,
+      "zipcode": true
+    },
+    "extracted_holder_matches_original": true,
+    "kinship_requested": false,
+    "jobs": [
+      {
+        "id": "37456a0e1ef342058386d547d3661c6e",
+        "name": "black-oxygen-nebraska-sink",
+        "stopped": "2026-10-12T03:27:14.879513+00:00"
+      },
+      {
+        "id": "466235cac4d5492c8cb2558cafdcfcf7",
+        "name": "tennessee-lactose-uniform-leopard",
+        "stopped": "2026-10-12T03:23:54.851166+00:00"
+      },
+      {
+        "id": "e311733efe534aacb89dde2eb4542564",
+        "name": "salami-football-stream-october",
+        "stopped": "2026-10-12T03:13:09.432562+00:00"
+      }
+    ],
+    "queue_size": 0,
+    "ai_calls": [
+      {
+        "operation": "json",
+        "provider": "cloudflare",
+        "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "status": "success",
+        "latency_ms": 5405
+      },
+      {
+        "operation": "ocr",
+        "provider": "cloudflare",
+        "model": "@cf/meta/llama-4-scout-17b-16e-instruct",
+        "status": "success",
+        "latency_ms": 21454
+      },
+      {
+        "operation": "vision",
+        "provider": "cloudflare",
+        "model": "@cf/meta/llama-4-scout-17b-16e-instruct",
+        "status": "success",
+        "latency_ms": 2757
+      },
+      {
+        "operation": "json",
+        "provider": "cloudflare",
+        "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "status": "success",
+        "latency_ms": 4675
+      }
+    ]
+  },
+  "cleanup": {
+    "temporary_candidate_removed": true,
+    "retired_promoter_restored": true,
+    "temporary_role_revoked": true,
+    "parking_user_removed": true,
+    "old_tokens_invalidated": true,
+    "student_preserved": true,
+    "active_roles": [
+      "admin",
+      "staff",
+      "enrollment"
+    ]
+  },
+  "preservation": {
+    "active_roles": [
+      "admin",
+      "staff",
+      "enrollment"
+    ],
+    "student_lead_paid": true,
+    "student_lead_owner_preserved": true,
+    "lead_default_promoter_preserved": true,
+    "lead_frozen_pix": "1.01",
+    "lead_frozen_card": "1.02",
+    "default_hub_preserved": true,
+    "default_coordinator_preserved": true,
+    "default_promoter_preserved": true,
+    "default_promoter_active": true,
+    "retired_promoter_preserved": true,
+    "candidate_context_removed": true,
+    "direct_canary_commission": [
+      {
+        "amount": "0.01",
+        "status": "pending"
+      }
+    ],
+    "existing_owner_paid_manual_preserved": true,
+    "commercial_pix": "1615",
+    "commercial_direct": "100",
+    "commercial_bonus": "500",
+    "commercial_coordinator": "50"
+  },
+  "inherited_identity_files": {
+    "version": "0.0.0-sandbox.94",
+    "artifact": "52c7bd43166f07e1326715639a11f6c1d22d17943f397c10828a0797eee1b986",
+    "built_at": "2026-10-12T03:08:12.523563+00:00",
+    "files": {
+      "api/health/router.py": "92967d0afee9accb8a22c5b1452a15cccb083822a48a3ab6fc014cb19ef1c69b",
+      "api/schemas/documents.py": "5d26fd78d10e5a0b52ecfbbafe5542f6bb8880e06b172769189cb4496de554f0",
+      "core/pdf.py": "f72babf15b052ae24ec4d3085716f4c8f76650a564410c3c13efa24a349de32e",
+      "integrations/ai/cloudflare.py": "ff42cc4011931b77192e678f8003faec3535bab7a7e414d107fdc30369141eba",
+      "integrations/ai/service.py": "1f8b794e71170a45adf16382a49d495bcb16eff0d585cdd6ca8c0ecbecc85482"
+    }
+  },
+  "notifications": [
+    {
+      "id": "3EB0625745432180434967",
+      "timestamp": "2026-10-12T03:18:12Z",
+      "kind": "identity_approved"
+    },
+    {
+      "id": "3EB07AF732078A4FA3AEA4",
+      "timestamp": "2026-10-12T03:15:44Z",
+      "kind": "login_otp"
+    }
+  ],
+  "limits": {
+    "real_own_holder_only": true,
+    "third_party_and_coordinator_end_to_end_pending": true,
+    "async_rejection_notification_not_exercised": true,
+    "user_homologation_not_claimed": true
+  },
+  "github_updates": {
+    "backend": "https://github.com/maestri33/backend.supletivo.net.br/issues/24#issuecomment-6117249845",
+    "app": "https://github.com/maestri33/app.supletivo.net.br/issues/7#issuecomment-6117250295"
+  }
+}

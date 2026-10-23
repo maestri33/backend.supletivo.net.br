@@ -41,11 +41,15 @@ def list_reviews(request):
 
     enrollment_rg = [
         _norm(item, "enrollment", "rg")
-        for item in enrollment_reviews.get("rg_reviews", [])
+        for item in enrollment_reviews.get("rg", [])
     ]
     enrollment_selfie = [
         _norm(item, "enrollment", "selfie")
-        for item in enrollment_reviews.get("selfie_reviews", [])
+        for item in enrollment_reviews.get("selfie", [])
+    ]
+    enrollment_address_proof = [
+        _norm(item, "enrollment", "address_proof")
+        for item in enrollment_reviews.get("address_proof", [])
     ]
     candidate_document = [
         _norm(item, "candidate", "document")
@@ -71,6 +75,7 @@ def list_reviews(request):
     return {
         "enrollment_rg": enrollment_rg,
         "enrollment_selfie": enrollment_selfie,
+        "enrollment_address_proof": enrollment_address_proof,
         "candidate_document": candidate_document,
         "candidate_selfie": candidate_selfie,
         "student_documents": student_documents,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, time, timedelta
 from decimal import Decimal
+import json
 from typing import Any
 import uuid
 from zoneinfo import ZoneInfo
@@ -31,6 +32,11 @@ SP_TZ = ZoneInfo("America/Sao_Paulo")
 
 # Códigos padrão do plano de contas contábil
 ACCOUNT_ASSET_ASAAS = "ASSET_ASAAS"
+ACCOUNT_ASSET_ASAAS_RECEIVABLE = "ASSET_ASAAS_RECEIVABLE"
+ACCOUNT_ASSET_INFINITEPAY = "ASSET_INFINITEPAY"
+ACCOUNT_LIABILITY_ADDITIONAL_PAYMENT = "LIABILITY_ADDITIONAL_PAYMENT"
+ACCOUNT_EXPENSE_GATEWAY = "EXPENSE_GATEWAY"
+ACCOUNT_ASSET_PROMOTER_RECOVERY = "ASSET_PROMOTER_RECOVERY"
 ACCOUNT_LIABILITY_PROMOTER = "LIABILITY_PROMOTER_PAYABLE"
 ACCOUNT_LIABILITY_FEES = "LIABILITY_FEES_PAYABLE"
 ACCOUNT_EQUITY_CAPITAL = "EQUITY_CAPITAL"
@@ -43,6 +49,11 @@ ACCOUNT_EXPENSE_OPERATIONAL = "EXPENSE_OPERATIONAL"
 
 _DEFAULT_ACCOUNTS = [
     (ACCOUNT_ASSET_ASAAS, "Conta Corrente / Gateway Asaas", FinancialAccount.Category.ASSET),
+    (ACCOUNT_ASSET_ASAAS_RECEIVABLE, "Recebível Asaas com líquido a conferir", FinancialAccount.Category.ASSET),
+    (ACCOUNT_ASSET_INFINITEPAY, "Recebível nominal InfinitePay com líquido a conferir", FinancialAccount.Category.ASSET),
+    (ACCOUNT_LIABILITY_ADDITIONAL_PAYMENT, "Recebimentos adicionais em revisão", FinancialAccount.Category.LIABILITY),
+    (ACCOUNT_EXPENSE_GATEWAY, "Taxas comprovadas do gateway", FinancialAccount.Category.EXPENSE),
+    (ACCOUNT_ASSET_PROMOTER_RECOVERY, "Comissões a recuperar em próximos repasses", FinancialAccount.Category.ASSET),
     (ACCOUNT_LIABILITY_PROMOTER, "Comissões de Promotores a Pagar", FinancialAccount.Category.LIABILITY),
     (ACCOUNT_LIABILITY_FEES, "Taxas Institucionais a Pagar", FinancialAccount.Category.LIABILITY),
     (ACCOUNT_EQUITY_CAPITAL, "Capital Social / Ajustes de Patrimônio", FinancialAccount.Category.EQUITY),
@@ -77,6 +88,7 @@ def record_transaction(
     description: str | None = None,
     entries: list[dict[str, Any]],
     settled: bool = True,
+    canary_run_id: uuid.UUID | str | None = None,
 ) -> FinancialTransaction:
     """Registra atomicamente uma transação financeira com partidas dobradas (Double-Entry).
 
@@ -126,16 +138,18 @@ def record_transaction(
 
     with transaction.atomic():
         try:
-            tx = FinancialTransaction.objects.create(
-                kind=kind,
-                amount=amount_dec,
-                status=FinancialTransaction.Status.COMPLETED if settled else FinancialTransaction.Status.PENDING,
-                description=description,
-                source_type=source_type,
-                source_external_id=source_uuid,
-                idempotency_key=idempotency_key,
-                settled_at=timezone.now() if settled else None,
-            )
+            with transaction.atomic():
+                tx = FinancialTransaction.objects.create(
+                    kind=kind,
+                    amount=amount_dec,
+                    status=FinancialTransaction.Status.COMPLETED if settled else FinancialTransaction.Status.PENDING,
+                    description=description,
+                    source_type=source_type,
+                    source_external_id=source_uuid,
+                    idempotency_key=idempotency_key,
+                    settled_at=timezone.now() if settled else None,
+                    canary_run_id=canary_run_id,
+                )
         except IntegrityError:
             # Tratamento de corrida de idempotência concorrente
             return FinancialTransaction.objects.get(idempotency_key=idempotency_key)
@@ -152,6 +166,68 @@ def record_transaction(
             )
 
     return tx
+
+
+def record_lead_receipt(*, attempt) -> FinancialTransaction:
+    """Book a verified receipt once; unknown settlement amounts never become cash.
+
+    The caller verifies the provider and calls this inside the business transaction.
+    Buyer financing above the quote is evidence, not assumed merchant revenue.
+    Additional charges are liabilities pending review, not a second enrollment sale.
+    """
+    if not attempt.provider_confirmed or attempt.paid_amount is None:
+        raise ValueError("confirmed_receipt_required")
+    gross = Decimal(str(attempt.amount))
+    paid = Decimal(str(attempt.paid_amount))
+    if not gross.is_finite() or not paid.is_finite() or gross <= 0 or paid < gross:
+        raise ValueError("invalid_receipt_amount")
+    if gross != gross.quantize(Decimal("0.01")) or paid != paid.quantize(Decimal("0.01")):
+        raise ValueError("invalid_receipt_precision")
+    if attempt.provider not in ("asaas", "infinitepay"):
+        raise ValueError("unsupported_provider")
+    key = f"lead_receipt_{attempt.external_id}"
+    existing = FinancialTransaction.objects.filter(idempotency_key=key).first()
+    if existing:
+        return existing
+    net = None
+    if attempt.provider == "asaas":
+        from integrations.bank.asaas.models import Payment
+
+        row = Payment.objects.filter(payment_id=attempt.provider_payment_id,
+            kind__in=(Payment.Kind.CHARGE, Payment.Kind.STATIC_PIX_QR), status="PAID").first()
+        proof = row.confirmation_payload if row else {}
+        try:
+            raw_net = proof.get("netValue")
+            candidate = Decimal(str(raw_net))
+            if (not isinstance(raw_net, bool) and candidate.is_finite()
+                    and candidate == candidate.quantize(Decimal("0.01"))
+                    and Decimal(str(proof.get("value"))) == gross == row.amount
+                    and candidate == row.net_value and 0 <= candidate <= gross):
+                net = candidate
+        except (ArithmeticError, ValueError, TypeError, AttributeError):
+            pass
+    asset = (ACCOUNT_ASSET_INFINITEPAY if attempt.provider == "infinitepay" else
+             ACCOUNT_ASSET_ASAAS if net is not None else ACCOUNT_ASSET_ASAAS_RECEIVABLE)
+    additional = attempt.last_error == "additional_payment_review"
+    credit = ACCOUNT_LIABILITY_ADDITIONAL_PAYMENT if additional else ACCOUNT_REVENUE_ENROLLMENT
+    entries = [{"account_code": credit, "entry_type": "credit", "amount": gross}]
+    asset_amount = gross if net is None else net
+    if asset_amount > 0:
+        entries.append({"account_code": asset, "entry_type": "debit", "amount": asset_amount})
+    fee = gross - net if net is not None else None
+    if fee is not None and fee > 0:
+        entries.append({"account_code": ACCOUNT_EXPENSE_GATEWAY, "entry_type": "debit", "amount": fee})
+    description = json.dumps({"provider": attempt.provider,
+        "attempt_external_id": str(attempt.external_id), "contracted_amount": str(gross),
+        "buyer_paid_amount": str(paid), "buyer_additional_amount": str(paid - gross),
+        "net_amount": str(net) if net is not None else None,
+        "gateway_fee": str(fee) if fee is not None else None,
+        "settlement_evidence": "net_reported" if net is not None else "unknown",
+        "additional_payment_review": additional}, sort_keys=True)
+    return record_transaction(kind=FinancialTransaction.Kind.PAYMENT_RECEIVED,
+        amount=gross, source_type=FinancialTransaction.SourceType.LEAD_PAYMENT,
+        source_external_id=attempt.external_id, idempotency_key=key,
+        description=description, entries=entries, settled=net is not None)
 
 
 def create_manual_adjustment(
@@ -322,6 +398,7 @@ def create_unexpected_expense(
     return ue, pr
 
 
+@transaction.atomic
 def resolve_dispute(
     *,
     actor,
@@ -339,6 +416,10 @@ def resolve_dispute(
     ).first()
     if not dispute:
         raise ValueError("dispute_not_found")
+    if dispute.resolved_at:
+        if dispute.resolution == resolution:
+            return dispute
+        raise ValueError("dispute_already_resolved")
 
     snapshot_before = {
         "status": dispute.status,
@@ -362,24 +443,27 @@ def resolve_dispute(
                 ],
             )
         elif resolution == DisputeRecord.Resolution.DEBIT_PROMOTER:
+            from finance.interface.reversals import reverse_commission
+            comm = Commission.objects.filter(external_id=correlated_commission_id).first() if correlated_commission_id else None
+            if comm is None:
+                raise ValueError("correlated_commission_required")
+            affected = reverse_commission(comm)
+            recovered_amount = sum((item.amount for item in affected), Decimal("0.00"))
+            entries = []
+            for item in affected:
+                paid = (item.payment_request_id and item.payment_request.status == PaymentRequest.Status.PAID) or Commission.objects.filter(source_type=Commission.Source.REVERSAL, source_external_id=item.external_id).exists()
+                entries.append({"account_code": ACCOUNT_ASSET_PROMOTER_RECOVERY if paid else ACCOUNT_LIABILITY_PROMOTER, "entry_type": LedgerEntry.EntryType.DEBIT, "amount": item.amount})
+            entries.append({"account_code": ACCOUNT_EXPENSE_COMMISSION, "entry_type": LedgerEntry.EntryType.CREDIT, "amount": recovered_amount})
             dispute.status = DisputeRecord.Status.RESOLVED_DEBITED
-            # Se houver comissão relacionada pendente, cancela-a
-            if correlated_commission_id:
-                comm = Commission.objects.filter(external_id=correlated_commission_id).first()
-                if comm and comm.status == Commission.Status.PENDING:
-                    comm.status = Commission.Status.CANCELLED
-                    comm.save(update_fields=["status", "updated_at"])
-            # Lança cancelamento no passivo de comissões
+            # Only recover earned commissions; the student's principal is a
+            # platform loss, not a debt imposed on the recipient.
             record_transaction(
                 kind=FinancialTransaction.Kind.CHARGEBACK,
-                amount=dispute.amount,
+                amount=recovered_amount,
                 source_type=FinancialTransaction.SourceType.DISPUTE,
                 idempotency_key=f"dispute_debit_{dispute.external_dispute_id}",
                 description=f"Chargeback estornado do promotor {dispute.external_dispute_id}",
-                entries=[
-                    {"account_code": ACCOUNT_LIABILITY_PROMOTER, "entry_type": LedgerEntry.EntryType.DEBIT, "amount": dispute.amount},
-                    {"account_code": ACCOUNT_ASSET_ASAAS, "entry_type": LedgerEntry.EntryType.CREDIT, "amount": dispute.amount},
-                ],
+                entries=entries,
             )
         elif resolution == DisputeRecord.Resolution.CONTEST_GATEWAY:
             dispute.status = DisputeRecord.Status.RESOLVED_CONTESTED

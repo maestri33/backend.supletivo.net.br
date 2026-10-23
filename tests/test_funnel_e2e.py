@@ -80,7 +80,7 @@ def _simulate_payment(user_external_id: str) -> None:
     checkout.provider_payment_id = "pay_e2e_0001"
     checkout.save(update_fields=["provider_payment_id"])
     assert lead_iface.mark_paid(
-        provider=checkout.provider, provider_payment_id="pay_e2e_0001"
+        provider=checkout.provider, provider_payment_id="pay_e2e_0001", amount_cents=int(checkout.amount * 100)
     ), "mark_paid não casou o checkout do lead"
 
 
@@ -187,6 +187,7 @@ def _media_and_cep(monkeypatch, tmp_path):
             "neighborhood": "Bela Vista",
             "city": "São Paulo",
             "state": "SP",
+            "declaration_accepted": True,
             "complement": "",
         },
     )
@@ -289,6 +290,7 @@ def test_aluno_funnel_end_to_end(client, default_hub):
             "last_school": "Escola Estadual Central",
             "city": "São Paulo",
             "state": "SP",
+            "declaration_accepted": True,
         },
         token,
     )

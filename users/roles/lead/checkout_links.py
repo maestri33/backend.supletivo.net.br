@@ -91,9 +91,18 @@ def resolve(token: str) -> str | None:
     Se o checkout JÁ FOI PAGO (o lead virou enrollment/student) → manda pro **comprovante**
     (`receipt_url`) em vez do gateway (Victor 2026-06-05). Senão → URL do gateway (cache; fallback no
     Checkout persistido, re-popula o cache)."""
-    from users.roles.lead.models import Checkout
+    from users.roles.lead.models import Checkout, PaymentAttempt
 
     c = Checkout.objects.filter(short_token=token).first()
+    if c is None:
+        historical = PaymentAttempt.objects.select_related("lead").filter(short_token=token).first()
+        if historical is None:
+            return None
+        if historical.provider_confirmed:
+            return historical.receipt_url or None
+        # Superseded short links take the payer to the current proposal, not a stale charge.
+        current = Checkout.objects.filter(lead_id=historical.lead_id).first() if historical.lead_id else None
+        return short_url(current.short_token) if current else None
     if c and c.is_paid:
         return (
             c.receipt_url or None

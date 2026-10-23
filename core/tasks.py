@@ -104,14 +104,13 @@ def async_task(func: str | Callable, *args: Any, **kwargs: Any) -> Any:
             if q_options:
                 kwargs["q_options"] = q_options
             return dq_async_task(func, *args, **kwargs)
-        except (ImportError, Exception) as exc:
-            logger.warning(
-                "task.django_q_fallback_to_sync",
+        except Exception as exc:
+            logger.exception(
+                "task.queue_publish_failed",
                 func=str(func),
                 error=str(exc),
             )
-            fn = resolve_callable(func)
-            return fn(*args, **kwargs)
+            raise
 
 
 def schedule(name_or_func: str | Callable, *args: Any, **kwargs: Any) -> Any:
@@ -173,10 +172,14 @@ CRON_REGISTRY: dict[str, dict[str, Any]] = {
         "func": None,  # Executa ambos em sequência
         "description": "Envelhecimento de selfies pendentes em todas as roles (candidato e matrícula)",
     },
+    "daily_executive_report": {
+        "func": "core.reports.executive_report.send_executive_report_cron",
+        "description": "Relatório executivo diário de novos leads, pagamentos, promotores e métricas via WhatsApp com áudio TTS",
+    },
 }
 
 
-def run_cron_job(job_name: str) -> dict[str, Any]:
+def run_cron_job(job_name: str, *, scheduled_time=None) -> dict[str, Any]:
     """Executa um job agendado do CRON_REGISTRY com medição de latência e log estruturado."""
     if job_name not in CRON_REGISTRY:
         raise ValueError(
@@ -196,7 +199,7 @@ def run_cron_job(job_name: str) -> dict[str, Any]:
             result = {"candidate": res_cand, "enrollment": res_enr}
         else:
             fn = resolve_callable(meta["func"])
-            result = fn()
+            result = fn(reference_date=scheduled_time) if job_name == "finance_weekly_closing" and scheduled_time else fn()
 
         elapsed_ms = round((time.monotonic() - start_time) * 1000, 2)
         logger.info("cron.job_finished", job=job_name, elapsed_ms=elapsed_ms)

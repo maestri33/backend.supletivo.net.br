@@ -57,7 +57,11 @@ def test_real_pdf_extraction_pipeline():
     # Inspeciona com Pillow
     with Image.open(BytesIO(jpeg_bytes)) as out_img:
         assert out_img.format == "JPEG"
-        assert out_img.size == (600, 400)
+        # PDFium renders the PDF page at its bounded raster scale; it is not
+        # required to preserve the source bitmap's pixel dimensions.  The
+        # contract is an RGB JPEG with the original 3:2 page geometry.
+        assert out_img.size[0] > 0 and out_img.size[1] > 0
+        assert abs((out_img.size[0] / out_img.size[1]) - (600 / 400)) < 0.01
         assert out_img.mode == "RGB"
 
 

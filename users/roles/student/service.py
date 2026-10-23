@@ -16,7 +16,9 @@ A comissão da formatura usa o motor `finance` (`Source.VETERAN`, valor do `.env
 
 from __future__ import annotations
 
+from calendar import monthrange
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import structlog
 from django.conf import settings
@@ -223,17 +225,63 @@ def reevaluate_exam_release(user) -> None:
 
 def to_dict(student: Student) -> dict:
     diploma = getattr(student, "diploma", None)
+    available_at = None
+    block_reason = None
+    try:
+        available_at = exam_available_at(student)
+    except StudentError as exc:
+        block_reason = exc.detail
+    # As taxas da instituição parceira pertencem à matrícula e são lidas da fila financeira
+    # real. O aluno recebe somente estado, valor e agenda; detalhes internos de erro nunca saem
+    # pela API de cliente.
+    partner_fees = None
+    from users.roles.enrollment.models import Enrollment
+    enrollment = Enrollment.objects.filter(user=student.user).first()
+    if enrollment is not None:
+        from users.roles.enrollment.fees_events import fee_facts
+
+        facts = fee_facts(enrollment)
+
+        def public_fee(value):
+            if value is None:
+                return None
+            return {
+                "status": value.get("status"),
+                "amount": value.get("amount"),
+                "scheduled_for": value.get("scheduled_for"),
+                "paid": bool(value.get("paid")),
+            }
+
+        partner_fees = {
+            "first": public_fee(facts.get("first")),
+            "second": public_fee(facts.get("second")),
+            "first_paid": bool(facts.get("first_paid")),
+            "second_scheduled": bool(facts.get("second_scheduled")),
+        }
+
     return {
         "external_id": str(student.external_id),
         "status": student.status,
         "hub_external_id": str(student.hub.external_id),
         "blood_type": student.blood_type,
+        "exam_available_at": available_at.isoformat() if available_at else None,
+        "exam_can_schedule": bool(available_at and timezone.now() >= available_at
+            and student.status in (Student.Status.EXAM_RELEASED, Student.Status.EXAM_FAILED)),
+        "exam_block_reason": block_reason,
+        "exams": [
+            {"external_id": str(exam.external_id), "subject": exam.subject,
+             "scheduled_at": exam.scheduled_at.isoformat(), "attempt_number": exam.attempt_number,
+             "result": exam.result, "notes": exam.notes,
+             "corrected_at": exam.corrected_at.isoformat() if exam.corrected_at else None}
+            for exam in student.exams.order_by("-attempt_number")
+        ],
         "platform": {
             "url": student.platform_url,
             "login": student.platform_login,
             "password": student.platform_password,
             "notes": student.platform_notes,
         },
+        "partner_fees": partner_fees,
         "documents": _student_documents_dict(student),
         "pendencies": [
             {
@@ -250,6 +298,8 @@ def to_dict(student: Student) -> dict:
             if diploma and diploma.issued_at
             else None,
             "picked_up": bool(diploma and diploma.picked_up_at),
+            "diploma_file": diploma.diploma_file if diploma else None,
+            "transcript_file": diploma.transcript_file if diploma else None,
         }
         if diploma
         else None,
@@ -332,6 +382,7 @@ def set_blood_type(*, user_external_id: str, blood_type: str) -> Student:
         raise StudentError("Tipo sanguíneo inválido.", code="INVALID_BLOOD_TYPE")
     student.blood_type = blood_type
     student.save(update_fields=["blood_type", "updated_at"])
+    _maybe_release_exam(student)
     return student
 
 
@@ -408,7 +459,7 @@ def upload_document(
     def _queue():
         from core.tasks import async_task
 
-        async_task("users.roles.student.tasks.validate_document", doc.id)
+        async_task("users.roles.student.tasks.validate_document", doc.id, rel)
 
     transaction.on_commit(_queue)
     logger.info(
@@ -513,8 +564,9 @@ def _ai_validate(
     return StudentDocument.Validation.APPROVED, result
 
 
+@transaction.atomic
 def apply_validation(
-    student_document_id: int, *, status: str, payload: dict | None
+    student_document_id: int, *, status: str, payload: dict | None, expected_photo: str | None = None
 ) -> None:
     """Grava o veredito da IA no documento (chamado pela task). Idempotente (só age em PENDING).
 
@@ -522,11 +574,14 @@ def apply_validation(
     com o formato legado em que a chave `raw` pode vir do `validation_result` legado."""
     doc = (
         StudentDocument.objects.select_related("student")
+        .select_for_update(of=("self",))
         .filter(id=student_document_id)
         .first()
     )
     if doc is None or doc.validation_status != StudentDocument.Validation.PENDING:
         return
+    if expected_photo is not None and doc.photo != expected_photo:
+        return  # stale task: never apply an old upload verdict to the replacement file
     if status == StudentDocument.Validation.PENDING:
         return  # sem foto — nada a aplicar
     doc.validation_status = status
@@ -577,13 +632,11 @@ def _required_doc_types_for(student: Student) -> set[str]:
 
 
 def _maybe_release_exam(student: Student) -> None:
-    """Todos os docs exigidos aprovados + tipo sanguíneo informado → libera pra agendar a prova."""
+    """Approved previous school history releases the document gate for the exam."""
     # relê do banco: a validação roda async (Django-Q) e o `blood_type`/status podem ter mudado por
     # outro request (set_blood_type) depois desta instância ser carregada — evita decisão com dado stale.
     student.refresh_from_db(fields=["status", "blood_type"])
     if student.status != Student.Status.DOCUMENTS_UNDER_REVIEW:
-        return
-    if not student.blood_type:
         return
     needed = _required_doc_types_for(student)
     approved = set(
@@ -687,6 +740,41 @@ def decide_document(
 # ── prova (aluno agenda; coordenador corrige) ────────────────────────────────
 
 
+def exam_available_at(student: Student):
+    """Two calendar months after the confirmed payment, using the local business timezone.
+
+    Older paid checkouts have no dedicated timestamp. Their enrollment was created in
+    the successful payment transaction and is the conservative observed confirmation.
+    Mutable checkout.updated_at and lead.created_at never start the waiting period.
+    """
+    from users.roles.enrollment.models import Enrollment
+    from users.roles.lead.models import Checkout, Lead
+
+    checkout = Checkout.objects.filter(
+        lead__user_id=student.user_id, lead__status=Lead.Status.PAID, is_paid=True
+    ).first()
+    if checkout is None:
+        raise StudentError(
+            "A confirmação do pagamento precisa ser conferida antes de agendar a prova.",
+            code="PAYMENT_CONFIRMATION_REQUIRED",
+        )
+    paid_at = checkout.paid_at
+    if paid_at is None:
+        enrollment = Enrollment.objects.filter(user_id=student.user_id).first()
+        if enrollment is None:
+            raise StudentError(
+                "A data de confirmação do pagamento precisa ser conferida pelo polo.",
+                code="PAYMENT_CONFIRMATION_REQUIRED",
+            )
+        paid_at = enrollment.created_at
+    local_paid_at = timezone.localtime(paid_at, ZoneInfo("America/Sao_Paulo"))
+    year, zero_based_month = divmod(local_paid_at.year * 12 + local_paid_at.month - 1 + 2, 12)
+    month = zero_based_month + 1
+    return local_paid_at.replace(
+        year=year, month=month, day=min(local_paid_at.day, monthrange(year, month)[1])
+    )
+
+
 def schedule_exam(*, user_external_id: str, subject: str, scheduled_at) -> StudentExam:
     student = _require(
         user_external_id, Student.Status.EXAM_RELEASED, Student.Status.EXAM_FAILED
@@ -704,6 +792,22 @@ def schedule_exam(*, user_external_id: str, subject: str, scheduled_at) -> Stude
         if timezone.is_naive(parsed):
             parsed = timezone.make_aware(parsed)
         scheduled_at = parsed
+    if timezone.is_naive(scheduled_at):
+        scheduled_at = timezone.make_aware(scheduled_at, ZoneInfo("America/Sao_Paulo"))
+    now = timezone.now()
+    available_at = exam_available_at(student)
+    if now < available_at:
+        raise StudentError(
+            "A prova pode ser agendada após dois meses da confirmação do pagamento.",
+            code="EXAM_WAITING_PERIOD",
+            extra={"exam_available_at": available_at.isoformat()},
+        )
+    if scheduled_at < available_at or scheduled_at <= now:
+        raise StudentError(
+            "Escolha uma data futura, após o prazo mínimo da matrícula.",
+            code="INVALID_SCHEDULED_AT",
+            extra={"exam_available_at": available_at.isoformat()},
+        )
     last = student.exams.order_by("-attempt_number").first()
     attempt = (last.attempt_number + 1) if last else 1
     exam = StudentExam.objects.create(
@@ -879,11 +983,17 @@ def issue_diploma(
     transcript_bytes: bytes | None = None,
     transcript_content_type: str | None = None,
 ) -> StudentDiploma:
-    """Coordenador emite o diploma: sobe o PDF/imagem do diploma (+ histórico, opcional) → aluno fica
+    """Coordenador registra diploma e histórico emitidos pelo parceiro → aluno fica
     AGUARDANDO RETIRADA e é notificado a comparecer ao polo. TODO o fluxo é do coordenador (Victor
     2026-06-29): o aluno não posta nada."""
     student = _coordinated(student_external_id, coordinator)
-    if student.status != Student.Status.AWAITING_DIPLOMA_ISSUANCE:
+    repairing_legacy = (
+        student.status == Student.Status.AWAITING_PICKUP
+        and getattr(student, "diploma", None) is not None
+        and not student.diploma.transcript_file
+        and not student.diploma.picked_up_at
+    )
+    if student.status != Student.Status.AWAITING_DIPLOMA_ISSUANCE and not repairing_legacy:
         raise Conflict(
             "Seu processo está em outra fase.",
             code="WRONG_STATUS",
@@ -891,6 +1001,11 @@ def issue_diploma(
         )
     if not diploma_bytes:
         raise StudentError("Envie o arquivo do diploma.", code="DIPLOMA_FILE_REQUIRED")
+    if not transcript_bytes:
+        raise StudentError(
+            "Envie também o histórico escolar emitido pelo parceiro.",
+            code="TRANSCRIPT_FILE_REQUIRED",
+        )
     diploma_rel = _save_doc_file(
         student, "diploma", diploma_bytes, diploma_content_type
     )
@@ -952,6 +1067,16 @@ def register_pickup(
     if diploma is None:
         raise StudentError(
             "O diploma ainda não foi emitido.", code="DIPLOMA_NOT_ISSUED"
+        )
+    if not diploma.diploma_file or not diploma.transcript_file:
+        raise StudentError(
+            "Anexe o diploma e o histórico escolar antes de registrar a entrega.",
+            code="COMPLETION_DOCUMENTS_REQUIRED",
+        )
+    if not image_bytes or content_type not in _EXT:
+        raise StudentError(
+            "Envie uma foto JPG, PNG ou WebP da entrega dos documentos.",
+            code="PICKUP_PHOTO_REQUIRED",
         )
     rel = _save_photo(student, "diploma_pickup", image_bytes, content_type)
     with transaction.atomic():
@@ -1267,6 +1392,7 @@ def list_document_reviews_for_hub(*, hub) -> list[dict]:
         p = pmap.get(doc.student.user_id)
         out.append(
             {
+                "external_id": str(doc.external_id),
                 "student_external_id": str(doc.student.external_id),
                 "document_external_id": str(doc.external_id),
                 "doc_type": doc.doc_type,

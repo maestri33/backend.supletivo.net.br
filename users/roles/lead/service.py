@@ -21,7 +21,8 @@ from users.exceptions import DomainError
 from users.profiles import interface as profiles
 from users.roles.lead import config
 from users.roles.lead import checkout_links
-from users.roles.lead.models import Checkout, Lead, LeadAttribution
+from users.roles.lead.models import Checkout, Lead, LeadAttribution, PaymentAttempt
+from users.roles.lead import payments
 
 logger = structlog.get_logger()
 
@@ -304,6 +305,16 @@ def _resolve_promoter(ref) -> User:
         # não pode se esconder em log info — é comissão trocando de dono sem ninguém ver.
         logger.warning("lead.ref_fallback_default", ref=str(ref))
 
+    # An administrator may select a default promoter independently of the hub coordinator.
+    from core.system_config import get_setting
+    selected = get_setting("DEFAULT_PROMOTER_USER_EXTERNAL_ID", "")
+    if selected:
+        from users.roles.promoter import service as promoter_iface
+        default_promoter = promoter_iface.validate_ref(selected)
+        if default_promoter is not None and default_promoter.is_active:
+            return default_promoter
+        raise LeadError("default_promoter_unavailable")
+
     # Fallback 1: coordenador do hub padrão (caminho normal)
     ext = hub_iface.default_coordinator_external_id()
     if ext:
@@ -363,6 +374,7 @@ def referral_name(ref) -> str | None:
     return name.split()[0] if name else None
 
 
+@transaction.atomic
 def _create_checkout_row(lead: Lead, method: str) -> Checkout:
     """Cria a LINHA do checkout (local, sem rede) com o token do link curto já gerado.
 
@@ -370,6 +382,7 @@ def _create_checkout_row(lead: Lead, method: str) -> Checkout:
     chamado pela task async (com retry) ou pelo clique no link curto (lazy)."""
     from decimal import Decimal
 
+    lead = Lead.objects.select_for_update().get(pk=lead.pk)
     pricing = lead.get_pricing_dict()
     if method == "pix":
         provider = Checkout.Provider.ASAAS
@@ -379,13 +392,19 @@ def _create_checkout_row(lead: Lead, method: str) -> Checkout:
         provider = Checkout.Provider.INFINITEPAY
         amount = Decimal(str(pricing["card"]["total"]))
         pay_method = Checkout.Method.CREDIT_CARD
-    return Checkout.objects.create(
+    checkout = Checkout.objects.create(
         lead=lead,
         payment_method=pay_method,
         provider=provider,
         amount=amount,
         short_token=checkout_links.new_token(),
     )
+    attempt = payments.snapshot(checkout)
+    checkout.provider_payment_id = (str(attempt.external_id) if provider == Checkout.Provider.INFINITEPAY
+        else f"lead_{lead.external_id.hex[:12]}_{checkout.pk}")
+    checkout.save(update_fields=["provider_payment_id", "updated_at"])
+    payments.sync(checkout, attempt=attempt)
+    return checkout
 
 
 def _enqueue_provider_build(checkout: Checkout) -> None:
@@ -411,7 +430,7 @@ def is_checkout_built(checkout: Checkout) -> bool:
     `payment_id_already_exists` → 503 eterno. O sinal honesto do PIX é ter cobrança emitida:
     `provider_payment_id` (o `externalReference` que o webhook casa) ou o `qrcode_payload`."""
     if checkout.payment_method == Checkout.Method.PIX:
-        return bool(checkout.provider_payment_id or checkout.qrcode_payload)
+        return bool(checkout.qrcode_payload)
     return bool(checkout.checkout_url)
 
 
@@ -447,7 +466,8 @@ def fill_checkout_from_provider(checkout: Checkout) -> None:
         provider=checkout.provider,
     )
     # agora existe link de verdade → manda o LINK DE PAGAMENTO pro lead (idempotente por key).
-    _notify_checkout(checkout.lead, checkout)
+    if Checkout.objects.filter(pk=checkout.pk).exists():
+        _notify_checkout(checkout.lead, checkout)
 
 
 def _fill_pix(checkout: Checkout, profile) -> None:
@@ -458,7 +478,11 @@ def _fill_pix(checkout: Checkout, profile) -> None:
     # pid = externalReference que o webhook do Asaas casa (mark_paid busca pelo pid GRAVADO na linha).
     # Sufixo do checkout.pk: o lead pode TROCAR a forma de pagamento → cada checkout
     # gera um QR Code novo (o asaas_id é único; reusar colidiria).
-    pid = f"lead_{lead.external_id.hex[:12]}_{checkout.pk}"
+    attempt = payments.snapshot(checkout)
+    pid = checkout.provider_payment_id or f"lead_{lead.external_id.hex[:12]}_{checkout.pk}"
+    checkout.provider_payment_id = pid
+    Checkout.objects.filter(pk=checkout.pk).update(provider_payment_id=pid)
+    PaymentAttempt.objects.filter(pk=attempt.pk).update(provider_payment_id=pid)
 
     # QR Code PIX estático direto — custo menor que fatura gerenciada (/v3/payments).
     # Não exige criação de customer no Asaas, não gera fatura, não cria link hospedado.
@@ -479,16 +503,10 @@ def _fill_pix(checkout: Checkout, profile) -> None:
     checkout.qrcode_payload = payment.qrcode_payload
     checkout.qrcode_image = qr_url_for(payment.payment_id)
     checkout.due_date = None  # QR Code estático não tem vencimento
-    checkout.save(
-        update_fields=[
-            "provider_payment_id",
-            "checkout_url",
-            "qrcode_payload",
-            "qrcode_image",
-            "due_date",
-            "updated_at",
-        ]
-    )
+    Checkout.objects.filter(pk=checkout.pk).update(provider_payment_id=pid,
+        checkout_url=checkout.checkout_url, qrcode_payload=checkout.qrcode_payload,
+        qrcode_image=checkout.qrcode_image, due_date=None)
+    payments.sync(checkout, attempt=attempt)
     if checkout.checkout_url:
         checkout_links.bind(checkout.short_token, checkout.checkout_url)
 
@@ -500,27 +518,32 @@ def _fill_card(checkout: Checkout, profile) -> None:
     phone_digits = "".join(c for c in phone if c.isdigit())
     if phone_digits and not phone_digits.startswith("55"):
         phone_digits = f"55{phone_digits}"
-    cpf_digits = "".join(c for c in (profile.cpf or "") if c.isdigit())
     customer = {
         "name": (profile.name or "").strip(),
         "email": (profile.email or "").strip(),
         "phone_number": f"+{phone_digits}" if phone_digits else "",
-        "cpf": cpf_digits,
     }
     # redirect_url: pra onde a InfinitePay manda o pagador DEPOIS de pagar (app no /student/lead).
     base_app = config.frontend_url() or "https://app.supletivo.net.br"
     app_redirect = f"{base_app.rstrip('/')}/student/lead"
+    attempt = payments.snapshot(checkout)
+    provider_id = checkout.provider_payment_id or str(attempt.external_id)
+    checkout.provider_payment_id = provider_id
+    Checkout.objects.filter(pk=checkout.pk).update(provider_payment_id=provider_id)
+    PaymentAttempt.objects.filter(pk=attempt.pk).update(provider_payment_id=provider_id)
     row = ip_checkout.create_checkout(
         amount=checkout.amount,
         description=config.description(),
         customer=customer,
         redirect_url=app_redirect,
+        external_id=provider_id,
     )
     checkout.provider_payment_id = str(
         row.external_id
     )  # = order_nsu que o webhook do infinitepay casa
     checkout.checkout_url = row.checkout_url
-    checkout.save(update_fields=["provider_payment_id", "checkout_url", "updated_at"])
+    Checkout.objects.filter(pk=checkout.pk).update(provider_payment_id=provider_id, checkout_url=row.checkout_url)
+    payments.sync(checkout, attempt=attempt)
     checkout_links.bind(checkout.short_token, checkout.checkout_url)
 
 
@@ -991,6 +1014,7 @@ def capture_lead(
 
 
 
+@transaction.atomic
 def set_checkout(
     *,
     user_external_id: str,
@@ -1013,6 +1037,7 @@ def set_checkout(
     lead = get_for_user_external_id(user_external_id)
     if lead is None:
         raise NotFound("Lead não encontrado.", code="LEAD_NOT_FOUND")
+    lead = Lead.objects.select_for_update().select_related("user").get(pk=lead.pk)
     if attribution:
         _save_attribution_safely(lead, attribution)
     method = _API_METHODS.get((payment_method or "").strip().lower())
@@ -1041,7 +1066,16 @@ def set_checkout(
     if old is not None:
         if old.is_paid:
             raise Conflict("Pagamento já confirmado.", code="ALREADY_PAID")
-        _cancel_provider_charge(old)
+        normalized = "pix" if old.payment_method == Checkout.Method.PIX else "card"
+        if normalized == method:
+            return _checkout_dict(old)
+        attempt = payments.sync(old)
+        proof = payments.evidence(attempt)
+        if proof["creation_state"] in {"creating", "uncertain"}:
+            raise Conflict("A emissão está sendo conferida. Aguarde a reconciliação antes de trocar.", code="CHECKOUT_CREATION_UNCERTAIN")
+        attempt.superseded = True
+        attempt.save(update_fields=["superseded", "updated_at"])
+        transaction.on_commit(lambda: _cancel_provider_charge(old))
         checkout_links.unbind(old.short_token)  # o link antigo morre com a linha (não pelo TTL)
         old.delete()
         # refresh: a relação 1-1 fica cacheada no objeto — sem isso o create abaixo colide.
@@ -1053,7 +1087,7 @@ def set_checkout(
         )
 
     checkout = _create_checkout_row(lead, method)
-    _enqueue_provider_build(checkout)
+    transaction.on_commit(lambda: _enqueue_provider_build(checkout))
     return _checkout_dict(checkout)
 
 
@@ -1114,11 +1148,28 @@ def lead_self_dict(lead: Lead) -> dict:
     c = getattr(lead, "checkout", None)
     customer = profiles.get(lead.user)
     promoter = profiles.get(lead.promoter)
+    # A captação sempre conserva o promotor original. O polo é resolvido pelas relações reais
+    # do promotor (ou, no caso do promotor padrão, pelo polo que o coordena); não há fallback
+    # sintético para a visão do lead.
+    hub = None
+    promoter_role = getattr(lead.promoter, "promoter", None)
+    candidate_role = getattr(lead.promoter, "candidate", None)
+    if promoter_role is not None:
+        hub = promoter_role.hub
+    elif candidate_role is not None:
+        hub = candidate_role.hub
+    else:
+        from hub.models import Hub
+
+        hub = Hub.objects.filter(coordinator=lead.promoter).first()
+
+    coordinator_profile = profiles.get(hub.coordinator) if hub and hub.coordinator_id else None
     checkout = None
     if c is not None:
         checkout = _checkout_dict(c)
         checkout["url"] = checkout.pop("short_url")  # ✦ a URL única (checkout↔recibo)
         checkout["receipt_url"] = c.receipt_url
+        checkout["paid_at"] = c.paid_at.isoformat() if c.paid_at else None
     return {
         "external_id": str(lead.external_id),
         "status": lead.status,
@@ -1133,17 +1184,48 @@ def lead_self_dict(lead: Lead) -> dict:
         "promoter": {
             "external_id": str(lead.promoter.external_id),
             "name": promoter.name if promoter else None,
+            "contact_url": _whatsapp_url(promoter.phone if promoter else None) or None,
         },
+        "hub": {
+            "name": hub.brand if hub else None,
+            "coordinator_name": coordinator_profile.name if coordinator_profile else None,
+            "contact_url": _whatsapp_url(coordinator_profile.phone if coordinator_profile else None) or None,
+        } if hub else None,
         "checkout": checkout,
+        "payment_status": payments.payment_status(lead, c),
         "pricing": lead.get_pricing_dict(),
     }
 
 
+@transaction.atomic
+def update_unissued_pricing(external_id: str, *, pix, card_installment, card_installments: int) -> Lead:
+    """Override explícito de proposta sem cobrança; valores emitidos permanecem imutáveis."""
+    from decimal import Decimal
+    from users.exceptions import Conflict, NotFound, ValidationError
+    lead = Lead.objects.select_for_update().filter(external_id=external_id).first()
+    if lead is None:
+        raise NotFound("Lead não encontrado.", code="LEAD_NOT_FOUND")
+    if lead.status == Lead.Status.PAID or Checkout.objects.filter(lead=lead).exists() or PaymentAttempt.objects.filter(lead=lead).exists():
+        raise Conflict("A proposta já possui cobrança emitida. Os valores dessa cobrança devem ser preservados.", code="LEAD_PRICING_LOCKED")
+    pix, installment = Decimal(str(pix)), Decimal(str(card_installment))
+    if not pix.is_finite() or not installment.is_finite() or pix <= 0 or installment <= 0 or not 1 <= card_installments <= 12:
+        raise ValidationError("Informe valores positivos e de 1 a 12 parcelas.", code="INVALID_PRICING")
+    snapshot = dict(lead.get_pricing_dict())
+    card = {"installments": card_installments, "installment": f"{installment:.2f}", "total": f"{installment * card_installments:.2f}"}
+    snapshot.update(pix=f"{pix:.2f}", card=card, promo_pix=None, promo_card=None, has_discount=False)
+    lead.pix_price, lead.card_price = pix, installment * card_installments
+    lead.card_installment, lead.card_installments = installment, card_installments
+    lead.has_discount, lead.pricing_snapshot = False, snapshot
+    lead.save(update_fields=["pix_price", "card_price", "card_installment", "card_installments", "has_discount", "pricing_snapshot", "updated_at"])
+    logger.info("lead.pricing_updated", external_id=str(lead.external_id))
+    return lead
+
+
 def pricing(ref: str | None = None) -> dict:
-    """Preço público de vitrine — É O MESMO que é cobrado (Victor 2026-06-07): PIX (valor cheio) + cartão 12x.
+    """Preço público de vitrine — É O MESMO que é cobrado: PIX + cartão parcelado.
 
     Regra Canônica:
-    - Sem Ref: O valor é o PREÇO ÂNCORA de tabela (anchor_full) em 12x fixas ou PIX.
+    - Sem Ref: PIX cheio e preço de cartão configurado para 12 parcelas.
     - Com Ref: Desbloqueia o valor promocional com desconto de indicação (promo_pix / promo_card em 12x).
     """
     from decimal import Decimal
@@ -1151,7 +1233,9 @@ def pricing(ref: str | None = None) -> dict:
 
     installments = 12
     anchor_full = config.anchor_full()
-    anchor_installment = (anchor_full / installments).quantize(Decimal("0.01"))
+    full_pix = config.price_pix()
+    full_card = config.price_card()
+    full_card_installment = (full_card / installments).quantize(Decimal("0.01"))
 
     promo_pix = config.promo_price_pix()
     promo_total = config.promo_price_card()
@@ -1161,11 +1245,11 @@ def pricing(ref: str | None = None) -> dict:
     has_discount = bool(name)
 
     return {
-        "pix": f"{anchor_full:.2f}",
+        "pix": f"{full_pix:.2f}",
         "card": {
             "installments": installments,
-            "installment": f"{anchor_installment:.2f}",
-            "total": f"{anchor_full:.2f}",
+            "installment": f"{full_card_installment:.2f}",
+            "total": f"{full_card:.2f}",
         },
         "promo_pix": f"{promo_pix:.2f}",
         "promo_card": {
@@ -1241,55 +1325,75 @@ def create_self_study_lead(*, user, payment_method=None) -> dict:
 # ── pagamento (chamado pelo hook do webhook, CONVENTION §7) ─────────────────
 
 
-def mark_paid(*, provider: str, provider_payment_id: str, receipt_url=None) -> bool:
-    """Casa o Checkout do lead por (provider, provider_payment_id). Se for nosso → marca pago + efeitos.
-
-    `receipt_url` (do webhook) é guardado no Checkout e vai pro aluno na notify de pago. Idempotente
-    (lead já PAID → no-op). True se consumiu (era checkout de lead), senão False (o webhook cai no
-    fallback rastreável — pode ser cobrança de `fees`, não nossa).
-    """
-    checkout = (
-        Checkout.objects.select_related("lead", "lead__user", "lead__promoter")
-        .filter(provider=provider, provider_payment_id=provider_payment_id)
-        .first()
-    )
-    if checkout is None:
+@transaction.atomic
+def mark_paid(*, provider: str, provider_payment_id: str, receipt_url=None, amount_cents=None) -> bool:
+    """Apply a confirmed charge once, including superseded attempts, under a lead lock."""
+    from decimal import Decimal
+    from django.utils import timezone
+    attempt = PaymentAttempt.objects.filter(provider=provider, provider_payment_id=provider_payment_id).first()
+    if attempt is None:
+        legacy = Checkout.objects.select_related("lead__user").filter(
+            provider=provider, provider_payment_id=provider_payment_id).first()
+        if legacy is None:
+            return False
+        attempt = payments.snapshot(legacy)
+    if attempt.lead_id is None:
+        PaymentAttempt.objects.filter(pk=attempt.pk).update(last_error="account_removed")
         return False
-
-    lead = checkout.lead
+    lead = Lead.objects.select_for_update().select_related("user", "promoter").get(pk=attempt.lead_id)
+    attempt = PaymentAttempt.objects.select_for_update().get(pk=attempt.pk)
+    if lead.external_id != attempt.lead_external_id or lead.user.external_id != attempt.user_external_id:
+        attempt.last_error = "identity_mismatch"
+        attempt.save(update_fields=["last_error", "updated_at"])
+        return False
+    if amount_cents is not None:
+        if isinstance(amount_cents, bool) or not isinstance(amount_cents, int) or amount_cents < int(attempt.amount * 100):
+            attempt.last_error = "amount_mismatch"
+            attempt.save(update_fields=["last_error", "updated_at"])
+            return False
+        attempt.paid_amount = Decimal(amount_cents) / 100
+    else:
+        attempt.last_error = "financial_proof_missing"
+        attempt.save(update_fields=["last_error", "updated_at"])
+        return False
+    attempt.provider_confirmed = True
+    attempt.paid_at = attempt.paid_at or timezone.now()
+    attempt.receipt_url = receipt_url or attempt.receipt_url
     if lead.status == Lead.Status.PAID:
-        return True  # idempotente (webhook re-tentou)
-
-    with transaction.atomic():
-        fields = ["is_paid", "updated_at"]
-        checkout.is_paid = True
-        if receipt_url:
-            checkout.receipt_url = receipt_url
-            fields.insert(1, "receipt_url")
-        checkout.save(update_fields=fields)
-        lead.status = Lead.Status.PAID
-        lead.save(update_fields=["status", "updated_at"])
-        hub = _apply_effects(lead)
-        if not lead.self_study:
+        if attempt.app_applied and payments.has_business_access(lead):
+            from finance.interface.ledger import record_lead_receipt
+            record_lead_receipt(attempt=attempt)
+            return True
+        # Legacy paid rows may have had their roles purged; never restore them implicitly.
+        current_paid = Checkout.objects.filter(lead=lead, pk=attempt.checkout_id, is_paid=True).exists()
+        attempt.last_error = "business_state_mismatch" if attempt.app_applied or current_paid else "additional_payment_review"
+        attempt.save()
+        if attempt.last_error == "additional_payment_review":
+            from finance.interface.ledger import record_lead_receipt
+            record_lead_receipt(attempt=attempt)
+        return False
+    checkout = payments.restore_projection(attempt, lead)
+    checkout.is_paid = True
+    checkout.paid_at = attempt.paid_at
+    checkout.receipt_url = attempt.receipt_url
+    checkout.save(update_fields=["is_paid", "paid_at", "receipt_url", "updated_at"])
+    lead.status = Lead.Status.PAID
+    lead.save(update_fields=["status", "updated_at"])
+    hub = _apply_effects(lead)
+    attempt.app_applied = True
+    attempt.last_error = ""
+    attempt.save()
+    from finance.interface.ledger import record_lead_receipt
+    record_lead_receipt(attempt=attempt)
+    if not lead.self_study:
+        def enqueue_purchase():
             try:
                 from core.tasks import async_task
-
-                transaction.on_commit(
-                    lambda: async_task(
-                        "integrations.analytics.tasks.send_purchase",
-                        str(lead.external_id),
-                    )
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "lead.analytics_enqueue_failed",
-                    lead=str(lead.external_id),
-                    error=str(exc),
-                )
-
-    _notify_paid(
-        lead, hub, checkout
-    )  # fora da transação: best-effort, não desfaz comissão/enrollment
+                async_task("integrations.analytics.tasks.send_purchase", str(lead.external_id))
+            except Exception as exc:
+                logger.warning("lead.analytics_enqueue_failed", error=type(exc).__name__)
+        transaction.on_commit(enqueue_purchase)
+    transaction.on_commit(lambda: _notify_paid(lead, hub, checkout))
     logger.info("lead.paid", external_id=str(lead.external_id), provider=provider)
     return True
 
@@ -1515,7 +1619,7 @@ def list_leads(*, hub=None, status=None, created_after=None, limit=None) -> list
         qs = qs.filter(created_at__gte=created_after)
     if hub is not None:
         qs = qs.filter(
-            Q(promoter__promoter__hub=hub) | Q(user__enrollment__hub=hub)
+            Q(promoter__promoter__hub=hub) | Q(promoter__candidate__hub=hub) | Q(user__enrollment__hub=hub)
         ).distinct()
     if limit is not None:
         qs = qs[:limit]
@@ -1555,19 +1659,19 @@ def get_lead_for_hub(*, external_id: str, hub) -> Lead | None:
 
     return (
         Lead.objects.filter(external_id=external_id)
-        .filter(Q(promoter__promoter__hub=hub) | Q(user__enrollment__hub=hub))
+        .filter(Q(promoter__promoter__hub=hub) | Q(promoter__candidate__hub=hub) | Q(user__enrollment__hub=hub))
         .select_related("user", "promoter", "checkout")
         .distinct()
         .first()
     )
 
 
-def mark_refunded(*, provider: str, provider_payment_id: str) -> bool:
+def mark_refunded(*, provider: str, provider_payment_id: str, reason: str = "payment_refunded") -> bool:
     """Processa o estorno/cancelamento de um pagamento de lead.
     
     1. Localiza o Checkout pelo provider e provider_payment_id.
     2. Atualiza lead e checkout para status cancelado / estornado.
-    3. Cancela a Commission associada (se ainda PENDING).
+    3. Cancela valores pendentes e recupera comissões já pagas nos próximos repasses.
     """
     checkout = (
         Checkout.objects.select_related("lead", "lead__user", "lead__promoter")
@@ -1582,16 +1686,12 @@ def mark_refunded(*, provider: str, provider_payment_id: str) -> bool:
         checkout.is_paid = False
         checkout.save(update_fields=["is_paid", "updated_at"])
         lead.status = Lead.Status.FAILED
-        lead.failed_reason = "payment_refunded"
+        lead.failed_reason = reason
         lead.save(update_fields=["status", "failed_reason", "updated_at"])
 
-        from finance.models import Commission
+        from finance.interface.reversals import reverse_lead
 
-        Commission.objects.filter(
-            source_type=Commission.Source.LEAD,
-            source_external_id=lead.external_id,
-            status=Commission.Status.PENDING,
-        ).update(status=Commission.Status.CANCELLED)
+        reverse_lead(lead)
 
     logger.info("lead.refunded", external_id=str(lead.external_id), provider=provider)
     return True
@@ -1638,7 +1738,7 @@ def mark_payment_failed(*, provider: str, provider_payment_id: str, reason: str 
         return False
 
     lead = checkout.lead
-    if lead.status == Lead.Status.PAID:
+    if lead.status == Lead.Status.PAID or checkout.is_paid:
         return True
 
     with transaction.atomic():
@@ -1662,7 +1762,7 @@ def mark_payment_expired(*, provider: str, provider_payment_id: str, reason: str
         return False
 
     lead = checkout.lead
-    if lead.status == Lead.Status.PAID:
+    if lead.status == Lead.Status.PAID or checkout.is_paid:
         return True
 
     with transaction.atomic():

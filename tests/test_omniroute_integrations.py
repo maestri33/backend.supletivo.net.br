@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from django.test import override_settings
-
 from integrations.ai.client import LLMClient, LLMError
+from integrations.ai.cloudflare import CloudflareWorkersAIClient
 from integrations.ai.models import AiCall
 from integrations.ai.omniroute_ocr import OmniRouteOCRClient, OmniRouteOCRError
 from integrations.ai.service import ocr
@@ -77,33 +76,41 @@ async def test_omniroute_ocr_retryable_error_on_503():
     assert exc_info.value.status_code == 503
 
 
-# ── OCR Fallback Chain (OmniRoute -> Google Vision) ──────────────────────────
+# ── OCR via protected Cloudflare Workers AI ─────────────────────────────────
 
 
 @pytest.mark.django_db
-def test_ocr_fallback_to_google_vision_when_omniroute_fails():
+def test_ocr_uses_cloudflare_gateway_without_google_fallback(settings, monkeypatch):
+    """Production OCR is fail-closed on the protected Cloudflare gateway.
+
+    OmniRoute and Google Vision remain import-compatible legacy adapters, but
+    they must never become a production fallback when the Cloudflare-only
+    policy is active.
+    """
     fake_image = b"fake_document_content"
 
-    async def mock_omni_detect(self, image_bytes, document=False):
-        raise OmniRouteOCRError("OmniRoute 500 error", retryable=True, status_code=500)
-
-    async def mock_vision_detect(self, image_bytes, document=False):
-        return "NOME: MARIA OLIVEIRA CPF: 123.456.789-00"
+    settings.WORKERS_AI_GATEWAY_URL = "https://gateway.example.test"
+    settings.WORKERS_AI_GATEWAY_TOKEN = "gateway_token_123"
 
     import unittest.mock as mock
-    with mock.patch("integrations.ai.omniroute_ocr.OmniRouteOCRClient.detect_text", mock_omni_detect):
-        with mock.patch("integrations.ai.vision_ocr.VisionOCRClient.detect_text", mock_vision_detect):
-            with override_settings(OMNIROUTE_BASE_URL="http://10.0.1.35/v1"):
-                result = ocr(fake_image, caller="test.ocr_fallback", document=True)
+    async def cloudflare_chat(self, *args, **kwargs):
+        from integrations.ai.client import ChatResult
+        return ChatResult(content="NOME: MARIA OLIVEIRA CPF: 123.456.789-00")
+
+    with mock.patch.object(CloudflareWorkersAIClient, "chat", cloudflare_chat), mock.patch(
+        "integrations.ai.omniroute_ocr.OmniRouteOCRClient.detect_text",
+        side_effect=AssertionError("OmniRoute não pode ser fallback de OCR em produção"),
+    ), mock.patch(
+        "integrations.ai.vision_ocr.VisionOCRClient.detect_text",
+        side_effect=AssertionError("Google Vision não pode ser fallback de OCR em produção"),
+    ):
+        result = ocr(fake_image, caller="test.ocr_cloudflare", document=True)
 
     assert "MARIA OLIVEIRA" in result
-    # Verifica que registrou AiCall de erro pro OmniRoute e de sucesso pro Google Vision
-    calls = list(AiCall.objects.filter(caller="test.ocr_fallback"))
-    assert len(calls) == 2
-    omni_call = next(c for c in calls if c.provider == "omniroute")
-    vision_call = next(c for c in calls if c.provider == "google_vision")
-    assert omni_call.status == AiCall.Status.ERROR
-    assert vision_call.status == AiCall.Status.SUCCESS
+    calls = list(AiCall.objects.filter(caller="test.ocr_cloudflare"))
+    assert len(calls) == 1
+    assert calls[0].provider == "cloudflare"
+    assert calls[0].status == AiCall.Status.SUCCESS
 
 
 # ── TTS & Victor Rule ─────────────────────────────────────────────────────────

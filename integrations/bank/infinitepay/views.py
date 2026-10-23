@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 
 from core.net import source_ip as _source_ip
 
-from . import webhooks
+from integrations.bank import recovery
 
 
 @csrf_exempt
@@ -40,13 +40,12 @@ def webhook(request):
         request.headers.get("x-original-user-agent")
         or request.headers.get("user-agent")
     )
-    _, result = webhooks.handle_event(
-        order_nsu,
-        payload,
+    recovery.receive(
+        "infinitepay", payload, order_nsu=order_nsu,
         source_ip=source_ip,
         user_agent=user_agent,
     )
-    return JsonResponse(result)
+    return JsonResponse({"success": True, "message": None})
 
 
 def _parse_json(request):

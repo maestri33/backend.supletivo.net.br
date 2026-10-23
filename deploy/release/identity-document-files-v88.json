@@ -1,0 +1,10 @@
+[
+  "api/health/router.py",
+  "core/system_config.py",
+  "integrations/ai/service.py",
+  "users/roles/_document_ai.py",
+  "users/roles/enrollment/rg.py",
+  "users/roles/enrollment/rg_extraction.py",
+  "users/roles/candidate/documents.py",
+  "users/roles/candidate/documents_ai.py"
+]

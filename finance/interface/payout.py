@@ -10,6 +10,7 @@ falham, não perdem dinheiro. O join asaas↔finance é `PaymentRequest.external
 from __future__ import annotations
 
 from datetime import timedelta
+import uuid
 
 import structlog
 from django.db import transaction
@@ -42,7 +43,15 @@ def _backoff(attempts: int) -> timedelta:
 
 def _cascade(pr: PaymentRequest, status: str) -> None:
     """Propaga o desfecho terminal da PaymentRequest pras comissões que a compõem."""
-    Commission.objects.filter(payment_request=pr).update(status=status)
+    awaiting_reversals = Commission.objects.filter(payment_request=pr, source_type=Commission.Source.REVERSAL, external_reference__startswith="reversal-await:")
+    if status == Commission.Status.PAID:
+        awaiting_reversals.update(status=Commission.Status.PENDING, payment_request=None, external_reference=None)
+    elif status == Commission.Status.FAILED:
+        awaiting_reversals.update(status=Commission.Status.CANCELLED)
+    Commission.objects.filter(payment_request=pr).exclude(status=Commission.Status.CANCELLED).update(status=status)
+    if status == Commission.Status.PAID and pr.canary_run_id:
+        from finance.canary import record_payout
+        record_payout(pr)
 
 
 def _dispatch_fee_hook(
@@ -105,13 +114,18 @@ def _notify_commission_paid(pr: PaymentRequest) -> None:
         )
 
 
-def process_payment_requests() -> dict:
+def process_payment_requests(*, external_id=None) -> dict:
     """Uma passada do worker: envia as filas prontas e reconcilia as enviadas com lock pessimista."""
     now = timezone.now()
     summary = {"submitted": 0, "paid": 0, "failed": 0, "awaiting": 0, "skipped": 0}
+    due = Q(scheduled_for__isnull=True) | Q(scheduled_for__lte=now) | Q(status=PaymentRequest.Status.SUBMITTED)
 
+    requests = PaymentRequest.objects.filter(status__in=_ACTIVE)
+    if external_id is not None:
+        requests = requests.filter(external_id=external_id)
     ready_ids = list(
-        PaymentRequest.objects.filter(status__in=_ACTIVE)
+        requests
+        .filter(due)
         .filter(Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now))
         .values_list("id", flat=True)[:50]
     )
@@ -121,6 +135,7 @@ def process_payment_requests() -> dict:
             pr = (
                 PaymentRequest.objects.select_for_update(skip_locked=True)
                 .filter(id=pr_id, status__in=_ACTIVE)
+                .filter(due)
                 .filter(Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now))
                 .first()
             )
@@ -139,6 +154,17 @@ def process_payment_requests() -> dict:
 
 
 def _process_one(pr: PaymentRequest, summary: dict) -> None:
+    pr.refresh_from_db()
+    if pr.status not in _ACTIVE:
+        summary["skipped"] = summary.get("skipped", 0) + 1
+        return
+    if pr.status == PaymentRequest.Status.QUEUED and pr.attempts > 0:
+        # A submission may have succeeded before its response was lost. Only
+        # reconcile an existing intent; do not send another transfer here.
+        _reconcile(pr, summary)
+        return
+    if pr.status in (PaymentRequest.Status.QUEUED, PaymentRequest.Status.AWAITING_PIX) and _hold_ineligible(pr, summary):
+        return
     # awaiting_pix: re-resolve a chave do profile; ainda vazia => continua esperando (não falha).
     if pr.status == PaymentRequest.Status.AWAITING_PIX:
         profile = get_profile(pr.payee)
@@ -161,9 +187,46 @@ def _process_one(pr: PaymentRequest, summary: dict) -> None:
         _reconcile(pr, summary)
 
 
+def _hold_ineligible(pr: PaymentRequest, summary: dict) -> bool:
+    if pr.kind == PaymentRequest.Kind.COMMISSION:
+        from finance.interface.eligibility import can_receive
+        from finance.interface.weekly import cutoff
+        roles = set(pr.commissions.filter(amount__gt=0).exclude(status=Commission.Status.CANCELLED).values_list("payee_role", flat=True)) or {pr.payee_role}
+        if not all(can_receive(pr.payee, role=role, at=cutoff()) for role in roles):
+            pr.last_error = "payout_eligibility_pending"
+            pr.next_attempt_at = timezone.now() + _backoff(pr.attempts)
+            pr.save(update_fields=["last_error", "next_attempt_at", "updated_at"])
+            summary["awaiting"] += 1
+            return True
+    return False
+
+
 def _submit(pr: PaymentRequest, summary: dict) -> None:
     """Submete o PIX-out via asaas (idempotente por payment_id=external_reference)."""
-    pr.attempts += 1
+    from users.auth.models import User
+    with transaction.atomic():
+        if pr.payee_id:
+            User.objects.select_for_update().get(pk=pr.payee_id)
+        pr = PaymentRequest.objects.select_for_update().get(pk=pr.pk)
+        if pr.status != PaymentRequest.Status.QUEUED or pr.attempts > 0:
+            summary["skipped"] = summary.get("skipped", 0) + 1
+            return
+        if _hold_ineligible(pr, summary):
+            return
+        from finance.canary import validate_payout, CanaryError
+        try:
+            validate_payout(pr)
+        except CanaryError as cause:
+            pr.status = PaymentRequest.Status.FAILED
+            pr.last_error = str(cause)
+            pr.save(update_fields=["status", "last_error", "updated_at"])
+            summary["failed"] += 1
+            return
+        # Commit the immutable sending amount before provider I/O. A refund
+        # arriving now waits for the bank outcome instead of changing the lot.
+        pr.attempts += 1
+        pr.status = PaymentRequest.Status.SUBMITTED
+        pr.save(update_fields=["attempts", "status", "updated_at"])
     try:
         if pr.method == PaymentRequest.Method.PIX_QRCODE:
             payment = asaas_qrpay.pay_qr_code(
@@ -195,6 +258,10 @@ def _submit(pr: PaymentRequest, summary: dict) -> None:
         asaas_qrpay.QrPayError,
         asaas_billpay.BillPayError,
     ) as exc:
+        pr.refresh_from_db()
+        if pr.status == PaymentRequest.Status.PAID:
+            summary["paid"] = summary.get("paid", 0) + 1
+            return
         reason = str(exc)
         if reason.startswith("asaas_rejected"):
             if is_insufficient_balance_reason(reason):
@@ -257,6 +324,10 @@ def _submit(pr: PaymentRequest, summary: dict) -> None:
         summary["awaiting"] += 1
         return
 
+    pr.refresh_from_db()
+    if pr.status in (PaymentRequest.Status.PAID, PaymentRequest.Status.FAILED, PaymentRequest.Status.CANCELLED):
+        summary["skipped"] = summary.get("skipped", 0) + 1
+        return
     pr.asaas_payment_id = payment.payment_id
     pr.asaas_status = payment.status
     pr.status = PaymentRequest.Status.SUBMITTED
@@ -281,6 +352,18 @@ def _submit(pr: PaymentRequest, summary: dict) -> None:
 
 
 def _reconcile(pr: PaymentRequest, summary: dict) -> None:
+    from users.auth.models import User
+    with transaction.atomic():
+        if pr.payee_id:
+            User.objects.select_for_update().get(pk=pr.payee_id)
+        pr = PaymentRequest.objects.select_for_update().get(pk=pr.pk)
+        if pr.status in (PaymentRequest.Status.PAID, PaymentRequest.Status.FAILED, PaymentRequest.Status.CANCELLED):
+            summary["skipped"] = summary.get("skipped", 0) + 1
+            return
+        _reconcile_locked(pr, summary)
+
+
+def _reconcile_locked(pr: PaymentRequest, summary: dict) -> None:
     """Lê o Payment no asaas e move a PaymentRequest conforme o status real."""
     try:
         if pr.method == PaymentRequest.Method.PIX_QRCODE:
@@ -288,7 +371,7 @@ def _reconcile(pr: PaymentRequest, summary: dict) -> None:
         elif pr.method == PaymentRequest.Method.BOLETO:
             payment = asaas_billpay.refresh_boleto(pr.external_reference)
         else:
-            payment = asaas_payout.get_payout(pr.external_reference)
+            payment = asaas_payout.refresh_payout(pr.external_reference)
     except (
         asaas_payout.PayoutError,
         asaas_qrpay.QrPayError,
@@ -301,7 +384,9 @@ def _reconcile(pr: PaymentRequest, summary: dict) -> None:
         return
 
     was_awaiting_balance = pr.status == PaymentRequest.Status.AWAITING_BALANCE
+    pr.asaas_payment_id = payment.payment_id
     pr.asaas_status = payment.status
+    pr.save(update_fields=["asaas_payment_id", "updated_at"])
     status = (payment.status or "").upper()
     if status == "PAID":
         pr.status = PaymentRequest.Status.PAID
@@ -343,14 +428,33 @@ def _reconcile(pr: PaymentRequest, summary: dict) -> None:
         summary["awaiting"] += 1
 
 
+def _retryable_request(external_id: str) -> PaymentRequest:
+    from integrations.bank.asaas.models import Payment
+    from users.auth.models import User
+    candidate = PaymentRequest.objects.filter(external_id=external_id).first()
+    if candidate is None:
+        raise ValueError("payment_request_not_found")
+    if candidate.payee_id:
+        User.objects.select_for_update().get(pk=candidate.payee_id)
+    pr = PaymentRequest.objects.select_for_update().get(pk=candidate.pk)
+    if pr.status in (PaymentRequest.Status.PAID, PaymentRequest.Status.CANCELLED):
+        raise ValueError("payment_request_already_paid")
+    intent = Payment.objects.filter(payment_id=pr.external_reference).first()
+    if pr.status == PaymentRequest.Status.SUBMITTED or (intent and intent.status not in ("FAILED", "CANCELLED")):
+        raise ValueError("payout_requires_reconciliation")
+    if intent:
+        pr.external_reference = f"{pr.external_reference[:104]}_retry_{uuid.uuid4().hex[:12]}"
+        pr.asaas_payment_id = None
+        pr.asaas_status = None
+        pr.save(update_fields=["external_reference", "asaas_payment_id", "asaas_status", "updated_at"])
+        pr.commissions.update(external_reference=pr.external_reference)
+    return pr
+
+
+@transaction.atomic
 def retry_payment_request(external_id: str) -> PaymentRequest:
     """Força o reprocessamento imediato de uma solicitação de pagamento com erro ou sem saldo."""
-    pr = PaymentRequest.objects.filter(external_id=external_id).first()
-    if pr is None:
-        raise ValueError("payment_request_not_found")
-    
-    if pr.status in (PaymentRequest.Status.PAID,):
-        raise ValueError("payment_request_already_paid")
+    pr = _retryable_request(external_id)
 
     profile = get_profile(pr.payee) if pr.payee else None
     pix = (profile.pix_key if profile else None) or pr.pix_key or ""
@@ -368,18 +472,14 @@ def retry_payment_request(external_id: str) -> PaymentRequest:
     return pr
 
 
+@transaction.atomic
 def override_payment_request_pix(external_id: str, new_pix_key: str, update_profile: bool = True) -> PaymentRequest:
     """Permite ao staff atualizar a chave PIX de um payout e re-enfileirar imediatamente."""
     clean_pix = (new_pix_key or "").strip()
     if not clean_pix:
         raise ValueError("pix_key_required")
     
-    pr = PaymentRequest.objects.filter(external_id=external_id).first()
-    if pr is None:
-        raise ValueError("payment_request_not_found")
-    
-    if pr.status in (PaymentRequest.Status.PAID,):
-        raise ValueError("payment_request_already_paid")
+    pr = _retryable_request(external_id)
 
     pr.pix_key = clean_pix
     pr.status = PaymentRequest.Status.QUEUED

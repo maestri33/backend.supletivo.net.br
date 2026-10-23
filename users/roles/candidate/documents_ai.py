@@ -124,17 +124,15 @@ def _doc_extract_and_finish(cand: Candidate, sub, result: dict, images: list) ->
     from users.roles import _document_ai as doc_ai
 
     p = profiles.get(cand.user)
+    snapshot = doc_ai.identity_snapshot(sub)
     try:
-        ocr_text = doc_ai.ocr_images(
-            [fp.read_bytes() for fp in images], caller="candidate.document"
-        )
-        data = doc_ai.extract_document(
-            ocr_text,
-            doc_type=cand.doc_type,
-            holder_name=(p.name if p else None),
-            caller="candidate.document",
+        data = doc_ai.read_identity_images(
+            [fp.read_bytes() for fp in images], doc_type=cand.doc_type,
+            holder_name=(p.name if p else None), caller="candidate.document",
         )
     except Exception as exc:  # noqa: BLE001 — IA fora do ar → review
+        if not doc_ai.identity_is_current(sub, snapshot):
+            return
         logger.warning(
             "candidate.doc_extract_failed",
             candidate=str(cand.external_id),
@@ -151,33 +149,33 @@ def _doc_extract_and_finish(cand: Candidate, sub, result: dict, images: list) ->
     # guard do worker-zumbi: o OCR + extração acima levam ~15s; se NESSE meio o sweep do TTL
     # (worker lento) ou o coordenador já decidiu, NÃO sobrescrever a decisão. Mesma régua que a
     # visão aplica no re-check acima — aqui fecha a janela do estágio de extração.
-    sub.refresh_from_db()
-    if sub.validation_status != doc_ai.PENDING:
+    if not doc_ai.identity_is_current(sub, snapshot) or sub.validation_status != doc_ai.PENDING:
         return
+    p = profiles.get(cand.user)
     result["extracted"] = data
-    match = str(data.get("name_match") or "").strip().lower()
-    name_reason = (data.get("name_reason") or "").strip()
-    if match in ("nao", "não", "no"):
+    identity_status, identity_reason, identity_checks = doc_ai.validate_identity_data(data, p)
+    result["identity_checks"] = identity_checks
+    if identity_status == "nao":
         service._finish_doc(
             cand,
             sub,
             doc_ai.REJECTED,
-            f"O nome no documento não confere com o do cadastro. {name_reason}".strip(),
+            identity_reason,
             result,
         )
         return
-    if match not in ("sim", "yes"):
+    if identity_status != "sim":
         service._finish_doc(
             cand,
             sub,
             doc_ai.REVIEW,
-            f"Não deu pra confirmar o nome do titular. {name_reason}".strip(),
+            identity_reason,
             result,
         )
         return
     service._apply_doc_extracted(cand, sub, data)
     service._finish_doc(
-        cand, sub, doc_ai.APPROVED, name_reason or "Documento validado.", result
+        cand, sub, doc_ai.APPROVED, identity_reason, result
     )
     service._notify_doc_event(
         cand=cand,
@@ -188,9 +186,21 @@ def _doc_extract_and_finish(cand: Candidate, sub, result: dict, images: list) ->
 
 
 def _apply_doc_extracted(cand: Candidate, sub, data: dict) -> None:
-    """Povoa SÓ campos vazios (Victor: não sobrescrever). RG/CNH compartilhados por sub-doc;
-    aqui o que vale é o tipo."""
+    """Fill missing identity/RG fields and renew verified CNH credentials."""
     from datetime import date
+    import re
+
+    if cand.doc_type == "cnh":
+        number = str(data.get("number") or "").strip()
+        category = str(data.get("category") or "").strip().upper()
+        # Cached extraction may predate the visual credential reader. Human approval
+        # keeps its decision, but cannot bypass source/identity checks for auto-filling.
+        if (
+            not re.fullmatch(r"[0-9]{11}", number)
+            or not re.fullmatch(r"(?:A?[BCDE]|A|ACC)", category)
+            or _document_ai.validate_identity_data(data, profiles.get(cand.user))[0] != "sim"
+        ):
+            return
 
     def _clean(value, limit: int):
         s = str(value).strip()
@@ -218,14 +228,24 @@ def _apply_doc_extracted(cand: Candidate, sub, data: dict) -> None:
                 sub_changed.append("issue_date")
     # CNH-specific
     elif cand.doc_type == "cnh":
-        if not sub.number and data.get("number"):
-            sub.number = _clean(data["number"], 30)
+        if sub.number != number:
+            sub.number = number
             sub_changed.append("number")
-        if not sub.category and data.get("category"):
-            sub.category = _clean(data["category"], 5)
+        if sub.category != category:
+            sub.category = category
             sub_changed.append("category")
-        if not sub.national_register and data.get("national_register"):
-            sub.national_register = _clean(data["national_register"], 30)
+        register = str(data.get("national_register") or "").strip().upper()
+        previous_register = str(sub.national_register or "").strip().upper()
+        if re.fullmatch(r"[A-Z]{2}[0-9]{9}", register) and sub.national_register != register:
+            sub.national_register = register
+            sub_changed.append("national_register")
+        elif (
+            "national_register" in data
+            and not re.fullmatch(r"[A-Z]{2}[0-9]{9}", register)
+            and sub.national_register
+            and not re.fullmatch(r"[A-Z]{2}[0-9]{9}", previous_register)
+        ):
+            sub.national_register = None
             sub_changed.append("national_register")
         if not sub.expires_on:
             d = _date(data.get("expires_on"))
@@ -262,7 +282,7 @@ def _apply_doc_extracted(cand: Candidate, sub, data: dict) -> None:
     # DOCUMENTS→PIX. Guarded (só avança com doc aprovado + number), idempotente nos callsites de
     # validação que já chamam _advance_documents depois. Sem isso, o candidato ficava preso em
     # DOCUMENTS após a aprovação manual quando o número só veio pelo OCR.
-    _advance_documents(cand, str(cand.user.external_id))
+    service._advance_documents(cand, str(cand.user.external_id))
 
 
 def _finish_doc(
@@ -296,7 +316,7 @@ def _doc_post_approval(cand: Candidate, sub) -> None:
     """Aprovado → AVANÇA o wizard PRIMEIRO, biometria best-effort DEPOIS: um crash da biometria
     (InsightFace/onnxruntime pode matar o worker) NÃO pode perder o avanço do wizard (Victor 2026-06-16)."""
     # o doc já está aprovado + com número → avança documents→pix ANTES de tocar na biometria.
-    _advance_documents(cand, str(cand.user.external_id))
+    service._advance_documents(cand, str(cand.user.external_id))
     service._complete_candidate(cand)
 
     from pathlib import Path
@@ -332,22 +352,19 @@ def run_document_fill(candidate_id: int) -> None:
     # já tem extração? só repopula o que ficou faltando
     result = sub.validation_result or {}
     if result.get("extracted"):
-        _apply_doc_extracted(cand, sub, result["extracted"])
+        if doc_ai.validate_identity_data(result["extracted"], profiles.get(cand.user))[0] == "sim":
+            _apply_doc_extracted(cand, sub, result["extracted"])
         return
     # sem extração anterior: roda OCR+extração best-effort
     images = _doc_approved_images(sub, result.get("photos") or {}, cand.doc_type)
     if not images:
         return
     p = profiles.get(cand.user)
+    snapshot = doc_ai.identity_snapshot(sub)
     try:
-        ocr_text = doc_ai.ocr_images(
-            [fp.read_bytes() for fp in images], caller="candidate.document_fill"
-        )
-        data = doc_ai.extract_document(
-            ocr_text,
-            doc_type=cand.doc_type,
-            holder_name=(p.name if p else None),
-            caller="candidate.document_fill",
+        data = doc_ai.read_identity_images(
+            [fp.read_bytes() for fp in images], doc_type=cand.doc_type,
+            holder_name=(p.name if p else None), caller="candidate.document_fill",
         )
     except Exception as exc:  # noqa: BLE001 — best-effort; falha = aluno digita
         logger.warning(
@@ -356,9 +373,17 @@ def run_document_fill(candidate_id: int) -> None:
             error=str(exc)[:200],
         )
         return
+    if not doc_ai.identity_is_current(sub, snapshot):
+        return
+    p = profiles.get(cand.user)
     result["extracted"] = data
+    identity_status, identity_reason, identity_checks = doc_ai.validate_identity_data(data, p)
+    result["identity_checks"] = identity_checks
+    result["identity_reason"] = identity_reason
     sub.validation_result = result
     sub.save(update_fields=["validation_result"])
+    if identity_status != "sim":
+        return
     service._apply_doc_extracted(cand, sub, data)
 
 

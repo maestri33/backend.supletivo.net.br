@@ -134,7 +134,7 @@ def build_group(name: str, description: str, auth_override=_DEFAULT_AUTH) -> Nin
 
         return {
             "external_id": principal.external_id,
-            "roles": canonical_roles if canonical_roles else principal.roles,
+            "roles": canonical_roles,
             "role_statuses": role_statuses,
             "name": profile.name if profile else None,
             "phone": profile.phone if profile else None,

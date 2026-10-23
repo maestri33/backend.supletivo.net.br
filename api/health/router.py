@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 
 import httpx
@@ -24,7 +25,7 @@ staff_health_router = Router(tags=["staff-health"])
 
 class HealthzOut(Schema):
     status: str
-    version: str = "0.0.0-sandbox.56"
+    version: str = "0.0.1-beta"
     db: bool
     migrations_pending: int
     sha: str | None = None
@@ -77,8 +78,10 @@ def _pending_migrations() -> int:
 
 def _deploy_info() -> dict:
     build_file = settings.BASE_DIR / "build.txt"
-    sha = build_file.read_text().strip() if build_file.exists() else None
-    return {"sha": sha, "built_at": None}
+    sha = os.environ.get("RELEASE_ARTIFACT_SHA") or (
+        build_file.read_text().strip() if build_file.exists() else None
+    )
+    return {"sha": sha, "built_at": os.environ.get("RELEASE_BUILT_AT") or None}
 
 
 @health_api.get("/healthz", response=HealthzOut, summary="Health check público")
@@ -88,7 +91,7 @@ def healthz(request):
     deploy = _deploy_info()
     return {
         "status": "ok" if db_ok else "degraded",
-        "version": getattr(settings, "APP_VERSION", "0.0.0-sandbox.56"),
+        "version": getattr(settings, "APP_VERSION", "0.0.1-beta"),
         "db": db_ok,
         "migrations_pending": _pending_migrations(),
         "sha": deploy["sha"],

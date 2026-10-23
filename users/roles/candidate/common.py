@@ -8,6 +8,15 @@ from users.roles.candidate.models import Candidate
 logger = structlog.get_logger()
 
 _S = Candidate.Status
+_ACTIVE_COLLECTION_STATUSES = (
+    _S.STARTED,
+    _S.PROFILE,
+    _S.ADDRESS,
+    _S.DOCUMENTS,
+    _S.PIX,
+    _S.EDUCATION,
+    _S.SELFIE,
+)
 _SELFIE_EXT = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 _COLLABORATOR_ROLES = ("coordinator", "promoter", "training", "candidate")
 

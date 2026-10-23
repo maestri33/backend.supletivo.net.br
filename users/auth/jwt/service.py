@@ -87,12 +87,12 @@ def _live_roles(external_id: str) -> list[str] | None:
     return sorted(role_service.active_roles(user))
 
 
-def _promoter_transition_roles(token, external_id: str) -> list[str] | None:
-    """Aceita somente a promoção monotônica `candidate` → `promoter` do próprio refresh assinado.
+def _funnel_transition_roles(token, external_id: str) -> list[str] | None:
+    """Accept a single known funnel promotion from the account's signed refresh.
 
-    A selfie é validada de forma assíncrona e a promoção invalida a sessão antiga. Sem esta ponte,
-    o próximo poll recebe 401 e prende o usuário no último passo. Qualquer outra troca de papel,
-    banimento ou salto de mais de uma versão continua exigindo novo OTP.
+    Candidate approval, payment confirmation and enrollment conclusion invalidate
+    access tokens. Their refresh can follow exactly one promotion while retaining
+    all other roles. Bans, extra role changes and further revocation remain stale.
     """
     claims_version = int(token.get("token_version") or 0)
     live_version = current_version(external_id)
@@ -105,22 +105,28 @@ def _promoter_transition_roles(token, external_id: str) -> list[str] | None:
     current = set(live_roles)
     removed = previous - current
     added = current - previous
-    if removed != {"candidate"}:
-        return None
-    if "promoter" not in added or not added.issubset({"promoter", "training"}):
+    transitions = (
+        ("candidate", "promoter", {"promoter", "training"}),
+        ("lead", "enrollment", {"enrollment"}),
+        ("enrollment", "student", {"student"}),
+    )
+    if not any(
+        removed == {previous} and promoted in added and added.issubset(allowed)
+        for previous, promoted, allowed in transitions
+    ):
         return None
     return sorted(current)
 
 
 def refresh(refresh_token: str) -> dict:
-    """Rotaciona o par; só a promoção segura candidato→promotor atravessa troca de role."""
+    """Rotate tokens, allowing only a single known funnel promotion across versions."""
     token = RefreshToken(refresh_token)
     external_id = token.get("external_id", "")
     if not version_matches(external_id, token.get("token_version")):
-        transitioned = _promoter_transition_roles(token, external_id)
+        transitioned = _funnel_transition_roles(token, external_id)
         if transitioned is None:
             raise TokenError("token_version_stale")
-        logger.info("jwt.promoter_transition_refreshed", external_id=external_id)
+        logger.info("jwt.funnel_transition_refreshed", external_id=external_id)
         return issue(external_id, transitioned)
     roles = _live_roles(external_id)
     if roles is None:

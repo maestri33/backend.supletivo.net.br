@@ -99,9 +99,12 @@ Diferente do aluno: **o candidato aceita RG e CNH** (o aluno só aceita RG).
 - **Avanço `documents→pix`** (`_advance_documents`, `service.py:606`): acontece assim que há
   `number` + alguma foto (frente ou inteira) — **sem esperar o veredito da IA** (comentário no
   código: `# ponytail: sem gate de validação — usuário avança na hora; rejeição = ValidationBlock`).
-- Comprovante de residência — `POST /candidate/documents/address-proof` (linha 595, multipart,
-  obrigatório): assíncrono, acompanha por `address_proof.status` no `me_dict`. Se vier
-  `needs_kinship`, `POST /candidate/documents/address-proof/kinship {relation}` (linha 606) libera.
+- Comprovante de residência — Endpoints:
+  - `POST /candidate/documents/address-proof` e alias `/candidate/address/proof`: upload inicial multipart.
+  - `PUT /candidate/documents/address-proof` e alias `/candidate/address/proof`: substituição de documento e reinício da validação assíncrona.
+  - `GET /candidate/documents/address-proof` e alias `/candidate/address/proof`: consulta direta de status (`AddressProofSectionOut`).
+  - `POST /candidate/documents/address-proof/kinship` e alias `/candidate/address/proof/kinship`: justificativa de parentesco `{relation}`.
+  - **Regra de Decisão**: CPF confere com cadastro $\rightarrow$ aprova direto; sem CPF, nomes iguais $\rightarrow$ aprova direto; parecido $\rightarrow$ `review`; divergente $\rightarrow$ `needs_kinship`. Preenchimento automático no modelo `Address` ao aprovar. Acesso permitido para roles `candidate` e `promoter`.
 
 ### 6. Pix — `POST /candidate/pix` (linha 620)
 
@@ -115,10 +118,14 @@ Diferente do aluno: **o candidato aceita RG e CNH** (o aluno só aceita RG).
 
 ### 7. Escolaridade — `POST /candidate/education` (linha 630)
 
-- **Front envia**: `{level: "fundamental"|"medio", completed: bool}`.
-- **Backend faz** (`set_education`, `service.py:1178`): grava no `Profile` (nível-pessoa, reusado se
-  virar aluno depois); **última pergunta antes da selfie** (tem que vir antes porque a selfie
-  aprovada auto-promove). Sem médio completo → o promotor nasce **`pre_matriculado`**
+- **Front envia**: `{level: "fundamental"|"medio"|"superior", completed: bool, grade?,
+  last_completed_grade?, qualification?, education_status?, year?, city?, state?, school?,
+  declaration_accepted: true}`. O modal de veracidade é obrigatório. A UF é carregada primeiro
+  pela API oficial do IBGE e a lista de cidades é carregada para a UF selecionada.
+- **Backend faz** (`set_education`, `service.py:1178`): aceita Superior completo ou interrompido,
+  valida cidade/UF pelo cache IBGE, registra versão/IP/user-agent/horário da declaração e grava no
+  `Profile` (nível-pessoa, reusado se virar aluno depois); **última pergunta antes da selfie**
+  (tem que vir antes porque a selfie aprovada auto-promove). Sem médio completo → o promotor nasce **`pre_matriculado`**
   (`users/roles/promoter/service.py:33`, F4: aos 3 leads pagos vira bolsista automático).
   Avança `pix→education`.
 
@@ -200,7 +207,7 @@ digital. `list_locked_promoters_for_hub` alimenta o inbox do coordenador.
 |---|---|---|
 | Documento aceito | **RG e CNH** (`doc_type` escolhido no 1º upload) | Só RG |
 | Pix | **Sim** — obrigatório, valida no Asaas/DICT (etapa própria do wizard) | Não faz parte do wizard do aluno |
-| Escolaridade | Coletada no wizard (`education`), define `pre_matriculado` | Não aplicável (já é aluno) |
+| Escolaridade | Coletada no wizard (`education`), aceita Fundamental/Médio/Superior e define `pre_matriculado` | Limitado a Fundamental/Médio até o 3º ano não concluído |
 | Contrato/consentimento | Aceite implícito ao enviar a selfie (`PROMOTER_CONTRACT`) | Contrato do aluno é outro (fora deste doc) |
 | Pós-aprovação | **Treino (LMS) trava** o painel até completar matérias obrigatórias | Não há treino |
 | Papel final | `Promoter` (capta leads, ganha comissão) | `Student`/`Enrollment` (estuda) |

@@ -1,0 +1,34 @@
+{
+  "recorded_at_utc": "2026-10-11 20:54:27 UTC",
+  "repository": "backend.supletivo.net.br",
+  "command": ".venv/Scripts/python.exe -m pytest tests/test_identity_document_rules.py tests/test_document_validation_battery.py tests/test_doc_classify.py tests/test_rg_public_reason.py tests/test_document_side_upload.py tests/test_candidate_document_pipeline_contract.py tests/test_identity_visual_transcription.py tests/test_promoter_document_archive.py tests/test_uploads.py tests/test_pdf.py tests/test_candidate_doc_race.py tests/test_student_sad_path.py::test_enrollment_rg_invalid_slot_returns_422 tests/test_student_sad_path.py::test_enrollment_rg_non_image_upload_returns_422 -q",
+  "result": {
+    "collected": 80,
+    "passed": 80,
+    "failed": 0,
+    "exit_code": 0,
+    "duration_seconds": 6.6
+  },
+  "scope": "Local pytest execution with offline adapters / controlled failures, synthetic media and isolated SQLite test database.",
+  "covered": [
+    "Invalid uploads, identity mismatches and uncertain extraction",
+    "RG front/back duplication and next-slot contract",
+    "Candidate RG/CNH persistence, review and stale-analysis guards",
+    "PDF rendering and invalid or excessive pages",
+    "Authenticated document archive access"
+  ],
+  "limitations": [
+    "No production requests, deployment, account or credential changes.",
+    "No live OCR/classifier accuracy or browser UX verification; those require separate production canaries."
+  ],
+  "sanitization": "Summary only; no secrets, tokens, document contents, account identifiers or raw logs.",
+  "final_release_gate": {
+    "release": "0.0.0-sandbox.91",
+    "recorded_date_utc": "2026-10-11",
+    "command": ".venv/Scripts/python.exe -m pytest tests/test_identity_document_rules.py tests/test_document_validation_battery.py tests/test_doc_classify.py tests/test_rg_public_reason.py tests/test_document_side_upload.py tests/test_candidate_document_pipeline_contract.py tests/test_identity_visual_transcription.py tests/test_promoter_document_archive.py tests/test_uploads.py tests/test_pdf.py tests/test_candidate_doc_race.py tests/test_candidate_credential_renewal.py tests/test_student_sad_path.py::test_enrollment_rg_invalid_slot_returns_422 tests/test_student_sad_path.py::test_enrollment_rg_non_image_upload_returns_422 -q",
+    "result": {"collected": 137, "passed": 137, "failed": 0, "exit_code": 0, "duration_seconds": 10.95},
+    "additional_scope": "Focused visual CNH credential reading and renewal of stale persisted credentials, including identity disagreement and uncertain RENACH.",
+    "frontend": {"identity_tests_passed": 27, "latest_build_exit_code": 0, "source_unchanged_since_identity_test": true},
+    "limitations": "Offline tests and builds; actual production UI/OCR evidence is recorded separately."
+  }
+}

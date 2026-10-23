@@ -94,6 +94,12 @@ class Enrollment(ExternalIdModel):
     consent_accepted_at = models.DateTimeField(
         "consentimento aceito em", null=True, blank=True
     )
+    # Declaração específica da escolaridade, anterior à selfie/assinatura.
+    education_declaration_accepted = models.BooleanField(default=False)
+    education_declaration_version = models.CharField(max_length=32, null=True, blank=True)
+    education_declaration_ip = models.CharField(max_length=64, null=True, blank=True)
+    education_declaration_user_agent = models.TextField(null=True, blank=True)
+    education_declaration_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 

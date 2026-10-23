@@ -15,9 +15,14 @@ pytestmark = pytest.mark.django_db
 
 
 def test_simulation_weekly_closing_without_persisting():
+    from hub.models import Hub
+    from users.address import interface as addresses
+    from users.roles.promoter.models import Promoter
     promoter = User.objects.create_user()
     profiles.create(user=promoter, cpf=None, phone="5511988887777", name="Promotor Milionario")
     profiles.fill_identity(promoter, pix_key="pix@promoter.test")
+    hub = Hub.objects.create(coordinator=promoter, address=addresses.create_empty())
+    Promoter.objects.create(user=promoter, hub=hub)
 
     # Credita 6 comissões de lead
     for i in range(6):
@@ -28,7 +33,7 @@ def test_simulation_weekly_closing_without_persisting():
             source_external_id=uuid.uuid4(),
         )
 
-    sim = finance_closing.simulate_weekly_closing()
+    sim = finance_closing.simulate_weekly_closing(reference_date=finance_closing.next_closing_at())
     assert sim["commissions_count"] == 6
     assert sim["bonuses_count"] == 1  # 6 >= 5 threshold
     assert sim["beneficiaries_count"] == 1

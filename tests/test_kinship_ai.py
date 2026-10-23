@@ -65,7 +65,22 @@ def test_evaluate_kinship_ia_falha_nao_bloqueia(monkeypatch):
 
 
 # ── integração com o fluxo do comprovante: sem fundamento NÃO aprova ──
-def test_submit_kinship_sem_fundamento_nao_aprova(monkeypatch):
+@pytest.fixture
+def kinship_proof():
+    from users.auth.models import User
+    from users.profiles.models import Profile
+    from users.documents import service as documents
+    user = User.objects.create_user()
+    Profile.objects.create(user=user, name="Titular Teste")
+    documents.create_empty(user)
+    proof = documents.get_address_proof(str(user.external_id))
+    proof.photo = "documents/test.png"
+    proof.validation_status = "needs_kinship"
+    proof.save()
+    return user, proof
+
+
+def test_submit_kinship_sem_fundamento_nao_aprova(monkeypatch, kinship_proof):
     from users.roles import _address_proof as ap_mod
     from integrations.ai import service as ai
 
@@ -75,27 +90,15 @@ def test_submit_kinship_sem_fundamento_nao_aprova(monkeypatch):
         lambda relation, **k: {"has_merit": False, "corrected": "", "reason": "lixo"},
     )
 
-    saved = {"status": None, "relation": None}
-
-    class _AP:
-        validation_status = ap_mod.NEEDS_KINSHIP
-        kinship_relation = None
-        kinship_provided_at = None
-
-        def save(self, **kw):
-            saved["status"] = self.validation_status
-            saved["relation"] = self.kinship_relation
-
-    from users.documents import service as documents_iface
-
-    monkeypatch.setattr(documents_iface, "get_address_proof", lambda ext: _AP())
-
-    status = ap_mod.submit_kinship("u1", "asdfgh")
+    user, proof = kinship_proof
+    status = ap_mod.submit_kinship(str(user.external_id), "asdfgh")
+    proof.refresh_from_db()
     assert status == ap_mod.NEEDS_KINSHIP, "sem fundamento não deveria aprovar"
-    assert saved["status"] is None, "não deveria ter salvado aprovação"
+    assert proof.validation_status == ap_mod.NEEDS_KINSHIP
+    assert proof.kinship_relation is None
 
 
-def test_submit_kinship_com_fundamento_salva_texto_corrigido(monkeypatch):
+def test_submit_kinship_com_fundamento_salva_texto_corrigido(monkeypatch, kinship_proof):
     from users.roles import _address_proof as ap_mod
     from integrations.ai import service as ai
 
@@ -109,23 +112,10 @@ def test_submit_kinship_com_fundamento_salva_texto_corrigido(monkeypatch):
         },
     )
 
-    saved = {}
-
-    class _AP:
-        validation_status = ap_mod.NEEDS_KINSHIP
-        kinship_relation = None
-        kinship_provided_at = None
-
-        def save(self, **kw):
-            saved["status"] = self.validation_status
-            saved["relation"] = self.kinship_relation
-
-    from users.documents import service as documents_iface
-
-    monkeypatch.setattr(documents_iface, "get_address_proof", lambda ext: _AP())
-
-    status = ap_mod.submit_kinship("u1", "eh minha mae maria")
+    user, proof = kinship_proof
+    status = ap_mod.submit_kinship(str(user.external_id), "eh minha mae maria")
+    proof.refresh_from_db()
     assert status == ap_mod.APPROVED
-    assert saved["relation"] == "É minha mãe, Maria.", (
+    assert proof.kinship_relation == "É minha mãe, Maria.", (
         "deveria salvar o texto corrigido pela IA"
     )
