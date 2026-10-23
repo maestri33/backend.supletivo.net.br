@@ -4,7 +4,7 @@ from users.blocks import service as blocks
 from users.documents import service as documents_iface
 from users.roles import _address_proof
 from users.roles.candidate.models import Candidate
-from users.roles.candidate.common import _S, _require, logger
+from users.roles.candidate.common import _S, _ACTIVE_COLLECTION_STATUSES, _require, logger
 from users.roles.candidate.profile_address import _advance_address
 from users.roles.candidate.promotion import _complete_candidate
 from users.roles.candidate.serializers import me_dict
@@ -20,6 +20,7 @@ def upload_address_proof(*, user_external_id, upload) -> dict:
     marca `pending` e enfileira a validação (endereço + titular). Aceito já na etapa `address`."""
     cand = _require(
         user_external_id,
+        _S.STARTED,
         _S.PROFILE,
         _S.ADDRESS,
         _S.DOCUMENTS,
@@ -45,6 +46,7 @@ def submit_address_proof_kinship(*, user_external_id, relation: str) -> dict:
     # de volta pra mesma tela, em loop, sem nunca conseguir responder.
     cand = _require(
         user_external_id,
+        _S.STARTED,
         _S.PROFILE,
         _S.ADDRESS,
         _S.DOCUMENTS,

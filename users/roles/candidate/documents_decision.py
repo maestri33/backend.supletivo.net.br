@@ -44,7 +44,7 @@ def decide_document(
     if not cand.doc_type:
         raise CandidateError("Documento ainda não enviado.", code="DOC_TYPE_NOT_SET")
     sub = documents_iface.get_doc_sub(str(cand.user.external_id), cand.doc_type)
-    if sub is None or sub.validation_status != doc_ai.REVIEW:
+    if sub is None or sub.validation_status not in (doc_ai.REVIEW, doc_ai.PENDING):
         raise CandidateError(
             "O documento não está em revisão.",
             code="DOC_NOT_IN_REVIEW",

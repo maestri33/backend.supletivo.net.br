@@ -6,6 +6,7 @@ from users.roles.candidate.models import Candidate
 from users.roles.candidate.common import (
     CandidateError,
     _S,
+    _ACTIVE_COLLECTION_STATUSES,
     _EDU_LEVELS,
     _EDU_QUALIFICATIONS,
     _require,
@@ -21,7 +22,7 @@ def set_pix(*, user_external_id, key: str, key_type: str) -> dict:
     # apelidos PT do front (celular/aleatoria/…) → tipo canônico do DICT (PHONE/EVP/…); o Profile
     # guarda SEMPRE o canônico.
     key_type = pixkey.normalize_key_type(key_type)
-    cand = _require(user_external_id, _S.DOCUMENTS, _S.PIX)
+    cand = _require(user_external_id, *_ACTIVE_COLLECTION_STATUSES)
     profile = profiles.find_by_external_id(user_external_id)
     if profile is None or not profile.cpf:
         raise CandidateError(
@@ -42,7 +43,7 @@ def set_pix(*, user_external_id, key: str, key_type: str) -> dict:
     profiles.set_pix(user_external_id, key.strip(), key_type)
     cand.pix_validated = True
     cand.save(update_fields=["pix_validated", "updated_at"])
-    if cand.status == _S.DOCUMENTS:
+    if cand.status in (_S.STARTED, _S.PROFILE, _S.ADDRESS, _S.DOCUMENTS):
         _set_status(cand, _S.PIX)
     logger.info("candidate.pix_validated", external_id=str(cand.external_id))
     return me_dict(cand)
@@ -74,7 +75,7 @@ def set_education(
     declaration_ip: str | None = None,
     declaration_user_agent: str | None = None,
 ) -> dict:
-    cand = _require(user_external_id, _S.PIX, _S.EDUCATION)
+    cand = _require(user_external_id, *_ACTIVE_COLLECTION_STATUSES)
     if not declaration_accepted:
         raise CandidateError(
             "Confirme a declaração de veracidade antes de continuar.",
@@ -220,7 +221,7 @@ def set_education(
     cand.education_declaration_user_agent = declaration_user_agent
     cand.education_declaration_at = timezone.now()
     cand.save(update_fields=["education_declaration_accepted", "education_declaration_version", "education_declaration_ip", "education_declaration_user_agent", "education_declaration_at", "updated_at"])
-    if cand.status == _S.PIX:
+    if cand.status in (_S.STARTED, _S.PROFILE, _S.ADDRESS, _S.DOCUMENTS, _S.PIX):
         _set_status(cand, _S.EDUCATION)
     logger.info(
         "candidate.education_set",

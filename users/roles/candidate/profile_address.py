@@ -5,6 +5,7 @@ from users.profiles import interface as profiles
 from users.roles.candidate.models import Candidate
 from users.roles.candidate.common import (
     _S,
+    _ACTIVE_COLLECTION_STATUSES,
     _ADDRESS_FIELDS,
     _require,
     _set_status,
@@ -20,7 +21,7 @@ def set_profile(
     birthplace=None,
     nationality=None,
 ) -> dict:
-    cand = _require(user_external_id, _S.STARTED, _S.PROFILE)
+    cand = _require(user_external_id, *_ACTIVE_COLLECTION_STATUSES)
     # identidade → SÓ no Profile (Victor 2026-06-16), nunca no candidate
     profiles.fill_identity(
         cand.user,
@@ -47,7 +48,7 @@ def get_address(*, user_external_id) -> dict:
 
 def set_address_cep(*, user_external_id, cep) -> dict:
     """Busca o CEP (ViaCEP) e preenche o endereço. Em cidade de CEP único a rua fica vazia p/ digitar."""
-    cand = _require(user_external_id, _S.PROFILE, _S.ADDRESS)
+    cand = _require(user_external_id, *_ACTIVE_COLLECTION_STATUSES)
     address_iface.set_by_cep(external_id=user_external_id, cep=cep)
     _advance_address(cand, user_external_id)
     return me_dict(cand)
@@ -59,7 +60,7 @@ def set_address_data(*, user_external_id, **fields) -> dict:
     Fix Marilu 2026-07-05: o `fill_empty` antigo só escrevia em campo VAZIO — corrigir um número
     errado era descartado em silêncio ("mandei, voltou"). Agora usa `patch` (sobrescreve); valor
     vazio/None no payload é ignorado (só muda o que o front mandou de verdade)."""
-    cand = _require(user_external_id, _S.PROFILE, _S.ADDRESS)
+    cand = _require(user_external_id, *_ACTIVE_COLLECTION_STATUSES)
     fields = {k: v for k, v in fields.items() if v not in (None, "")}
     if fields:
         address_iface.patch(external_id=user_external_id, **fields)
@@ -69,7 +70,7 @@ def set_address_data(*, user_external_id, **fields) -> dict:
 
 def _advance_address(cand: Candidate, user_external_id) -> None:
     """Endereço completo → ADDRESS. Comprovante validado em background (rejeição = ValidationBlock)."""
-    if cand.status == _S.PROFILE and address_iface.is_complete(
+    if cand.status in (_S.STARTED, _S.PROFILE) and address_iface.is_complete(
         address_iface.get_by_external_id(user_external_id)
     ):
         _set_status(cand, _S.ADDRESS)

@@ -12,7 +12,7 @@ from .client import ChatResult, LLMClient, LLMError
 from .http import get_ai_http_client
 
 DEFAULT_TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
-DEFAULT_VISION_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct"
+DEFAULT_VISION_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 DEFAULT_WHISPER_MODEL = "@cf/openai/whisper"
 
 

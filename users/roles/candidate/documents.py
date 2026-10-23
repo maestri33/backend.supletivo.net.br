@@ -12,6 +12,7 @@ from users.roles.candidate.models import Candidate
 from users.roles.candidate.common import (
     CandidateError,
     _S,
+    _ACTIVE_COLLECTION_STATUSES,
     _require,
     _set_status,
     logger,
@@ -20,7 +21,7 @@ from users.roles.candidate.serializers import me_dict
 
 def set_documents(*, user_external_id, doc_type: str, **fields) -> dict:
     """RG ou CNH (candidato aceita os dois). `doc_type` = 'rg'|'cnh'; `fields` = number/issuing_agency/..."""
-    cand = _require(user_external_id, _S.ADDRESS, _S.DOCUMENTS)
+    cand = _require(user_external_id, *_ACTIVE_COLLECTION_STATUSES)
     doc_type = doc_type.strip().lower()
     if doc_type not in ("rg", "cnh"):
         raise CandidateError(
@@ -34,7 +35,7 @@ def set_documents(*, user_external_id, doc_type: str, **fields) -> dict:
     if cand.doc_type in (None, "", doc_type):
         cand.doc_type = doc_type
         cand.save(update_fields=["doc_type", "updated_at"])
-    if cand.status == _S.ADDRESS:
+    if cand.status in (_S.STARTED, _S.PROFILE, _S.ADDRESS):
         _set_status(cand, _S.DOCUMENTS)
     return me_dict(cand)
 
@@ -51,7 +52,7 @@ def get_document_section(*, user_external_id) -> dict:
 def patch_document_section(*, user_external_id, **fields) -> dict:
     """PATCH da seção documento (plan/15 B3): completa/corrige o que a extração não trouxe.
     Aceito em qualquer etapa da coleta (a foto segue sendo a fonte de verdade pra auditoria)."""
-    cand = _require(user_external_id, _S.DOCUMENTS, _S.PIX, _S.SELFIE)
+    cand = _require(user_external_id, *_ACTIVE_COLLECTION_STATUSES)
     doc_type = cand.doc_type
     if not doc_type:
         raise CandidateError(
@@ -291,13 +292,13 @@ def _reset_doc_validation(user_external_id: str, doc_type: str, slot: str) -> No
 
 def _advance_documents(cand: Candidate, user_external_id: str) -> None:
     """Avança DOCUMENTS→PIX quando `number` presente + foto enviada. Validação roda em background."""
-    if cand.status != _S.DOCUMENTS or not cand.doc_type:
+    if cand.status not in (_S.STARTED, _S.PROFILE, _S.ADDRESS, _S.DOCUMENTS) or not cand.doc_type:
         return
     sub = documents_iface.get_doc_sub(user_external_id, cand.doc_type)
     # ponytail: sem gate de validação — usuário avança na hora; rejeição = ValidationBlock
     if (
         sub is not None
-        and getattr(sub, "number", None)
+        and (getattr(sub, "number", None) or getattr(sub, "validation_status", None) == "approved")
         and (getattr(sub, "front_photo", None) or getattr(sub, "full_photo", None))
     ):
         _set_status(cand, _S.PIX)
