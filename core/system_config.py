@@ -286,7 +286,8 @@ def save_platform_config(payload: dict) -> dict:
     """Atualiza configurações no banco de dados e sincroniza Boss/Hub se informado."""
     with transaction.atomic():
         if "default_promoter_external_id" in payload:
-            from users.roles.promoter.service import validate_ref
+            import importlib
+            validate_ref = importlib.import_module("users.roles.promoter.service").validate_ref
             from users.exceptions import ValidationError
             selected = str(payload["default_promoter_external_id"] or "").strip()
             promoter = validate_ref(selected) if selected else None

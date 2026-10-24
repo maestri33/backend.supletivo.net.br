@@ -4,7 +4,7 @@ import phonenumbers
 
 from users.profiles import interface as profiles
 from users.roles.enrollment.models import Enrollment
-from users.roles.lead.models import Checkout
+from django.apps import apps
 
 
 def release_dict(enrollment, *, rg_status, address_proof_status) -> dict | None:
@@ -59,7 +59,7 @@ def release_dict(enrollment, *, rg_status, address_proof_status) -> dict | None:
         # The hub manager owns student support once the paid lead becomes enrollment.
         "contact_url": contact_url,
         "updated_at": enrollment.updated_at.isoformat() if enrollment.updated_at else None,
-        "payment_confirmed": Checkout.objects.filter(lead__user_id=enrollment.user_id, is_paid=True).exists(),
+        "payment_confirmed": apps.get_model("users", "Checkout").objects.filter(lead__user_id=enrollment.user_id, is_paid=True).exists(),
         # Awaiting release is owned by the coordinator. Upload routes are gated to wizard states.
         "action_required": False,
         "action_route": None,

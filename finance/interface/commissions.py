@@ -52,7 +52,7 @@ def credit_commission(
     if payee is None:
         raise ValueError("payee_required")
 
-    from finance import canary
+    from finance.interface import canary
     terms = canary.source_terms(source_type=source_type, source_external_id=source_external_id, payee=payee)
     amount = Decimal(terms["direct"] if source_type == Commission.Source.LEAD else terms["coordinator"]) if terms else _AMOUNT_BY_SOURCE[source_type]()
     commission, created = Commission.objects.get_or_create(

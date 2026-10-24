@@ -40,7 +40,7 @@ def _items(end, *, persist):
         counts[(item.payee_id, period_start, item.canary_run_id)] += 1
         payees[item.payee_id] = item.payee
         if item.canary_run_id:
-            from finance.canary import validate_snapshot
+            from finance.interface.canary import validate_snapshot
             validate_snapshot(item.canary_snapshot)
             snapshots[item.canary_run_id] = item.canary_snapshot
 
@@ -65,7 +65,7 @@ def _items(end, *, persist):
                 "canary_run_id": run_id, "canary_snapshot": snapshot or {},
             })
             if created and run_id:
-                from finance.canary import record_accrual
+                from finance.interface.canary import record_accrual
                 record_accrual(item)
         else:
             extra.append(SimpleNamespace(pk=None, payee_id=user_id, payee=user, payee_role=Commission.Role.PROMOTER, amount=amount, source_type=Commission.Source.BONUS, canary_run_id=run_id))

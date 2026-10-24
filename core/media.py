@@ -44,7 +44,12 @@ def owner_external_id_for_path(path: str) -> str | None:
     prefix = path.strip("/").split("/", 1)[0]
 
     if prefix == "documents":
-        from users.documents.models import RG, CNH, AddressProof, Certificate, Military
+        from django.apps import apps
+        RG = apps.get_model("users", "RG")
+        CNH = apps.get_model("users", "CNH")
+        AddressProof = apps.get_model("users", "AddressProof")
+        Certificate = apps.get_model("users", "Certificate")
+        Military = apps.get_model("users", "Military")
 
         photo_models = (
             (RG, ("front_photo", "back_photo", "full_photo")),
@@ -63,8 +68,9 @@ def owner_external_id_for_path(path: str) -> str | None:
         return None
 
     if prefix == "selfie":
-        from users.roles.candidate.models import Candidate
-        from users.roles.enrollment.models import Enrollment
+        from django.apps import apps
+        Candidate = apps.get_model("users", "Candidate")
+        Enrollment = apps.get_model("users", "Enrollment")
 
         for model in (Enrollment, Candidate):
             row = model.objects.filter(selfie_image=path).select_related("user").first()
@@ -73,7 +79,8 @@ def owner_external_id_for_path(path: str) -> str | None:
         return None
 
     if prefix == "diploma":
-        from users.roles.student.models import StudentDiploma
+        from django.apps import apps
+        StudentDiploma = apps.get_model("users", "StudentDiploma")
 
         row = (
             StudentDiploma.objects.filter(
@@ -85,7 +92,9 @@ def owner_external_id_for_path(path: str) -> str | None:
         return str(row.student.user.external_id) if row is not None else None
 
     if prefix == "student":
-        from users.roles.student.models import StudentDiploma, StudentDocument
+        from django.apps import apps
+        StudentDiploma = apps.get_model("users", "StudentDiploma")
+        StudentDocument = apps.get_model("users", "StudentDocument")
 
         doc = (
             StudentDocument.objects.filter(photo=path)
