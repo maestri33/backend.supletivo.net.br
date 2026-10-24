@@ -14,11 +14,9 @@ from users.roles.candidate.common import (
     _set_status,
     logger,
 )
-from users.roles.candidate import service
 
 def age_stale_selfies() -> int:
     from users.roles import _analysis
-
     from users.roles.candidate import service
     return _analysis.age_stale_selfies(Candidate, service._notify_selfie_review)
 
@@ -101,6 +99,7 @@ def run_selfie_validation(candidate_id: int) -> None:
     logger.info(
         "candidate.selfie_validated", candidate=str(cand.external_id), status=status
     )
+    from users.roles.candidate import service
     service._resolve_selfie(cand)
 
 
@@ -118,19 +117,21 @@ def _save_selfie(cand: Candidate, image_bytes: bytes, content_type: str) -> str:
 def _resolve_selfie(cand: Candidate) -> None:
     """Reage ao veredito da selfie: aprovada→notifica+promove; reprovada→avisa candidato; revisão→avisa coordenador."""
     from users.roles import _selfie
+    from users.roles.candidate.selfie import _notify_selfie_approved, _notify_selfie_rejected, _notify_selfie_review
+    from users.roles.candidate.promotion import _complete_candidate
 
     if cand.selfie_status == _selfie.APPROVED:
-        service._notify_selfie_approved(cand)
-        service._complete_candidate(cand)
+        _notify_selfie_approved(cand)
+        _complete_candidate(cand)
     elif cand.selfie_status == _selfie.REJECTED:
-        service._notify_selfie_rejected(cand)
+        _notify_selfie_rejected(cand)
         # Repeated rejection requests human review; it cannot approve identity.
         if cand.selfie_reject_count >= _selfie.MAX_REJECTS_BEFORE_MEETING:
             profiles.set_selfie_needs_meeting(cand.user)
             cand.selfie_status = _selfie.REVIEW
             cand.save(update_fields=["selfie_status", "updated_at"])
-            service._notify_selfie_review(cand)
+            _notify_selfie_review(cand)
     elif cand.selfie_status == _selfie.REVIEW:
-        service._notify_selfie_review(cand)
+            _notify_selfie_review(cand)
 
 

@@ -18,7 +18,6 @@ from users.roles.candidate.common import (
     _DOC_SLOT_FIELD,
     logger,
 )
-from users.roles.candidate import service
 
 def decide_document(
     *,
@@ -28,6 +27,7 @@ def decide_document(
     reason: str | None = None,
 ) -> dict:
     """Coordenador do hub decide o documento do candidato em REVISÃO. Espelha `decide_rg`."""
+    from users.roles.candidate import service
     from users.roles import _document_ai as doc_ai
 
     cand = (
@@ -146,6 +146,7 @@ def _notify_doc_event(
 def _sweep_stale_reviews(hub) -> None:
     from users.documents.models import CNH, RG
     from users.roles import _analysis
+    from users.roles.candidate import service
 
     _analysis.sweep_stale_selfies(Candidate, hub)
     user_ids = list(Candidate.objects.filter(hub=hub).values_list("user_id", flat=True))

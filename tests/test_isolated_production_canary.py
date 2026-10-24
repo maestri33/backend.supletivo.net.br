@@ -109,6 +109,7 @@ def test_bonus_counts_and_batches_do_not_mix_canary_with_commercial_sales(setup_
     for _ in range(4):
         Commission.objects.create(payee=owner, payee_role="promoter", source_type="lead", source_external_id=uuid.uuid4(), amount="100")
     end = datetime(2026, 10, 16, 21, tzinfo=dt_timezone.utc)
+    Commission.objects.filter(payee=owner).update(created_at=end - timedelta(days=1))
     items, bonuses, _ = _items(end, persist=True)
     assert bonuses == 1
     bonus = Commission.objects.get(source_type="bonus")

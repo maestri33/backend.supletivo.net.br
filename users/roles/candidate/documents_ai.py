@@ -22,11 +22,17 @@ from users.roles.candidate.common import (
     _DOC_DOC_FIELDS,
     logger,
 )
-from users.roles.candidate import service
 from users.roles.candidate.serializers import me_dict
 from users.roles.candidate.promotion import _complete_candidate
+from users.roles.candidate.documents import _advance_documents
+from users.roles.candidate.documents_decision import _notify_doc_event
+def _get_service():
+    from users.roles.candidate import service
+    return service
+
 
 def run_document_validation(candidate_id: int, slot: str) -> None:
+    from users.roles.candidate import service
     """Pipeline da task (plan/15 B3). Idempotente: só age com validação `pending`. Mesma
     sequência do `run_rg_validation` do enrollment:
       a) visão na foto do `slot` (é rg/cnh? lado certo? legível?) → reprovou/dúvida = notifica;
@@ -81,7 +87,7 @@ def run_document_validation(candidate_id: int, slot: str) -> None:
         photos[slot] = {"status": status, "reason": reason}
         result["photos"] = photos
         if status != doc_ai.APPROVED:
-            service._finish_doc(cand, sub, status, reason, result)
+            _get_service()._finish_doc(cand, sub, status, reason, result)
             return
 
     images = _doc_approved_images(sub, photos, cand.doc_type)
@@ -138,7 +144,7 @@ def _doc_extract_and_finish(cand: Candidate, sub, result: dict, images: list) ->
             candidate=str(cand.external_id),
             error=str(exc)[:200],
         )
-        service._finish_doc(
+        _finish_doc(
             cand,
             sub,
             doc_ai.REVIEW,
@@ -156,7 +162,7 @@ def _doc_extract_and_finish(cand: Candidate, sub, result: dict, images: list) ->
     identity_status, identity_reason, identity_checks = doc_ai.validate_identity_data(data, p)
     result["identity_checks"] = identity_checks
     if identity_status == "nao":
-        service._finish_doc(
+        _finish_doc(
             cand,
             sub,
             doc_ai.REJECTED,
@@ -165,7 +171,7 @@ def _doc_extract_and_finish(cand: Candidate, sub, result: dict, images: list) ->
         )
         return
     if identity_status != "sim":
-        service._finish_doc(
+        _finish_doc(
             cand,
             sub,
             doc_ai.REVIEW,
@@ -173,16 +179,16 @@ def _doc_extract_and_finish(cand: Candidate, sub, result: dict, images: list) ->
             result,
         )
         return
-    service._apply_doc_extracted(cand, sub, data)
-    service._finish_doc(
+    _get_service()._apply_doc_extracted(cand, sub, data)
+    _get_service()._finish_doc(
         cand, sub, doc_ai.APPROVED, identity_reason, result
     )
-    service._notify_doc_event(
+    _get_service()._notify_doc_event(
         cand=cand,
         event="candidate.document_approved",
         subject="Seu cadastro — documento aprovado",
     )  # notify também no aprovado automático (espelha plan/13)
-    service._doc_post_approval(cand, sub)
+    _get_service()._doc_post_approval(cand, sub)
 
 
 def _apply_doc_extracted(cand: Candidate, sub, data: dict) -> None:
@@ -282,7 +288,7 @@ def _apply_doc_extracted(cand: Candidate, sub, data: dict) -> None:
     # DOCUMENTS→PIX. Guarded (só avança com doc aprovado + number), idempotente nos callsites de
     # validação que já chamam _advance_documents depois. Sem isso, o candidato ficava preso em
     # DOCUMENTS após a aprovação manual quando o número só veio pelo OCR.
-    service._advance_documents(cand, str(cand.user.external_id))
+    _advance_documents(cand, str(cand.user.external_id))
 
 
 def _finish_doc(
@@ -305,9 +311,9 @@ def _finish_doc(
         status=status,
     )
     if status == doc_ai.REJECTED:
-        service._notify_doc_event(cand=cand, event="candidate.document_rejected", detail=reason)
+        _get_service()._notify_doc_event(cand=cand, event="candidate.document_rejected", detail=reason)
     elif status == doc_ai.REVIEW:
-        service._notify_doc_event(
+        _notify_doc_event(
             cand=cand, event="candidate.document_in_review", detail=reason
         )
 
@@ -316,8 +322,8 @@ def _doc_post_approval(cand: Candidate, sub) -> None:
     """Aprovado → AVANÇA o wizard PRIMEIRO, biometria best-effort DEPOIS: um crash da biometria
     (InsightFace/onnxruntime pode matar o worker) NÃO pode perder o avanço do wizard (Victor 2026-06-16)."""
     # o doc já está aprovado + com número → avança documents→pix ANTES de tocar na biometria.
-    service._advance_documents(cand, str(cand.user.external_id))
-    service._complete_candidate(cand)
+    _advance_documents(cand, str(cand.user.external_id))
+    _complete_candidate(cand)
 
     from pathlib import Path
 
@@ -384,6 +390,6 @@ def run_document_fill(candidate_id: int) -> None:
     sub.save(update_fields=["validation_result"])
     if identity_status != "sim":
         return
-    service._apply_doc_extracted(cand, sub, data)
+    _apply_doc_extracted(cand, sub, data)
 
 

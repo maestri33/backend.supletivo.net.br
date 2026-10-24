@@ -496,7 +496,7 @@ def join_candidate(*, user_external_id: str, otp: str, hub=None) -> dict:
         user = User.objects.select_for_update().get(pk=user.pk)
         auth_iface.verify_otp_for_user(user=user, otp=otp)
         _ensure_candidate_inner(user, hub)
-        return auth_iface.issue_tokens_for_user(user)
+        return auth_iface.issue_tokens_for_user(user, bump_version=True)
 
 
 def ensure_candidate(*, user_external_id: str, hub=None) -> None:

@@ -45,7 +45,7 @@ _DOC_TYPE_HINT = {
     ),
     _T.ADDRESS_PROOF: (
         "um COMPROVANTE DE ENDEREÇO brasileiro recente (conta de luz, água, gás, internet, "
-        "telefone, correspondência bancária ou oficial). Deve ter: NOME do titular, ENDEREÇO "
+        "telefone, correspondência bancária/oficial, fatura ou guia de recolhimento de tributos e taxas como IPTU, IPVA, GRU ou DARF desde que contenha endereço). Deve ter: NOME do titular, ENDEREÇO "
         "completo, DATA de emissão (preferencialmente últimos 90 dias). NÃO aceite recibo "
         "manuscrito, selfie, tela de app sem endereço completo ou documento muito antigo."
     ),

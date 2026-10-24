@@ -223,6 +223,7 @@ def test_debt_larger_than_credit_is_carried_without_a_negative_payout():
     pr.save(update_fields=["status"])
     payout._cascade(pr, Commission.Status.PAID)
     refund(checkout)
+    Commission.objects.filter(source_type=Commission.Source.REVERSAL).update(created_at=CLOSE+timedelta(days=1))
     for _ in range(2):
         credit(user, CLOSE+timedelta(days=1))
     commissions.run_weekly_closing(reference_date=CLOSE+timedelta(days=7))
