@@ -604,7 +604,7 @@ NINJA_JWT = {
         minutes=env.int("JWT_ACCESS_EXPIRE_MINUTES", default=30)
     ),
     "REFRESH_TOKEN_LIFETIME": timedelta(
-        minutes=env.int("JWT_REFRESH_EXPIRE_MINUTES", default=1440)
+        minutes=env.int("JWT_REFRESH_EXPIRE_MINUTES", default=43200)
     ),
     "ISSUER": env("JWT_ISSUER", default="supletivo") or None,
     "AUDIENCE": env("JWT_AUDIENCE", default="") or None,

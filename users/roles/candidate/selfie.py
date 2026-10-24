@@ -20,9 +20,9 @@ from users.roles.candidate.common import (
     _set_status,
     logger,
 )
-from users.roles.candidate import service
 from users.roles.candidate.serializers import me_dict
 from users.roles.candidate.promotion import _complete_candidate, _promote_to_promoter
+from users.roles.candidate.selfie_ai import _save_selfie
 
 def get_selfie(*, user_external_id: str) -> dict:
     """GET da selfie/ASSINATURA (plan/15 C). Espelha a seção do enrollment: foto, taken_at,
@@ -60,7 +60,7 @@ def set_selfie(
     from users.roles import _selfie
 
     cand = _require(user_external_id, *_ACTIVE_COLLECTION_STATUSES)
-    cand.selfie_image = service._save_selfie(cand, image_bytes, content_type)
+    cand.selfie_image = _save_selfie(cand, image_bytes, content_type)
     cand.selfie_taken_at = timezone.now()
     cand.selfie_status = _selfie.SelfieStatus.PENDING
     cand.selfie_verified = False
@@ -179,9 +179,9 @@ def decide_selfie(
         ]
     )
     if approve:
-        service._complete_candidate(cand)
+        _complete_candidate(cand)
     else:
-        service._notify_selfie_rejected(cand)
+        _notify_selfie_rejected(cand)
     return cand
 
 

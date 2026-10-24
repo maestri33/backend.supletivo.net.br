@@ -1058,8 +1058,18 @@ def verify_otp_for_user(*, user: User, otp: str, consume: bool = True) -> None:
         raise Unauthorized("Código incorreto.", code="OTP_INVALID")
 
 
-def issue_tokens_for_user(user: User) -> dict:
+def bump_token_version(user: User) -> None:
+    """Incrementa token_version do User invalidando todas as sessões JWT ativas anteriores."""
+    from django.db.models import F
+
+    User.objects.filter(pk=user.pk).update(token_version=F("token_version") + 1)
+    user.refresh_from_db(fields=["token_version"])
+
+
+def issue_tokens_for_user(user: User, *, bump_version: bool = False) -> dict:
     """Emite tokens com a fotografia atual das roles ativas do usuário."""
+    if bump_version:
+        bump_token_version(user)
     return jwt_service.issue(str(user.external_id), roles.active_roles(user))
 
 
@@ -1078,6 +1088,7 @@ def login(*, external_id: str, role: str, otp: str) -> dict:
         raise Forbidden(f"Usuário não possui a role '{role}'.", code="ROLE_NOT_HELD")
 
     verify_otp_for_user(user=user, otp=otp)
+    bump_token_version(user)
     tokens = jwt_service.issue(canonical_ext_id, active)
     logger.info("auth.login_ok", external_id=canonical_ext_id, role=role)
     return tokens
@@ -1180,6 +1191,7 @@ def login_staff(*, external_id: str, otp: str) -> dict:
         raise Forbidden("Acesso restrito ao staff.", code="NOT_STAFF")
 
     verify_otp_for_user(user=user, otp=otp)
+    bump_token_version(user)
 
     active = roles.active_roles(user)
     tokens = jwt_service.issue(str(user.external_id), active)
@@ -1229,6 +1241,7 @@ def login_staff_password(*, identifier: str, password: str) -> dict:
         logger.warning("auth.login_staff_password_wrong", external_id=str(user.external_id))
         raise Unauthorized("Credenciais inválidas.", code="INVALID_CREDENTIALS")
 
+    bump_token_version(user)
     active = roles.active_roles(user)
     tokens = jwt_service.issue(str(user.external_id), active)
     logger.info("auth.login_staff_password_ok", external_id=str(user.external_id))
