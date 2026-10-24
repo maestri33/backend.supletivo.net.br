@@ -205,7 +205,7 @@ def _apply_charge(payload, event):
             return None, "invalid_amount"
         if not amount.is_finite() or amount <= 0 or amount != row.amount:
             return None, "amount_mismatch"
-        from integrations.bank.recovery import safe_receipt_url
+        from integrations.bank.receipts import safe_receipt_url
 
         row.confirmation_payload = data
         if not row.receipt_url:

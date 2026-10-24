@@ -19,7 +19,7 @@ _ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def _modname(p: pathlib.Path) -> str:
-    return str(p.relative_to(_ROOT))[:-3].replace("/", ".").removesuffix(".__init__")
+    return p.relative_to(_ROOT).with_suffix("").as_posix().replace("/", ".").removesuffix(".__init__")
 
 
 def _source_files() -> list[pathlib.Path]:

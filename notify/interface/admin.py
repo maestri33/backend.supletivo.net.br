@@ -10,7 +10,8 @@ logger = structlog.get_logger()
 
 def notify_admin_alert(*, title: str, message: str, caller: str = "notify.system") -> None:
     """Dispara alerta transacional para o Super Admin (Victor) sobre falhas críticas ou anomalias."""
-    from users.models import User
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
     from notify.interface import send as _send_iface
 
     admin = User.objects.filter(is_superuser=True, is_active=True).order_by("pk").first()

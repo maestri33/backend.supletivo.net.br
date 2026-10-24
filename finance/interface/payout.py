@@ -50,7 +50,7 @@ def _cascade(pr: PaymentRequest, status: str) -> None:
         awaiting_reversals.update(status=Commission.Status.CANCELLED)
     Commission.objects.filter(payment_request=pr).exclude(status=Commission.Status.CANCELLED).update(status=status)
     if status == Commission.Status.PAID and pr.canary_run_id:
-        from finance.canary import record_payout
+        from finance.interface.canary import record_payout
         record_payout(pr)
 
 
@@ -213,7 +213,7 @@ def _submit(pr: PaymentRequest, summary: dict) -> None:
             return
         if _hold_ineligible(pr, summary):
             return
-        from finance.canary import validate_payout, CanaryError
+        from finance.interface.canary import validate_payout, CanaryError
         try:
             validate_payout(pr)
         except CanaryError as cause:

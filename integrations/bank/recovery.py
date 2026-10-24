@@ -26,21 +26,7 @@ def _model(provider):
     return WebhookEvent
 
 
-def safe_receipt_url(value):
-    """Receipt links may only navigate to a known gateway over HTTPS."""
-    if not isinstance(value, str) or len(value) > 500:
-        return None
-    try:
-        parsed = urlsplit(value)
-        host = (parsed.hostname or "").lower()
-        trusted = ("infinitepay.io", "infinitepay.com.br", "asaas.com", "asaas.com.br")
-        if parsed.scheme != "https" or parsed.username or parsed.password or parsed.port not in (None, 443):
-            return None
-        if not any(host == domain or host.endswith("." + domain) for domain in trusted):
-            return None
-    except ValueError:
-        return None
-    return value
+from integrations.bank.receipts import safe_receipt_url
 
 
 def _enqueue(provider, event_id):

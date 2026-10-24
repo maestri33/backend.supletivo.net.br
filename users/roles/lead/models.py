@@ -88,10 +88,11 @@ class Lead(ExternalIdModel):
 
     def lock_pricing(self, ref: str | None = None) -> None:
         """Calcula e trava as condições de preço do lead no momento da criação/captura."""
+        import importlib
         from decimal import Decimal
-        from finance import config as fin_config
+        fin_config = importlib.import_module("finance.config")
+        lead_svc = importlib.import_module("users.roles.lead.service")
         from users.roles.lead import config
-        from users.roles.lead import service as lead_svc
 
         if self.pix_price and self.card_price and self.pricing_snapshot:
             return  # já travado, imutável
@@ -153,7 +154,8 @@ class Lead(ExternalIdModel):
             "commission_bonus_threshold": fin_config.bonus_threshold(),
             "commission_coordinator": f"{fin_config.coordinator_amount():.2f}",
         }
-        from finance import canary
+        import importlib
+        canary = importlib.import_module("finance.interface.canary")
         test_terms = canary.pricing_snapshot(self.user)
         if test_terms:
             if str(self.promoter.external_id) != test_terms["owner_external_id"] or self.self_study:

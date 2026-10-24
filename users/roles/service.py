@@ -158,9 +158,10 @@ def purge_funnel_user(
     from django.contrib.auth import get_user_model
 
     from users.profiles import interface as profiles
-    from users.roles.candidate.models import Candidate
-    from users.roles.lead.models import Lead
-    from users.roles.promoter.models import Promoter
+    from django.apps import apps
+    Candidate = apps.get_model("users", "Candidate")
+    Lead = apps.get_model("users", "Lead")
+    Promoter = apps.get_model("users", "Promoter")
 
     User = get_user_model()
 

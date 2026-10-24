@@ -158,7 +158,7 @@ def _apply(order_nsu, payload):
     if (installments is not None and (type(installments) is not int or not 1 <= installments <= 12)) or (capture is not None and capture not in ("credit_card", "pix")):
         return None, {"ok": False, "paid": False}, "invalid_confirmation"
 
-    from integrations.bank.recovery import safe_receipt_url
+    from integrations.bank.receipts import safe_receipt_url
 
     with transaction.atomic():
         row = Checkout.objects.select_for_update().get(pk=row.pk)

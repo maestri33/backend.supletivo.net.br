@@ -40,7 +40,8 @@ def get_bolsa_exam_threshold() -> int:
 def paid_referrals(user) -> int:
     """Nº de leads PAGOS captados pelo promotor (self_study fora) — a definição canônica de
     'indicação' (espelha `summary().lifetime.total_students`). Usado nos gates da bolsa."""
-    from users.roles.lead.models import Lead
+    from django.apps import apps
+    Lead = apps.get_model("users", "Lead")
 
     return Lead.objects.filter(
         promoter=user, status=Lead.Status.PAID, self_study=False

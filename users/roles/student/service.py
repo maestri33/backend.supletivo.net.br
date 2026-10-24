@@ -238,8 +238,8 @@ def to_dict(student: Student) -> dict:
     from users.roles.enrollment.models import Enrollment
     enrollment = Enrollment.objects.filter(user=student.user).first()
     if enrollment is not None:
-        from users.roles.enrollment.fees_events import fee_facts
-
+        import importlib
+        fee_facts = importlib.import_module("users.roles.enrollment.fees_events").fee_facts
         facts = fee_facts(enrollment)
 
         def public_fee(value):
