@@ -32,11 +32,18 @@ def list_reviews(request):
     enrollment_reviews = enrollment_iface.list_reviews_for_hub(hub=hub)
 
     def _norm(item: dict, type_: str, kind: str) -> dict:
+        ext = (
+            item.get("external_id")
+            or item.get("promoter_external_id")
+            or item.get("candidate_external_id")
+            or item.get("enrollment_external_id")
+            or ""
+        )
         return {
-            "external_id": item.get("external_id"),
+            **item,
+            "external_id": str(ext),
             "type": type_,
             "kind": kind,
-            **item,
         }
 
     enrollment_rg = [
