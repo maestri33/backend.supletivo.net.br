@@ -109,8 +109,8 @@ async def lookup(cpf: str) -> CpfIdentity | None:
         resp is None
     ):  # nunca deveria ocorrer (o loop retorna ou levanta) — guarda defensiva
         raise CpfHubError(0, "CPFHub sem resposta")
-    if resp.status_code == 404:
-        logger.info("cpfhub.not_found")
+    if resp.status_code in (404, 422):
+        logger.info("cpfhub.not_found", status=resp.status_code)
         return None
     if resp.status_code != 200:
         # 401 (key inválida), 429 (limite), 5xx (após esgotar retry) -> erro real
