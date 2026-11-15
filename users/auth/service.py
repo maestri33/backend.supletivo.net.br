@@ -472,7 +472,10 @@ def check(
                     birth_date_str = identity.birth_date.isoformat() if identity.birth_date else None
                     sex = identity.gender
                 else:
-                    is_valid = False
+                    from users.auth.models import CpfHubLookup
+                    lk = CpfHubLookup.objects.filter(cpf=cpf).first()
+                    if lk and lk.status == CpfHubLookup.Status.NOT_FOUND:
+                        is_valid = False
             except IntegrationError:
                 identity = None
 
