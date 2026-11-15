@@ -30,7 +30,7 @@ def setup_run():
     Profile.objects.create(user=owner, cpf="11144477735", phone="554396111111", pix_key="11144477735")
     Profile.objects.create(user=student, cpf="52998224725", phone="554298222222")
     hub = Hub.objects.create(address=Address.objects.create(city="Curitiba", state="PR"), brand="standard")
-    Promoter.objects.create(user=owner, hub=hub, activated_at=timezone.now()-timedelta(days=21))
+    Promoter.objects.create(user=owner, hub=hub, activated_at=timezone.now()-timedelta(days=180))
     run = canary.configure(actor=actor, owner=owner,
         allowlist=[{"cpf": "11144477735", "phone": "43996111111"}, {"cpf": "52998224725", "phone": "42998222222"}],
         justification="Local isolation regression")
@@ -110,6 +110,7 @@ def test_bonus_counts_and_batches_do_not_mix_canary_with_commercial_sales(setup_
         Commission.objects.create(payee=owner, payee_role="promoter", source_type="lead", source_external_id=uuid.uuid4(), amount="100")
     end = datetime(2026, 10, 16, 21, tzinfo=dt_timezone.utc)
     Commission.objects.filter(payee=owner).update(created_at=end - timedelta(days=1))
+    Promoter.objects.filter(user=owner).update(activated_at=end - timedelta(days=21))
     items, bonuses, _ = _items(end, persist=True)
     assert bonuses == 1
     bonus = Commission.objects.get(source_type="bonus")
