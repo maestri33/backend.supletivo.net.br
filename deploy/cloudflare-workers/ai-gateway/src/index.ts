@@ -11,19 +11,37 @@ const allowedModels = new Set([
   "@cf/deepgram/aura-2-es",
 ]);
 
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+};
+
 function json(data: unknown, status = 200): Response {
-  return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+  return Response.json(data, {
+    status,
+    headers: {
+      "Cache-Control": "no-store",
+      ...SECURITY_HEADERS,
+    },
+  });
 }
 
-function sameToken(provided: string, expected: string): Promise<boolean> {
+async function sameToken(provided: string, expected: string): Promise<boolean> {
   const encoder = new TextEncoder();
-  return Promise.all([
+  const [a, b] = await Promise.all([
     crypto.subtle.digest("SHA-256", encoder.encode(provided)),
     crypto.subtle.digest("SHA-256", encoder.encode(expected)),
-  ]).then(([a, b]) => {
-    const subtle = crypto.subtle as unknown as { timingSafeEqual: (left: ArrayBuffer, right: ArrayBuffer) => boolean };
-    return subtle.timingSafeEqual(a, b);
-  });
+  ]);
+  const aBuf = new Uint8Array(a);
+  const bBuf = new Uint8Array(b);
+  if (aBuf.byteLength !== bBuf.byteLength) return false;
+  let diff = 0;
+  for (let i = 0; i < aBuf.byteLength; i++) {
+    diff |= aBuf[i] ^ bBuf[i];
+  }
+  return diff === 0;
 }
 
 async function authorized(request: Request, env: Env): Promise<boolean> {
