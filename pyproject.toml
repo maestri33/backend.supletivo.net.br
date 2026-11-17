@@ -35,4 +35,42 @@ dev = [
     "pytest-django>=4",
     "pytest-asyncio>=1.4",
     "schemathesis>=4.25.0",
+    "vulture>=2.14",
+]
+
+[tool.vulture]
+paths = ["api", "core", "finance", "hub", "infra", "integrations", "notify", "users"]
+min_confidence = 80
+sort_by_size = true
+exclude = [
+    "*/migrations/*",
+    "*settings*.py",
+    "*/asgi.py",
+    "*/wsgi.py",
+    "*/schemas.py",
+    "*/schemas/*",
+    "conftest.py",
+    "tests/*",
+]
+ignore_decorators = [
+    "@router.*",
+    "@api.*",
+    "@receiver*",
+    "@register*",
+    "@field_validator*",
+    "@model_validator*",
+    "@property",
+]
+ignore_names = [
+    "app_configs",
+    "sender",
+    "Meta",
+    "urlpatterns",
+    "default_app_config",
+    "help",
+    "indexes",
+    "verbose_name",
+    "verbose_name_plural",
+    "ordering",
+    "abstract",
 ]

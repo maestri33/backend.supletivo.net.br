@@ -15,7 +15,6 @@ def sync_secrets_to_platform(
     *,
     environment: str | None = None,
     client: InfisicalClient | None = None,
-    overwrite_existing: bool = True,
 ) -> dict[str, Any]:
     """Sincroniza todos os segredos do Infisical para o PlatformSetting e cache em memória.
 

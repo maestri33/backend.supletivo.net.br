@@ -63,10 +63,3 @@ def purge_edge_cache(
         return False
 
 
-def purge_pricing_cache_async() -> None:
-    """Dispara a purga dos endpoints de pricing de forma desacoplada."""
-    base_url = getattr(settings, "EXTERNAL_URL", "https://backend.supletivo.net.br").rstrip("/")
-    urls = [
-        f"{base_url}/api/v1/clients/pricing",
-    ]
-    purge_edge_cache(urls=urls)

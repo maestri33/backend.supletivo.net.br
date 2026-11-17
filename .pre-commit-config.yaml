@@ -1,0 +1,6 @@
+repos:
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: 'v2.16'
+    hooks:
+      - id: vulture
+        args: ["--min-confidence", "80"]

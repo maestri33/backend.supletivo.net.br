@@ -36,7 +36,6 @@ from api.staff.schemas import (
     PayoutRetryOut,
     StaffCommissionOut,
     StaffPaymentRequestOut,
-    UnexpectedExpenseIn,
     UnexpectedExpenseOut,
     WeeklyClosingResultOut,
 )
