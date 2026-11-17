@@ -475,14 +475,6 @@ def decide_kinship(user_external_id: str, *, approve: bool, reason: str | None) 
     return ap.validation_status
 
 
-def is_approved(user_external_id: str) -> bool:
-    """Gate do wizard: o comprovante está aprovado? (usado no `_advance_address` dos dois funis)."""
-    from users.documents import service as documents_iface
-
-    ap = documents_iface.get_address_proof(user_external_id)
-    return bool(ap and ap.validation_status == APPROVED)
-
-
 def _public_reason(status: str | None, result: dict) -> str | None:
     """O que o ALUNO lê — orientação, nunca o critério (mesma régua do RG, Victor 2026-07-28).
     O motivo real (titular X, endereço divergente, justificativa rejeitada) fica no

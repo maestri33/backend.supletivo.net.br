@@ -70,6 +70,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-django" },
     { name = "schemathesis" },
+    { name = "vulture" },
 ]
 
 [package.metadata]
@@ -95,6 +96,7 @@ requires-dist = [
     { name = "sentry-sdk", extras = ["django"], specifier = ">=2.66.1" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "validate-docbr", specifier = ">=2.0.0" },
+    { name = "vulture", marker = "extra == 'dev'", specifier = ">=2.14" },
     { name = "whitenoise", specifier = ">=6.12.0" },
 ]
 provides-extras = ["dev"]
@@ -1316,6 +1318,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7f/43/822521a1c0c826d0a5224fede4ab3f5885b0485f94ac20af1b46c384be52/validate_docbr-2.0.0.tar.gz", hash = "sha256:c7693783718c7c3d90bdb759a6b41eca647fb297d74a50e0bcdc6244690a8545", size = 46249, upload-time = "2026-04-04T17:53:38.124Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/98/45/e6a064f1ac0c9eab72943573554c5c4e0380587a5a907f25a3242114b782/validate_docbr-2.0.0-py3-none-any.whl", hash = "sha256:08b4a7c49ea1018179151dad94b7192425925b0b23fed0045f3261831a4ae43c", size = 16811, upload-time = "2026-04-04T17:53:36.546Z" },
+]
+
+[[package]]
+name = "vulture"
+version = "2.16"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/3e/4d08c5903b2c0c70cad583c170cc4a663fc6a61e2ad00b711fcda61358cd/vulture-2.16.tar.gz", hash = "sha256:f8d9f6e2af03011664a3c6c240c9765b3f392917d3135fddca6d6a68d359f717", size = 52680, upload-time = "2026-03-25T14:41:27.141Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f5/be/f935130312330614811dae2ea9df3f395f6d63889eb6c2e68c14507152ee/vulture-2.16-py3-none-any.whl", hash = "sha256:6e0f1c312cef1c87856957e5c2ca9608834a7c794c2180477f30bf0e4cc58eee", size = 26993, upload-time = "2026-03-25T14:41:26.21Z" },
 ]
 
 [[package]]

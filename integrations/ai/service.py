@@ -407,7 +407,6 @@ def describe_image(
     mime_type: str = "image/jpeg",
     prompt: str | None = None,
     timeout: float | None = None,
-    fallback: bool = True,
     identity_document: bool = False,
 ) -> str:
     """Visão: descreve/analisa uma imagem (selfie/documento/recibo). Devolve o texto.

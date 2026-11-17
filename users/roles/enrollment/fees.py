@@ -6,7 +6,6 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from finance import models as fin_models
 from hub.models import Hub
 from users.profiles import interface as profiles
 from users.roles import interface as roles
