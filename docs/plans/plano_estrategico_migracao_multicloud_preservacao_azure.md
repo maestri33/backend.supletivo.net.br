@@ -115,12 +115,12 @@ Para garantir a execução orquestrada, as tarefas foram distribuídas de acordo
 * [x] **Persistência no Repositório Canônico:** Commit da documentação em `maestri33/backend.supletivo.net.br/docs/plans/` com push para a branch `main`.
 * [x] **Notificação Assíncrona ao `@Plannotator Reviewer`:** Envio formal do plano para homologação de governança.
 
-### Fase 2: Desacoplamento de Borda & Armazenamento Leve (Em Execução)
-* [x] **Snapshot do SQLite Validado:** `omniroute_backup_manifest.json` com SHA-256 `4f6e8057...` e integridade verificada.
-* [ ] **Criação do D1 no Cloudflare:** Provisionamento de `omniroute-db` pelo `@Cloudflare`.
-* [ ] **Sanitização das Tabelas Sensíveis:** Expurgo de tokens em `provider_connections` e `api_keys` antes do upload para a borda.
-* [ ] **Validação do Cloudflare Tunnel:** Garantir que todos os acessos administrativos passem pelo túnel `v7m-azure-core` sem exposição de portas no IP da Azure.
-
+### Fase 2: Desacoplamento de Borda & Armazenamento Leve (100% Executada)
+* [x] **Snapshot do SQLite Validado:** omniroute_backup_manifest.json com SHA-256 4f6e8057... e integridade verificada.
+* [x] **Criação do D1 no Cloudflare:** Provisionamento de omniroute-db (UUID: 6fb2f4d4-1a39-4bfd-8e3d-620301e270b5, região ENAM, Free Tier).
+* [x] **Criação do Bucket R2 no Cloudflare:** Provisionamento de omniroute-backups (região ENAM, zero taxa de saída).
+* [x] **Sanitização das Tabelas Sensíveis e Ingestão D1:** 146 tabelas DDL e 2.067 linhas de configuração ingeridas no D1 com segredos mascarados ([REDACTED_SECRET_FOR_D1]).
+* [x] **Validação do Cloudflare Tunnel:** Túnel v7m-azure-core ativo com 4 conexões e modo SSL Full. NSG da Azure validado com portas 80/443 fechadas externamente.
 ### Fase 3: Isolamento da VM e Preparação para o Contêiner (Posterior)
 * [ ] **Congelamento da VM Azure:** A VM permanece operacional rodando os contêineres atuais sem novas adições de carga.
 * [ ] **Mapeamento de Volumes Docker:** Mapear volumes persistentes (`/app/data`, uploads e bancos locais) para futura migração suave para VPS externa.
