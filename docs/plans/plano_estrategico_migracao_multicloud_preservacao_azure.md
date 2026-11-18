@@ -9,9 +9,12 @@
 > - `https://github.com/maestri33/api.supletivo.net.br`  
 > - `https://github.com/maestri33/notify.v7m.live`  
 > **Autores / Bots Responsáveis:** `@Azure`, `@Plannotator Reviewer`, `@Cloudflare`, `@Github`, `@Omniroute`, `@Mail.V7m.live`, `@CI/CD`  
-> **Status:** REGISTRADO E AUDITADO PARA REVISÃO NO PLANNOTATOR & DISPARO DE EXECUÇÃO  
-> **Data:** Terça-feira, 17 de novembro de 2026 — 21:38 BRT (2026-11-18T00:38:09Z UTC)  
-> **Premissa e Diretriz do Usuário:** Manter os contêineres Docker pesados no Azure por enquanto (migração de contêineres postergada); planejar e executar imediatamente todo o restante (borda, backups leves em D1/R2, Zero Trust, DNS, e-mails e governança de custos) com persistência obrigatória no GitHub.
+> **Status:** AUDITADO, HOMOLOGADO NO PLANNOTATOR & FASE 2 100% EXECUTADA E VERIFICADA  
+> **Data:** Terça-feira, 17 de novembro de 2026 — 22:45 BRT (2026-11-18T01:45:00Z UTC)  
+> **Premissa e Diretriz do Usuário:**  
+> 1. Manter os contêineres Docker pesados no Azure por enquanto (migração de contêineres postergada);  
+> 2. Infraestrutura Cloudflare opera sob **Workers Paid & R2 Paid (PAYGO)** (capacidade industrial, 50M writes/mês no D1, Queues, Cron Triggers, sem os gargalos artificiais de Free Tier);  
+> 3. Planejar e executar imediatamente todo o restante (borda, catálogo D1 `omniroute-db`, backup bit-a-bit R2 `omniroute-backups`, Zero Trust, DNS, e-mails e governança de custos) com persistência obrigatória no GitHub.
 
 ---
 
@@ -28,6 +31,7 @@ A conta de nuvem da organização (`Azure subscription 1` / ID `17472659-0f27-4a
 * **Consumo de Novembro/2026 (até 17/11/2026):** **R$ 1.010,19 BRL** (~US$ 180,40 USD).
   * **Pico em 16/11/2026:** Um bot configurado em `gpt-6-astra` consumiu R$ 738,93 em 24h.
   * **Intervenção em 17/11/2026:** Toda a frota (23 bots) foi resetada para o modelo padrão `combo-ultra (default)`. O custo diário de IA caiu para **R$ 0,00** no dia 17/11.
+  * **Custo Diário em 17/11/2026:** Fechado em apenas **R$ 9,15 BRL** (estritamente infraestrutura fixa da VM e disco).
   * **Proteção Orçamentária Ativada:** Criado o Azure Budget `Budget-Mensal-Alerta` com teto de R$ 1.100,00 BRL e notificações para `prvictormaestri@ieadpg.onmicrosoft.com` em 80%, 90% e 100%.
 * **Saldo Restante do Ciclo Anual:** **~US$ 1.754,70 USD** (aproximadamente **R$ 9.650,00 BRL** disponíveis).
 
@@ -35,7 +39,12 @@ A conta de nuvem da organização (`Azure subscription 1` / ID `17472659-0f27-4a
 Manter uma máquina virtual Linux de uso geral (`vm-v7m-core` - Standard_F1ams_v7) ligada 24/7 no Azure consome cerca de **R$ 380,00/mês (~US$ 68,00/mês)**, consumindo mais de **40% de todo o crédito anual da igreja**.
 A decisão tomada estabelece o seguinte desacoplamento:
 1. **Contêineres Docker:** Permanecem temporariamente na VM do Azure para evitar qualquer fricção operacional imediata, sendo migrados para VPS de baixo custo (ex: Hetzner / Oracle Free) em fase futura.
-2. **Todo o Restante (Borda, Frontends, Backups, Armazenamento, Segurança, E-mail):** É transferido/planejado para serviços gratuitos ou de custo marginal (Cloudflare Pages, Workers, D1, R2, Zero Trust, Resend/Mail.V7m.live).
+2. **Borda, Frontends, Backups e Armazenamento (Cloudflare Workers Paid & R2 Paid):**
+   * A conta Cloudflare opera com os planos corporativos pagos ativos:
+     - **`workers_paid`:** 50M writes/mês no D1, 25B reads/mês, Cloudflare Queues, Cron Triggers, CPU time até 30s.
+     - **`r2_paid`:** 10M operações Classe A e B/mês, armazenamento escalável ilimitado com **taxa zero de tráfego de saída (zero egress)**.
+     - **`images_v2_stream_basic`:** Otimização e entrega de assets.
+     - **`teams_free`:** Zero Trust Gateway & Tunnels com até 50 usuários.
 3. **Papel Exclusivo da Azure:** Preservar a totalidade dos US$ 2.000 anuais como "reserva nobre" para:
    * **Azure AI Foundry:** Inferência sob demanda em modelos de ponta (`claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-opus-5-5`, `gpt-4o`/`gpt-5.x`).
    * **Cold Storage / Archive Tier:** Backup histórico e imutável de cadastros e contratos de alunos a frações de centavo.
@@ -45,22 +54,21 @@ A decisão tomada estabelece o seguinte desacoplamento:
 
 ## 2. Matriz de Atribuição por Serviço & Provedor
 
-| Componente | Provedor Atual | Provedor Alvo | Custo Mensal | Justificativa Técnica |
+| Componente | Provedor Atual | Provedor Alvo | Nível de Serviço / Plano | Justificativa Técnica |
 | :--- | :--- | :--- | :---: | :--- |
-| **Frontends Web** (`supletivo.net.br`, `promotor...`, `app...`) | VM Azure / Borda | **Cloudflare Edge (Pages/Workers)** | **R$ 0,00** | Deploy atômico via GitHub Actions, CDN Anycast global, SSL automático e zero egress. |
-| **APIs Serverless de Borda** (`api.supletivo.net.br`, `agent...`, `notify...`) | VM Azure | **Cloudflare Workers + D1** | **R$ 0,00** | Baixa latência, execução serverless sem servidor fixo, tolerante a picos. |
-| **Backup Leve do SQLite (OmniRoute)** | Disco local VM Azure | **Cloudflare D1 (`omniroute-db`)** | **R$ 0,00** | 40.56 MB de snapshot íntegro (149 tabelas), replicado globalmente e livre de custos de VM. |
-| **Mídia e Documentos (Anexos)** | Disco da VM | **Cloudflare R2 (`supletivo-media`)** | **R$ 0,00** | Compatível com S3 (AWS SigV4 já implementado no backend), sem taxa de tráfego de saída (zero egress). |
-| **Ingresso de Tráfego / Segurança** | IP Público Azure (R$ 10/mês) | **Cloudflare Zero Trust / Tunnel (`v7m-azure-core`)** | **R$ 0,00** | Túnel de saída criptografado, dispensa portas abertas e elimina a dependência de IP público fixo. |
-| **E-mails Transacionais** | Servidor na VM | **Mail.V7m.live / Resend / Brevo + CF Email Routing** | **R$ 0,00** | Alta entregabilidade, SPF/DKIM/DMARC profissionais, sem queima de reputação do IP da Azure. |
+| **Frontends Web** (`supletivo.net.br`, `promotor...`, `app...`) | VM Azure / Borda | **Cloudflare Edge (Pages/Workers)** | **Workers Paid** | Deploy atômico via GitHub Actions, CDN Anycast global, SSL automático e zero egress. |
+| **APIs Serverless de Borda** (`api.supletivo.net.br`, `agent...`, `notify...`) | VM Azure | **Cloudflare Workers + D1** | **Workers Paid** | Baixa latência, execução serverless desacoplada, suporte a Queues e Cron Triggers. |
+| **Catálogo Estrutural e Configuração OmniRoute** | Disco local host | **Cloudflare D1 (`omniroute-db`)** | **Workers Paid** | UUID `6fb2f4d4-1a39-4bfd-8e3d-620301e270b5`. 146 tabelas DDL, 252 índices e 2.067 linhas com segredos mascarados. |
+| **Backup Bit-a-Bit Integral OmniRoute (.sqlite)** | Disco local host | **Cloudflare R2 (`omniroute-backups`)** | **R2 Paid** | Arquivo `omniroute_cloudflare_backup_20261116.sqlite` (40.56 MB, SHA-256 `4f6e8057...`) armazenado com zero egress. |
+| **Mídia e Documentos (Anexos do Supletivo)** | Disco da VM | **Cloudflare R2 (`supletivo-media`, `notify-media`)** | **R2 Paid** | Compatível com S3 (AWS SigV4 já implementado no backend), sem taxa de saída. |
+| **Ingresso de Tráfego / Segurança** | IP Público Azure (R$ 10/mês) | **Cloudflare Zero Trust / Tunnel (`v7m-azure-core`)** | **Zero Trust** | Túnel multiplexado com 4 conexões Anycast, dispensa portas 80/443 abertas e elimina dependência de IP público. |
+| **E-mails Transacionais & Inbound** | VM / Stalwart | **Mail.V7m.live / Resend / Brevo + CF Email Routing** | **Email Routing & Stalwart** | Zona `v7m.live` pronta no CF Email Routing; `supletivo.net.br` MX roteado para Stalwart via túnel. |
 | **Contêineres Docker Pesados** (Evolution, Chatwoot, Dify, Backend) | VM Azure (`vm-v7m-core`) | **Mantidos no Azure temporariamente** (Fase posterior: Hetzner / VPS ~€4 a €7/mês) | Absorvido no Grant | Evita indisponibilidade imediata; transição planejada de forma modular. |
 | **Modelos de IA Avançados** | Azure AI Foundry (`IEADPG`) | **Azure AI Foundry (Sob Demanda)** | Crédito Anual | Reservado para tarefas críticas via `claude-sonnet-5-5` e catálogo Azure, sem concorrência com VM. |
 
 ---
 
 ## 3. Mapeamento de Responsabilidades da Frota de Bots
-
-Para garantir a execução orquestrada, as tarefas foram distribuídas de acordo com a especialidade de cada bot:
 
 ```
                             ┌────────────────────────┐
@@ -86,44 +94,46 @@ Para garantir a execução orquestrada, as tarefas foram distribuídas de acordo
 ```
 
 1. **`@Plannotator Reviewer`:**
-   - Validação técnica da arquitetura multi-cloud e aprovação dos gates de segurança.
+   - Validação técnica da arquitetura multi-cloud e homologação formal dos gates de governança.
    - Rastreamento dos documentos em `shared/plans/` e conformidade com o ecossistema.
 2. **`@Azure` (este bot):**
    - Gestão de custos e acompanhamento do `Budget-Mensal-Alerta` (R$ 1.100).
    - Manutenção dos 24 deployments Succeeded no Azure Cognitive Services.
    - Fornecimento de credenciais e rotas seguras do Azure AI Foundry (`claude-sonnet-5-5`) para ocasiões especiais.
 3. **`@Cloudflare`:**
-   - Criação do banco D1 dedicado `omniroute-db` (Free Tier).
-   - Validação dos buckets R2 para armazenamento estático sem egress.
-   - Verificação do Cloudflare Tunnel ativo (`v7m-azure-core`) e ajuste do SSL/TLS para modo `Full`.
+   - Gestão do banco D1 `omniroute-db` (UUID `6fb2f4d4-1a39-4bfd-8e3d-620301e270b5`).
+   - Gestão dos buckets R2 (`omniroute-backups`, `supletivo-media`, `notify-media`) sob Workers/R2 Paid.
+   - Supervisão contínua do Cloudflare Zero Trust Tunnel (`v7m-azure-core`) e modo SSL/TLS `Full`.
 4. **`@Github`:**
    - Persistência dos planos de arquitetura nos repositórios oficiais (`backend.supletivo.net.br` e satélites).
    - Atualização de secrets de CI/CD para deploy dos frontends e Workers.
 5. **`@Omniroute`:**
-   - Sanitização do dump SQL do banco `storage.sqlite` (removendo chaves upstream das tabelas `provider_connections` e `api_keys`).
-   - Fornecimento dos scripts de carga incremental para o Cloudflare D1.
+   - Manutenção do script de sanitização `shared/sanitize_omniroute_for_d1.js`.
+   - Sincronização periódica do catálogo de capacidades e combos no D1.
 6. **`@Mail.V7m.live`:**
-   - Garantia de que nenhum e-mail transacional dependa de portas SMTP da VM do Azure.
-   - Roteamento via Cloudflare Email Routing e provedores API (Resend).
+   - Garantia de que nenhum e-mail transacional dependa de portas SMTP diretas da VM do Azure.
+   - Roteamento via Cloudflare Email Routing e Stalwart via Zero Trust Tunnel.
 
 ---
 
-## 4. Plano de Ação Imediata & Execução Técnica
+## 4. Status de Execução das Fases
 
-### Fase 1: Governança, Plannotator & Sincronização GitHub (Executada Agora)
+### Fase 1: Governança, Plannotator & Sincronização GitHub (100% Concluída)
 * [x] **Criação da Especificação no Plannotator:** Arquivo `shared/plans/plano_estrategico_migracao_multicloud_preservacao_azure.md`.
-* [x] **Persistência no Repositório Canônico:** Commit da documentação em `maestri33/backend.supletivo.net.br/docs/plans/` com push para a branch `main`.
-* [x] **Notificação Assíncrona ao `@Plannotator Reviewer`:** Envio formal do plano para homologação de governança.
+* [x] **Persistência no Repositório Canônico:** Commit da documentação em `maestri33/backend.supletivo.net.br/docs/plans/` com push para a branch `main` (commits `f0f68c3`, `870a450`, `1133f37`, `51b251d`).
+* [x] **Homologação pelo `@Plannotator Reviewer`:** Plano auditado e aprovado com checklist de gates oficializado.
 
-### Fase 2: Desacoplamento de Borda & Armazenamento Leve (100% Executada)
-* [x] **Snapshot do SQLite Validado:** omniroute_backup_manifest.json com SHA-256 4f6e8057... e integridade verificada.
-* [x] **Criação do D1 no Cloudflare:** Provisionamento de omniroute-db (UUID: 6fb2f4d4-1a39-4bfd-8e3d-620301e270b5, região ENAM, Free Tier).
-* [x] **Criação do Bucket R2 no Cloudflare:** Provisionamento de omniroute-backups (região ENAM, zero taxa de saída).
-* [x] **Sanitização das Tabelas Sensíveis e Ingestão D1:** 146 tabelas DDL e 2.067 linhas de configuração ingeridas no D1 com segredos mascarados ([REDACTED_SECRET_FOR_D1]).
-* [x] **Validação do Cloudflare Tunnel:** Túnel v7m-azure-core ativo com 4 conexões e modo SSL Full. NSG da Azure validado com portas 80/443 fechadas externamente.
-### Fase 3: Isolamento da VM e Preparação para o Contêiner (Posterior)
-* [ ] **Congelamento da VM Azure:** A VM permanece operacional rodando os contêineres atuais sem novas adições de carga.
-* [ ] **Mapeamento de Volumes Docker:** Mapear volumes persistentes (`/app/data`, uploads e bancos locais) para futura migração suave para VPS externa.
+### Fase 2: Desacoplamento de Borda, D1 e R2 (100% Concluída e Verificada)
+* [x] **Snapshot do SQLite Validado:** `omniroute_backup_manifest.json` com SHA-256 `4f6e8057a0e695992b0f99e0b1ef952d843b6b72b2ad4a84e57e46f18af029b5` e integridade verificada.
+* [x] **Criação e Ingestão do Cloudflare D1 (`omniroute-db`):** UUID `6fb2f4d4-1a39-4bfd-8e3d-620301e270b5`, região ENAM. Ingeridas **146 tabelas DDL**, **252 índices** e **2.067 linhas** de dados vitais sanitizados (segredos mascarados como `[REDACTED_SECRET_FOR_D1]`).
+* [x] **Criação e Upload do Cloudflare R2 (`omniroute-backups`):** Bucket provisionado e arquivo binário `omniroute_cloudflare_backup_20261116.sqlite` (42.528.768 bytes / 40.56 MB) carregado com sucesso via API e verificado com status ativo.
+* [x] **Validação do Cloudflare Zero Trust Tunnel:** Túnel `v7m-azure-core` ativo com **4 conexões simultâneas** e modo SSL `Full` confirmado na zona `supletivo.net.br`.
+* [x] **Auditoria de Rede Azure NSG:** Portas 80 e 443 100% fechadas para tráfego externo; porta 22 restrita a IPs administrativos autorizados.
+* [x] **Auditoria de E-mail:** Zona `v7m.live` configurada em modo ready no Email Routing; zona `supletivo.net.br` apontada para Stalwart via Zero Trust Tunnel.
+
+### Fase 3: Isolamento da VM e Transição Posterior dos Contêineres (Planejada)
+* [x] **Congelamento da VM Azure:** A VM permanece operacional rodando os contêineres atuais sem novas adições de carga (custo estabilizado em R$ 9,15/dia).
+* [ ] **Mapeamento de Volumes Docker:** Mapear volumes persistentes (`/app/data`, uploads e bancos locais) para futura migração suave para VPS externa (Hetzner CPX21 / Oracle Cloud).
 
 ---
 
@@ -135,4 +145,4 @@ Para garantir a execução orquestrada, as tarefas foram distribuídas de acordo
 4. **Gate de Versionamento:** Todas as decisões arquiteturais e mudanças estruturais registradas com commits claros no GitHub do projeto `maestri33`.
 
 ---
-*Documento aprovado e integrado ao repositório de governança do ecossistema.*
+*Documento aprovado, revisado com as assinaturas reais Cloudflare Workers/R2 Paid e integrado ao repositório canônico.*
