@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """
-Chatwoot <-> Dify Integration Bridge
-====================================
+Chatwoot <-> Dify Integration Bridge (Hardened)
+==============================================
 Conecta o Chatwoot (inboxes WhatsApp/Omnichannel) ao Dify (Workflows/Chatflows).
 
 Funcionalidades:
-- Recebe webhooks do Chatwoot (AgentBot ou Account Webhook).
+- Recebe webhooks do Chatwoot (AgentBot e Account Webhook).
+- Deduplica eventos por message_id para evitar respostas duplicadas.
 - Filtra apenas mensagens 'incoming' de clientes (ignora mensagens de agentes ou privadas).
 - Encaminha o texto para a API do Dify (/v1/chat-messages) mantendo o conversation_id persistido em SQLite.
-- Posta a resposta do Dify de volta no Chatwoot via API de mensagens.
+- Posta a resposta do Dify de volta no Chatwoot com o token do AgentBot (Dify OmniRoute Bot).
 - Suporta Transbordo Humano Inteligente:
   * Detecta tag [TRANSFERIR] na resposta do Dify ou gatilhos manuais configuráveis.
   * Remove a tag antes de enviar ao cliente.
   * Cria uma nota interna privada no Chatwoot alertando a equipe humana.
   * Altera o status da conversa para 'open' (fila humana) e adiciona label 'transbordo-humano'.
-  * Pausa o bot para aquela conversa até que seja resolvida ou reativada.
+  * Pausa o bot para aquela conversa até que seja resolvida ou reativada (/bot on).
 """
 
 import os
@@ -22,16 +23,18 @@ import re
 import json
 import sqlite3
 import logging
+from collections import deque
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 import requests
 
 # Configurações do Ambiente
-CHATWOOT_URL = os.getenv("CHATWOOT_URL", "http://172.25.0.1:3000").rstrip("/")
+CHATWOOT_URL = os.getenv("CHATWOOT_URL", "http://127.0.0.1:3000").rstrip("/")
 CHATWOOT_API_TOKEN = os.getenv("CHATWOOT_API_TOKEN", "LZD3QhFz1kh1fvjTjE6j6NHU")
+CHATWOOT_BOT_TOKEN = os.getenv("CHATWOOT_BOT_TOKEN", "FEUYKPGwrhV8F1FiA4JTpbYq")
 CHATWOOT_ACCOUNT_ID = int(os.getenv("CHATWOOT_ACCOUNT_ID", "1"))
 
-DIFY_URL = os.getenv("DIFY_URL", "http://172.25.0.1:8090").rstrip("/")
+DIFY_URL = os.getenv("DIFY_URL", "http://127.0.0.1:8090").rstrip("/")
 DIFY_API_KEY = os.getenv("DIFY_API_KEY", "app-lm2qFiq1DrpTBW1TlbKNbZu5")
 
 PORT = int(os.getenv("BRIDGE_PORT", "8000"))
@@ -42,6 +45,22 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger("ChatwootDifyBridge")
+
+# Cache em memória para deduplicação de mensagens (últimos 1000 IDs)
+PROCESSED_MESSAGES = deque(maxlen=1000)
+PROCESSED_SET = set()
+
+def is_duplicate(message_id):
+    if not message_id:
+        return False
+    if message_id in PROCESSED_SET:
+        return True
+    if len(PROCESSED_MESSAGES) >= 1000:
+        oldest = PROCESSED_MESSAGES.popleft()
+        PROCESSED_SET.discard(oldest)
+    PROCESSED_MESSAGES.append(message_id)
+    PROCESSED_SET.add(message_id)
+    return False
 
 # Inicialização do Banco SQLite para mapeamento de sessões
 def init_db():
@@ -106,7 +125,7 @@ def call_dify(query: str, dify_conv_id: str = None, user_id: str = "chatwoot-use
     }
 
     try:
-        response = requests.post(f"{DIFY_URL}/v1/chat-messages", headers=headers, json=payload, timeout=45)
+        response = requests.post(f"{DIFY_URL}/v1/chat-messages", headers=headers, json=payload, timeout=55)
         if response.status_code == 200:
             data = response.json()
             return {
@@ -123,8 +142,10 @@ def call_dify(query: str, dify_conv_id: str = None, user_id: str = "chatwoot-use
 
 # Ações no Chatwoot
 def send_chatwoot_message(conversation_id: int, content: str, private: bool = False):
+    # Se for mensagem pública do bot, usamos o token do bot para ficar atribuído à IA
+    token = CHATWOOT_API_TOKEN if private else CHATWOOT_BOT_TOKEN
     headers = {
-        "api_access_token": CHATWOOT_API_TOKEN,
+        "api_access_token": token,
         "Content-Type": "application/json"
     }
     payload = {
@@ -207,22 +228,23 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b'{"status":"received"}')
 
-        # Processa mensagem de forma assíncrona/desacoplada
         self.process_chatwoot_event(payload)
 
     def process_chatwoot_event(self, payload: dict):
         event = payload.get("event")
-        # Aceita eventos de mensagem criada
         if event not in ("message_created", None):
             return
 
         message_type = payload.get("message_type")
-        # Chatwoot usa 'incoming' ou 0 para mensagens do cliente
         if message_type not in ("incoming", 0):
             return
 
-        # Ignora notas privadas
         if payload.get("private", False):
+            return
+
+        message_id = payload.get("id")
+        if is_duplicate(message_id):
+            logger.info(f"Mensagem #{message_id} já processada. Ignorando duplicata.")
             return
 
         content = payload.get("content", "").strip()
@@ -249,7 +271,6 @@ class WebhookHandler(BaseHTTPRequestHandler):
             send_chatwoot_message(conversation_id, "⏸️ [IA Pausada] O bot foi desativado temporariamente para este chat.", private=True)
             return
 
-        # Verifica se o bot está pausado para esta conversa (transbordo humano ativo)
         session = get_dify_session(conversation_id)
         if session.get("paused"):
             logger.info(f"Conversa #{conversation_id} em atendimento humano. Bot ignorando mensagem.")
@@ -258,7 +279,6 @@ class WebhookHandler(BaseHTTPRequestHandler):
         dify_conv_id = session.get("dify_conv_id")
         logger.info(f"Processando mensagem cliente na conversa #{conversation_id}: '{content[:60]}...'")
 
-        # Chama a API do Dify
         dify_result = call_dify(
             query=content,
             dify_conv_id=dify_conv_id,
@@ -272,20 +292,14 @@ class WebhookHandler(BaseHTTPRequestHandler):
         raw_answer = dify_result.get("answer", "").strip()
         new_dify_conv_id = dify_result.get("conversation_id")
 
-        # Atualiza o mapeamento de sessão
         save_dify_session(conversation_id, new_dify_conv_id, paused=False)
 
-        # Checa se houve solicitação de transbordo
         handoff_requested = "[TRANSFERIR]" in raw_answer
-
-        # Remove a tag técnica antes de enviar para o cliente
         clean_answer = raw_answer.replace("[TRANSFERIR]", "").strip()
 
-        # Envia a mensagem pública da IA para o cliente no Chatwoot
         if clean_answer:
             send_chatwoot_message(conversation_id, clean_answer, private=False)
 
-        # Executa transbordo se sinalizado
         if handoff_requested:
             trigger_human_handoff(conversation_id, reason="IA identificou solicitação de suporte humano")
 
