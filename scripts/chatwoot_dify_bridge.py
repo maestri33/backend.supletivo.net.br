@@ -1,21 +1,7 @@
 #!/usr/bin/env python3
 """
-Chatwoot <-> Dify Integration Bridge (Hardened)
-==============================================
-Conecta o Chatwoot (inboxes WhatsApp/Omnichannel) ao Dify (Workflows/Chatflows).
-
-Funcionalidades:
-- Recebe webhooks do Chatwoot (AgentBot e Account Webhook).
-- Deduplica eventos por message_id para evitar respostas duplicadas.
-- Filtra apenas mensagens 'incoming' de clientes (ignora mensagens de agentes ou privadas).
-- Encaminha o texto para a API do Dify (/v1/chat-messages) mantendo o conversation_id persistido em SQLite.
-- Posta a resposta do Dify de volta no Chatwoot com o token do AgentBot (Dify OmniRoute Bot).
-- Suporta Transbordo Humano Inteligente:
-  * Detecta tag [TRANSFERIR] na resposta do Dify ou gatilhos manuais configuráveis.
-  * Remove a tag antes de enviar ao cliente.
-  * Cria uma nota interna privada no Chatwoot alertando a equipe humana.
-  * Altera o status da conversa para 'open' (fila humana) e adiciona label 'transbordo-humano'.
-  * Pausa o bot para aquela conversa até que seja resolvida ou reativada (/bot on).
+Chatwoot <-> Dify Integration Bridge (Hardened & Logged)
+======================================================
 """
 
 import os
@@ -28,7 +14,9 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 import requests
 
-# Configurações do Ambiente
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_FILE = os.path.join(BASE_DIR, "bridge.log")
+
 CHATWOOT_URL = os.getenv("CHATWOOT_URL", "http://127.0.0.1:3000").rstrip("/")
 CHATWOOT_API_TOKEN = os.getenv("CHATWOOT_API_TOKEN", "LZD3QhFz1kh1fvjTjE6j6NHU")
 CHATWOOT_BOT_TOKEN = os.getenv("CHATWOOT_BOT_TOKEN", "FEUYKPGwrhV8F1FiA4JTpbYq")
@@ -38,15 +26,18 @@ DIFY_URL = os.getenv("DIFY_URL", "http://127.0.0.1:8090").rstrip("/")
 DIFY_API_KEY = os.getenv("DIFY_API_KEY", "app-lm2qFiq1DrpTBW1TlbKNbZu5")
 
 PORT = int(os.getenv("BRIDGE_PORT", "8000"))
-DB_PATH = os.getenv("DB_PATH", "bridge_sessions.db")
+DB_PATH = os.path.join(BASE_DIR, "bridge_sessions.db")
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger("ChatwootDifyBridge")
 
-# Cache em memória para deduplicação de mensagens (últimos 1000 IDs)
 PROCESSED_MESSAGES = deque(maxlen=1000)
 PROCESSED_SET = set()
 
@@ -62,7 +53,6 @@ def is_duplicate(message_id):
     PROCESSED_SET.add(message_id)
     return False
 
-# Inicialização do Banco SQLite para mapeamento de sessões
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -108,7 +98,6 @@ def set_conversation_paused(chatwoot_conv_id: int, paused: bool):
     conn.commit()
     conn.close()
 
-# Integração Dify
 def call_dify(query: str, dify_conv_id: str = None, user_id: str = "chatwoot-user"):
     payload = {
         "inputs": {},
@@ -125,7 +114,7 @@ def call_dify(query: str, dify_conv_id: str = None, user_id: str = "chatwoot-use
     }
 
     try:
-        response = requests.post(f"{DIFY_URL}/v1/chat-messages", headers=headers, json=payload, timeout=55)
+        response = requests.post(f"{DIFY_URL}/v1/chat-messages", headers=headers, json=payload, timeout=60)
         if response.status_code == 200:
             data = response.json()
             return {
@@ -140,9 +129,7 @@ def call_dify(query: str, dify_conv_id: str = None, user_id: str = "chatwoot-use
         logger.error(f"Exceção ao chamar Dify API: {e}")
         return None
 
-# Ações no Chatwoot
 def send_chatwoot_message(conversation_id: int, content: str, private: bool = False):
-    # Se for mensagem pública do bot, usamos o token do bot para ficar atribuído à IA
     token = CHATWOOT_API_TOKEN if private else CHATWOOT_BOT_TOKEN
     headers = {
         "api_access_token": token,
@@ -156,17 +143,13 @@ def send_chatwoot_message(conversation_id: int, content: str, private: bool = Fa
     try:
         url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
         resp = requests.post(url, headers=headers, json=payload, timeout=10)
+        logger.info(f"Mensagem enviada Chatwoot conv #{conversation_id}: status={resp.status_code}")
         return resp.status_code in (200, 201)
     except Exception as e:
         logger.error(f"Exceção ao enviar mensagem ao Chatwoot: {e}")
         return False
 
 def trigger_human_handoff(conversation_id: int, reason: str = "Solicitação do cliente"):
-    headers = {
-        "api_access_token": CHATWOOT_API_TOKEN,
-        "Content-Type": "application/json"
-    }
-    # 1. Nota interna avisando a equipe humana
     note_content = (
         f"🚨 **[TRANSBORDO IA ➔ HUMANO]**\n"
         f"Motivo: {reason}\n"
@@ -174,21 +157,22 @@ def trigger_human_handoff(conversation_id: int, reason: str = "Solicitação do 
     )
     send_chatwoot_message(conversation_id, note_content, private=True)
 
-    # 2. Altera status da conversa para 'open'
+    headers = {
+        "api_access_token": CHATWOOT_API_TOKEN,
+        "Content-Type": "application/json"
+    }
     try:
         url_status = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/toggle_status"
         requests.post(url_status, headers=headers, json={"status": "open"}, timeout=10)
     except Exception as e:
         logger.error(f"Erro ao alterar status da conversa {conversation_id}: {e}")
 
-    # 3. Adiciona label de transbordo
     try:
         url_labels = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/labels"
         requests.post(url_labels, headers=headers, json={"labels": ["transbordo-humano", "atendimento-ia"]}, timeout=10)
     except Exception as e:
         logger.error(f"Erro ao adicionar label na conversa {conversation_id}: {e}")
 
-    # 4. Marca conversa como pausada para a IA
     set_conversation_paused(conversation_id, paused=True)
     logger.info(f"Transbordo humano concluído com sucesso para conversa #{conversation_id}")
 
@@ -232,6 +216,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
     def process_chatwoot_event(self, payload: dict):
         event = payload.get("event")
+        # Aceita eventos de mensagem criada
         if event not in ("message_created", None):
             return
 
