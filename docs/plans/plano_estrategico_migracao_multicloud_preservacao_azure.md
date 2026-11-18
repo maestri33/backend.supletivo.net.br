@@ -49,7 +49,7 @@ A decisão tomada estabelece o seguinte desacoplamento:
 | :--- | :--- | :--- | :---: | :--- |
 | **Frontends Web** (`supletivo.net.br`, `promotor...`, `app...`) | VM Azure / Borda | **Cloudflare Edge (Pages/Workers)** | **R$ 0,00** | Deploy atômico via GitHub Actions, CDN Anycast global, SSL automático e zero egress. |
 | **APIs Serverless de Borda** (`api.supletivo.net.br`, `agent...`, `notify...`) | VM Azure | **Cloudflare Workers + D1** | **R$ 0,00** | Baixa latência, execução serverless sem servidor fixo, tolerante a picos. |
-| **Backup Leve do SQLite (OmniRoute)** | Disco local VM Azure | **Cloudflare D1 (`omniroute-backup-safe`)** | **R$ 0,00** | 40.56 MB de snapshot íntegro (149 tabelas), replicado globalmente e livre de custos de VM. |
+| **Backup Leve do SQLite (OmniRoute)** | Disco local VM Azure | **Cloudflare D1 (`omniroute-db`)** | **R$ 0,00** | 40.56 MB de snapshot íntegro (149 tabelas), replicado globalmente e livre de custos de VM. |
 | **Mídia e Documentos (Anexos)** | Disco da VM | **Cloudflare R2 (`supletivo-media`)** | **R$ 0,00** | Compatível com S3 (AWS SigV4 já implementado no backend), sem taxa de tráfego de saída (zero egress). |
 | **Ingresso de Tráfego / Segurança** | IP Público Azure (R$ 10/mês) | **Cloudflare Zero Trust / Tunnel (`v7m-azure-core`)** | **R$ 0,00** | Túnel de saída criptografado, dispensa portas abertas e elimina a dependência de IP público fixo. |
 | **E-mails Transacionais** | Servidor na VM | **Mail.V7m.live / Resend / Brevo + CF Email Routing** | **R$ 0,00** | Alta entregabilidade, SPF/DKIM/DMARC profissionais, sem queima de reputação do IP da Azure. |
@@ -93,7 +93,7 @@ Para garantir a execução orquestrada, as tarefas foram distribuídas de acordo
    - Manutenção dos 24 deployments Succeeded no Azure Cognitive Services.
    - Fornecimento de credenciais e rotas seguras do Azure AI Foundry (`claude-sonnet-5-5`) para ocasiões especiais.
 3. **`@Cloudflare`:**
-   - Criação do banco D1 dedicado `omniroute-backup-safe` (Free Tier).
+   - Criação do banco D1 dedicado `omniroute-db` (Free Tier).
    - Validação dos buckets R2 para armazenamento estático sem egress.
    - Verificação do Cloudflare Tunnel ativo (`v7m-azure-core`) e ajuste do SSL/TLS para modo `Full`.
 4. **`@Github`:**
@@ -117,7 +117,7 @@ Para garantir a execução orquestrada, as tarefas foram distribuídas de acordo
 
 ### Fase 2: Desacoplamento de Borda & Armazenamento Leve (Em Execução)
 * [x] **Snapshot do SQLite Validado:** `omniroute_backup_manifest.json` com SHA-256 `4f6e8057...` e integridade verificada.
-* [ ] **Criação do D1 no Cloudflare:** Provisionamento de `omniroute-backup-safe` pelo `@Cloudflare`.
+* [ ] **Criação do D1 no Cloudflare:** Provisionamento de `omniroute-db` pelo `@Cloudflare`.
 * [ ] **Sanitização das Tabelas Sensíveis:** Expurgo de tokens em `provider_connections` e `api_keys` antes do upload para a borda.
 * [ ] **Validação do Cloudflare Tunnel:** Garantir que todos os acessos administrativos passem pelo túnel `v7m-azure-core` sem exposição de portas no IP da Azure.
 
