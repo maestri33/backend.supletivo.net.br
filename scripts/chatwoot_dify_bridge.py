@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Chatwoot <-> Dify Integration Bridge (Hardened & Logged)
-======================================================
+Chatwoot <-> Dify Integration Bridge (Hardened, Logged & 180s Timeout)
+=====================================================================
 """
 
 import os
@@ -114,7 +114,7 @@ def call_dify(query: str, dify_conv_id: str = None, user_id: str = "chatwoot-use
     }
 
     try:
-        response = requests.post(f"{DIFY_URL}/v1/chat-messages", headers=headers, json=payload, timeout=60)
+        response = requests.post(f"{DIFY_URL}/v1/chat-messages", headers=headers, json=payload, timeout=180)
         if response.status_code == 200:
             data = response.json()
             return {
@@ -142,7 +142,7 @@ def send_chatwoot_message(conversation_id: int, content: str, private: bool = Fa
     }
     try:
         url = f"{CHATWOOT_URL}/api/v1/accounts/{CHATWOOT_ACCOUNT_ID}/conversations/{conversation_id}/messages"
-        resp = requests.post(url, headers=headers, json=payload, timeout=10)
+        resp = requests.post(url, headers=headers, json=payload, timeout=15)
         logger.info(f"Mensagem enviada Chatwoot conv #{conversation_id}: status={resp.status_code}")
         return resp.status_code in (200, 201)
     except Exception as e:
