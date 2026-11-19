@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SSH = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=10", "azureuser@20.127.0.185"]
+SSH = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "ConnectTimeout=10", "root@vm-v7m-core"]
 
 
 def sha256(data: bytes) -> str:
@@ -41,7 +41,7 @@ for name in ['v7m-backend-web','v7m-backend-qcluster']:
  out['containers'][name]={'image':d['Image'],'tag':d['Config']['Image'],'environment_sha256':hashlib.sha256(json.dumps(env,sort_keys=True).encode()).hexdigest(),'stable_environment_sha256':hashlib.sha256(json.dumps(stable,sort_keys=True).encode()).hexdigest(),'environment_names':sorted(env),'command':d['Config']['Cmd'],'compose_files':d['Config']['Labels'].get('com.docker.compose.project.config_files'),'mounts':[{'type':m['Type'],'source':m['Source'],'destination':m['Destination'],'rw':m['RW']} for m in d['Mounts']],'networks':sorted(d['NetworkSettings']['Networks'])}
 print(json.dumps(out))
 """.replace("PATHS", repr(encoded))
-    result = subprocess.run([*SSH, "sudo -n python3 -"], input=remote, text=True, capture_output=True, timeout=40)
+    result = subprocess.run([*SSH, "python3 -"], input=remote, text=True, capture_output=True, timeout=40)
     if result.returncode:
         raise RuntimeError(f"Production inspection failed with exit {result.returncode}")
     return json.loads(result.stdout)
