@@ -1225,31 +1225,27 @@ def pricing(ref: str | None = None) -> dict:
     """Preço público de vitrine — É O MESMO que é cobrado: PIX + cartão parcelado.
 
     Regra Canônica:
-    - Sem Ref: PIX cheio e preço de cartão configurado para 12 parcelas.
-    - Com Ref: Desbloqueia o valor promocional com desconto de indicação (promo_pix / promo_card em 12x).
+    - Oferta Universal: 12x R$ 99 / R$ 999 no Pix, ancorado em R$ 1.615 (Decisão de Produto 2026-11).
+    - Desconto promocional universalizado para todos os alunos (modelo de promotores descontinuado).
     """
     from decimal import Decimal
     from finance import config as fin_config
 
     installments = 12
     anchor_full = config.anchor_full()
-    full_pix = config.price_pix()
-    full_card = config.price_card()
-    full_card_installment = (full_card / installments).quantize(Decimal("0.01"))
-
     promo_pix = config.promo_price_pix()
     promo_total = config.promo_price_card()
     promo_installment = (promo_total / installments).quantize(Decimal("0.01"))
 
     name = referral_name(ref) if ref else None
-    has_discount = bool(name)
+    has_discount = True
 
     return {
-        "pix": f"{full_pix:.2f}",
+        "pix": f"{promo_pix:.2f}",
         "card": {
             "installments": installments,
-            "installment": f"{full_card_installment:.2f}",
-            "total": f"{full_card:.2f}",
+            "installment": f"{promo_installment:.2f}",
+            "total": f"{promo_total:.2f}",
         },
         "promo_pix": f"{promo_pix:.2f}",
         "promo_card": {

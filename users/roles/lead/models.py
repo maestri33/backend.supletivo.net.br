@@ -95,7 +95,11 @@ class Lead(ExternalIdModel):
         from users.roles.lead import config
 
         if self.pix_price and self.card_price and self.pricing_snapshot:
-            return  # já travado, imutável
+            # Se o lead ainda não pagou e foi travado no valor antigo (> 999), re-trava na oferta canônica
+            if self.status != Lead.Status.PAID and self.pix_price > config.promo_price_pix():
+                pass
+            else:
+                return  # já travado, imutável
 
         installments = 12
         anchor = config.anchor_full()
@@ -112,16 +116,12 @@ class Lead(ExternalIdModel):
                 resolved_ref = self.attribution.ref_raw
 
             name = lead_svc.referral_name(resolved_ref) if resolved_ref else None
-            if name:
-                has_disc = True
-                p_name = name
-                pix = config.promo_price_pix()
-                card = config.promo_price_card()
-            else:
-                has_disc = False
-                p_name = None
-                pix = config.price_pix()
-                card = config.price_card()
+            # Oferta Canônica Universal: todo aluno recebe o preço promocional (999 Pix / 12x 99 Card)
+            # ancorado em R$ 1.615 (Decisão de Produto 2026-11)
+            has_disc = True
+            p_name = name
+            pix = config.promo_price_pix()
+            card = config.promo_price_card()
 
         card_inst = (card / installments).quantize(Decimal("0.01"))
 

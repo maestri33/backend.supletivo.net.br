@@ -27,7 +27,7 @@ def test_pricing_endpoint_without_ref(client: Client):
     assert "pix" in data
     assert "card" in data
     assert data["card"]["installments"] == 12
-    assert data["has_discount"] is False
+    assert data["has_discount"] is True
     assert data["promoter_name"] is None
     assert "anchor_full" in data
     assert "commission_direct" in data
