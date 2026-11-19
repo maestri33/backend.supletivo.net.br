@@ -587,7 +587,7 @@ def test_funil_v2_fim_a_fim(client, default_hub):
 
 
 def test_pricing_sem_ref_retorna_precos_padrao(client):
-    """GET /pricing sem parâmetro retorna os preços de tabela, anchor_full e has_discount=False."""
+    """GET /pricing sem parâmetro retorna os preços com oferta canônica e has_discount=True."""
     r = client.get(f"{BASE}/pricing")
     assert r.status_code == 200
     data = r.json()
@@ -596,7 +596,7 @@ def test_pricing_sem_ref_retorna_precos_padrao(client):
     assert "promo_pix" in data
     assert "promo_card" in data
     assert "anchor_full" in data
-    assert data["has_discount"] is False
+    assert data["has_discount"] is True
     assert data["promoter_name"] is None
 
 
@@ -756,18 +756,18 @@ def test_pix_build_repetido_reaproveita_o_qr_em_vez_de_estourar(
 
 
 def test_pix_cobra_o_valor_exato_do_plano(client, default_hub, asaas_qr_calls):
-    """O QR estático leva o valor CHEIO do plano — sem piso, sem arredondar (não é fatura)."""
+    """O QR estático leva o valor canônico do plano promocional universal."""
     from users.roles.lead import config
     from users.roles.lead import service as lead_service
 
     c = _pix_checkout(client, "11987650053", "444555777", "pix53@example.com")
-    assert c.amount == config.price_pix()
+    assert c.amount == config.promo_price_pix()
 
     lead_service.fill_checkout_from_provider(c)
     c.refresh_from_db()
 
-    assert asaas_qr_calls[0]["value"] == float(config.price_pix())
-    assert c.amount == config.price_pix()
+    assert asaas_qr_calls[0]["value"] == float(config.promo_price_pix())
+    assert c.amount == config.promo_price_pix()
 
 
 def test_pix_sem_frontend_url_serve_a_pagina_no_proprio_backend(
