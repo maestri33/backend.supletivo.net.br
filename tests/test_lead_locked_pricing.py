@@ -36,7 +36,7 @@ def another_promoter(default_coordinator):
     return u
 
 def test_lead_creation_without_ref_locks_anchor_pricing(default_coordinator):
-    """Lead criado sem ref trava preço âncora cheio e has_discount=False."""
+    """Lead criado sem ref trava preço canônico promocional e has_discount=True."""
     user = User.objects.create_user(external_id=uuid.uuid4())
     lead = lead_svc._create_lead_with_locked_pricing(
         user=user,
@@ -44,22 +44,22 @@ def test_lead_creation_without_ref_locks_anchor_pricing(default_coordinator):
         ref=None,
         status=Lead.Status.PENDING,
     )
-    assert lead.has_discount is False
+    assert lead.has_discount is True
     assert lead.promoter_name == ""
     assert lead.pix_price > 0
     assert lead.card_price > 0
-    assert lead.pricing_snapshot["has_discount"] is False
+    assert lead.pricing_snapshot["has_discount"] is True
     assert Decimal(lead.pricing_snapshot["pix"]) == lead.pix_price
 
 
 def test_public_pricing_uses_full_card_table_and_referral_discount(default_coordinator, affiliate_promoter, client):
-    """A vitrine pública segue a tabela comercial sem confundir Pix com cartão."""
+    """A vitrine pública segue a oferta canônica universal de 12x R$ 99 / R$ 999 Pix."""
     full = client.get("/api/v1/clients/pricing")
     assert full.status_code == 200
     full_data = full.json()
-    assert full_data["pix"] == "1615.00"
-    assert full_data["card"] == {"installments": 12, "installment": "159.90", "total": "1918.80"}
-    assert full_data["has_discount"] is False
+    assert full_data["pix"] == "999.00"
+    assert full_data["card"] == {"installments": 12, "installment": "99.00", "total": "1188.00"}
+    assert full_data["has_discount"] is True
 
     referred = client.get(f"/api/v1/clients/pricing?ref={affiliate_promoter.external_id}")
     assert referred.status_code == 200
